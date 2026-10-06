@@ -31,12 +31,49 @@ Demo site --> Backend (sample data mode uses mock tools)
 - **Phone** turns audio into text with Parakeet v3, adds date, time, IANA timezone, language and orientation, and talks to the backend. Relays replies and status to the device and signals to the backend. Never sends audio to the cloud.
 - **Backend** runs the Nemotron tool-calling loop, holds pending actions, executes confirmed actions, stores memory and serves the demo site.
 
-**Contracts** (see CLAUDE.md, "Contracts Not Yet Agreed"). When one is agreed, write it here.
-- Phone to cloud JSON: _not written yet_. Must cover at least: a user or session id, command text, current time with timezone, language, orientation, and signals confirm / fix (with text) / decline / cancel keyed by a pending action id. Responses carry `display_text`, whether confirmation is needed, the pending action id and the full draft.
-- Status updates to the phone: _not decided_.
-- Device to phone audio format: _not decided_. Must arrive as 16 kHz mono for Parakeet.
-- Phone to device BLE messages: _not decided_.
-- E-ink text budget: _waiting on panel choice_.
+**Contracts** (decided 2026-10-06; summary in CLAUDE.md, "Contracts"). Every message is JSON except the Bluetooth audio channel.
+
+*Phone to cloud API.* Base path `/v1/`. Every request carries `Authorization: Bearer <API key>` and a phone-generated `request_id` (UUID). A repeated `request_id` returns the original result and never repeats an action.
+
+```
+POST /v1/command        (response is a Server-Sent Events stream)
+{ "request_id": "uuid", "text": "send an email to Victor saying ...",
+  "sent_at": "2026-10-06T15:24:00-05:00", "timezone": "America/Chicago",
+  "language": "en", "orientation": "landscape" }
+
+POST /v1/actions/{pending_action_id}/confirm   { "request_id": "uuid" }
+POST /v1/actions/{pending_action_id}/fix       { "request_id": "uuid", "text": "make it Thursday instead" }
+POST /v1/actions/{pending_action_id}/decline   { "request_id": "uuid" }
+POST /v1/actions/{pending_action_id}/cancel    { "request_id": "uuid" }
+```
+
+Every final result (the `result` event, and the JSON response of the action endpoints) has one shape:
+
+```
+{ "state": "confirming | waiting_for_input | done | expired | error",
+  "screen_lines": ["To: victor@example.com", "Re: Meeting moved", "..."],
+  "pending_action_id": "..." or null,
+  "draft": { full email or event, for the phone app } or null,
+  "expires_at": "RFC 3339 timestamp" or null }
+```
+
+*Status updates.* `/v1/command` streams Server-Sent Events: zero or more `status` events (`{"status_line": "Searching the web"}`), then exactly one `result` event with the shape above. Only meaningful steps produce a status event.
+
+*Bluetooth (phone and device).* One custom BLE service, five characteristics:
+
+| Characteristic | Direction | Format | Carries |
+| --- | --- | --- | --- |
+| Audio | device to phone (notify) | raw bytes: 2-byte sequence number, 1 flag byte (start, middle, end), IMA ADPCM data | 16 kHz mono speech, streamed while the button is held |
+| Events | device to phone (notify) | JSON | `wake`, `record_start`, `record_end`, `confirm`, `fix`, `decline`, `cancel` |
+| Screen | phone to device (write) | JSON | screen type (`ready`, `processing`, `waiting_for_input`, `confirming`, `done`, `expired`), `screen_lines`, `status_line` |
+| Wallpaper | phone to device (write) | JSON chunks with offset and checksum, image data base64 | already resized and dithered image |
+| Settings | phone to device (write) | JSON | orientation, current time |
+
+Request the largest MTU the phone allows on connect, and the 2M PHY if the chip supports it. JSON messages bigger than one packet are split with a sequence number. Exact JSON field names for the BLE messages: Carlos and Victor write them here in P1 and F2.
+
+*State ownership.* The backend owns pending actions. The device enters Confirming (and starts the 1 s guard) only when the phone sends a `confirming` screen. The device handles Off, Ready, recording and auto-off locally.
+
+*Screen text.* Fixed-width font on the device. The backend sends pre-wrapped `screen_lines`, so what it checks is exactly what is shown. Budget per orientation (characters per line, lines per screen): _pending panel choice (Victor, F1)_. The confirm screen must fit at least the full email address, the subject and 2 body lines.
 
 **Pending action lifecycle**
 1. Command text arrives. If an action is already pending, reject the new command (one at a time).
@@ -75,13 +112,13 @@ Each phase ends with a gate. The gate must pass before the next phase in that tr
 
 #### Phase B1: API contract and pending action state machine (PLANNED)
 - **Goal:** the request/response contract and the pending action lifecycle, built and tested before real tools exist.
-- **Steps:** write the agreed phone to cloud JSON into section 2 with Carlos's sign-off (stop if missing); Postgres schema and migrations for users, pending actions and history; endpoints for command, confirm, fix, decline, cancel; 60 s expiry from last interaction; one action at a time; idempotent confirm; agree the status update transport with Carlos.
-- **Gate:** state machine tests pass for expiry, one at a time, confirm after expiry rejected, double confirm executes once, fix resets the timer, decline leaves nothing behind.
+- **Steps:** implement the API contract in section 2 (endpoints, `request_id` idempotency, API key check); Postgres schema and migrations for users, pending actions and history; endpoints for command, confirm, fix, decline, cancel; 60 s expiry from last interaction; one action at a time; idempotent confirm; Server-Sent Events on `/v1/command` with `status` and `result` events.
+- **Gate:** state machine tests pass for expiry, one at a time, confirm after expiry rejected, double confirm executes once, a repeated `request_id` returns the original result, fix resets the timer, decline leaves nothing behind; requests without the API key are rejected.
 - **Results (if DONE):**
 
 #### Phase B2: Agent loop with mock tools (PLANNED)
 - **Goal:** Nemotron reliably picks the right tool with the right arguments, in English, against mock data.
-- **Steps:** tool schemas for all ten tools; realistic mock calendar, inbox and contacts; system prompt with date, time, timezone, language, text budget and relevant memory; iteration cap on the loop; `display_text` length enforced in code; all-in-one email with recipient resolution and auto subject; unknown or ambiguous recipient asks back; fix revises the existing draft; English eval set of spoken-style commands (relative dates like "tomorrow at 3", ambiguous recipients, search then act, requests that must not trigger a write).
+- **Steps:** tool schemas for all ten tools; realistic mock calendar, inbox and contacts; system prompt with date, time, timezone, language, text budget and relevant memory; iteration cap on the loop; `screen_lines` built and length-checked in code against the configured budget; all-in-one email with recipient resolution and auto subject; unknown or ambiguous recipient asks back; fix revises the existing draft; English eval set of spoken-style commands (relative dates like "tomorrow at 3", ambiguous recipients, search then act, requests that must not trigger a write).
 - **Gate:** eval results per category. **Provisional target: at least 90% correct tool and arguments overall, and 100% on "no write without a pending confirmation".** The 90% is not validated; replace it after the first run. Median model loop latency reported.
 - **Results (if DONE):**
 
@@ -111,7 +148,7 @@ Each phase ends with a gate. The gate must pass before the next phase in that tr
 
 #### Phase B7: Spanish and bilingual (PLANNED, only after English works end to end)
 - **Goal:** the same flows in Spanish, then in mixed English and Spanish.
-- **Steps:** add Spanish and mixed commands to the eval set; replies and `display_text` in the user's language; Spanish date phrases ("mañana a las 3"); review the phone's Spanish transcription quality.
+- **Steps:** add Spanish and mixed commands to the eval set; replies and `screen_lines` in the user's language; Spanish date phrases ("mañana a las 3"); review the phone's Spanish transcription quality.
 - **Gate:** Spanish results reported per category next to English. **Provisional target: Spanish within a few points of English, no English regression.**
 - **Results (if DONE):**
 
@@ -125,13 +162,13 @@ Each phase ends with a gate. The gate must pass before the next phase in that tr
 
 #### Phase P1: Bluetooth link and audio from the device (PLANNED)
 - **Goal:** receive audio from the device over BLE and transcribe it.
-- **Steps:** agree the audio format and BLE messages with Victor; pairing and reconnect handling; decode audio to 16 kHz mono; feed Parakeet.
+- **Steps:** implement the BLE service in section 2 with Victor (write the exact JSON field names there); pairing and reconnect handling; reassemble Audio chunks by sequence number and decode IMA ADPCM to 16 kHz mono PCM; feed Parakeet on `record_end`.
 - **Gate:** a spoken command on the real device comes out as correct text on the phone; BLE transfer time measured against the budget.
 - **Results (if DONE):**
 
 #### Phase P2: Backend client (PLANNED)
 - **Goal:** the phone talks to the backend with the agreed contract.
-- **Steps:** send text with date, time, IANA timezone, language and orientation; receive `display_text` and drafts; forward confirm, fix, decline and cancel; receive status updates with the agreed transport; handle cellular retries without double confirms.
+- **Steps:** send text with date, time, IANA timezone, language and orientation; send the API key and a new `request_id` per action (reused on retry); read the Server-Sent Events stream from `/v1/command`; forward `screen_lines` and status to the device; forward confirm, fix, decline and cancel.
 - **Gate:** against the backend in mock mode, a calendar flow and an email flow (including fix and decline) complete from the phone.
 - **Results (if DONE):**
 
@@ -173,8 +210,8 @@ Each phase ends with a gate. The gate must pass before the next phase in that tr
 - **Results (if DONE):**
 
 #### Phase F2: Microphone and BLE audio (PLANNED)
-- **Goal:** recorded speech reaches the phone in the agreed format.
-- **Steps:** capture 16 kHz mono while the button is held; agreed compression or record then send; BLE transfer to the phone.
+- **Goal:** recorded speech reaches the phone as streamed IMA ADPCM.
+- **Steps:** capture 16 kHz mono from an I2S MEMS microphone while the button is held; encode IMA ADPCM; stream raw-byte Audio chunks (sequence number, flag, data) during the hold; send `record_start` and `record_end` as JSON Events; request the largest MTU and 2M PHY; write the BLE JSON field names into section 2 with Carlos.
 - **Gate:** Carlos's phone transcribes audio recorded on the device correctly; transfer time measured against the budget.
 - **Results (if DONE):**
 
@@ -202,7 +239,8 @@ Target dates for I1 to I4: _to be set by the team_.
 
 ## 4. Open Risks
 
-- Contracts not agreed (phone to cloud fields, status transport, audio format, BLE messages, text budget). They block B1, P1, P2, F1 and F2. Agree them in one team call.
+- Text budget numbers wait on the panel choice (F1). The backend and the phone app keep them as configuration until then.
+- Bluetooth throughput for 64 kbps ADPCM plus JSON messages is unmeasured. Victor measures it early in F2; if it falls short, the fallback is record then send.
 - Prompt injection through tool results (a web page or email telling the model to act). Mitigation: tool output treated as data; the confirmation gate stays the backstop for every write.
 - Spoken email addresses transcribe badly. Mitigation: contacts first; dictated addresses always shown in full on the confirm screen.
 - Android killing background work. Mitigation: foreground service, tested in P3.

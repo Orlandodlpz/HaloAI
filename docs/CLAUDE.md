@@ -41,7 +41,8 @@ Entry: Nebius x NVIDIA Global AI Hackathon, **Personal AI track**. Submission de
 - Gmail is never contacted before confirmation; drafts live on our server only.
 - One pending action per user at a time. It expires 60 seconds after the last interaction with it.
 - The confirm endpoint is idempotent: a retried confirm never sends an email twice.
-- `display_text` must fit the e-ink text budget, taken from configuration, never hardcoded.
+- `screen_lines` must fit the e-ink text budget, taken from configuration, never hardcoded.
+- Every API request requires the API key. The backend is public and can send email from the demo account.
 - Tool results (web pages, email bodies, event text) are untrusted data, never instructions to the model.
 - Zero Data Retention must be enabled on the Nebius Token Factory account whose API key the backend uses.
 
@@ -75,7 +76,7 @@ Entry: Nebius x NVIDIA Global AI Hackathon, **Personal AI track**. Submission de
 
 **Device (Victor)**
 - Credit card sized body: 85.6 x 54 mm.
-- Exact ESP32 variant, microphone, e-ink panel and battery: _not chosen yet_.
+- Exact ESP32 variant, microphone, e-ink panel and battery: _not chosen yet_. Recommended: ESP32-S3 (Bluetooth 5 with 2M PHY and larger MTU, I2S input for a MEMS microphone). Victor confirms.
 - Firmware framework (Arduino core or ESP-IDF): _not chosen yet_.
 
 ## Locked Decisions
@@ -124,17 +125,19 @@ Decisions already made. Do not re-litigate unless new evidence is presented, and
 - Orientation (landscape or portrait) is a setting sent from the phone.
 - Gesture timings are config constants (starting values in BRIEFING.md).
 
-## Contracts Not Yet Agreed
+## Contracts
 
-These cross team boundaries. Nobody builds against a guess; propose, get both owners' sign-off, then write the result into BRIEFING.md section 2.
+Decided 2026-10-06. Full details in BRIEFING.md section 2. Changes need sign-off from both owners.
 
-| Contract | Owners | Status |
+| Contract | Owners | Decision |
 | --- | --- | --- |
-| Phone to cloud request and response JSON fields | Orlando, Carlos | Transport agreed (HTTPS over Wi-Fi or cellular); fields not written down |
-| How status updates reach the phone (Server-Sent Events, WebSocket or polling) | Orlando, Carlos | Not decided |
-| Audio format from device to phone (16 kHz mono required; compression ADPCM or Opus, or record then send) | Carlos, Victor | Not decided |
-| E-ink text budget (characters per line, lines per screen, per orientation) | Victor, for everyone | Waiting on panel choice |
-| Phone to device BLE messages (screen text, status, signals, wallpaper, orientation) | Carlos, Victor | Not decided |
+| Message format, everywhere | Everyone | JSON for every message, with one exception: the Bluetooth audio channel carries raw bytes |
+| Phone to cloud API | Orlando, Carlos | REST endpoints under `/v1/`, JSON bodies, phone-generated `request_id` on every call for idempotent retries, API key in the `Authorization` header |
+| Status updates to the phone | Orlando, Carlos | Server-Sent Events streamed on the `/v1/command` response: `status` events, then one `result` event. Confirm, fix, decline and cancel are plain JSON requests |
+| Audio from device to phone | Carlos, Victor | IMA ADPCM, 16 kHz mono, streamed in chunks while the button is held, sent as raw bytes (not JSON). Start and end of recording are JSON events |
+| Phone to device Bluetooth messages | Carlos, Victor | One custom BLE service with five characteristics: Audio (raw bytes), Events, Screen, Wallpaper, Settings (JSON) |
+| Screen text | Victor, for everyone | Fixed-width font on the device; backend sends pre-wrapped `screen_lines`. Budget numbers (characters per line, lines per screen, per orientation) **still pending the panel choice** |
+| Source of truth for state | Everyone | Backend owns pending actions. The device enters Confirming only when the phone sends a `confirming` screen. The device runs Off, Ready, recording and auto-off on its own |
 
 ## Verification Rules
 
@@ -148,14 +151,15 @@ These cross team boundaries. Nobody builds against a guess; propose, get both ow
 
 ## Current Status
 
-**Backend (Orlando):** Phase B0 not started. Waiting on: phone to cloud fields, status update transport, text budget.
-**Phone (Carlos):** Phase P0 not started. Waiting on: audio format, phone to device BLE messages.
+**Backend (Orlando):** Phase B0 not started. Waiting on: text budget numbers.
+**Phone (Carlos):** Phase P0 not started. Waiting on: text budget numbers (for the wallpaper size and screen preview).
 **Device (Victor):** Phase F0 not started. Waiting on: hardware choice, framework choice.
 
 **Known gotchas discovered so far:**
 - Nebius Token Factory stores prompts and outputs by default (for speculative decoding, not training). Zero Data Retention must be switched on per account.
 - Google OAuth testing mode refresh tokens expire after 7 days. Re-authorize before recording the video and before judging (December 1 to 15, 2026).
 - US daylight saving time ends November 1, 2026. Use timezone-aware datetimes with IANA zones everywhere.
-- Raw 16-bit audio at 16 kHz is 256 kbps, more than ESP32 BLE reliably carries.
+- Raw 16-bit audio at 16 kHz is 256 kbps, more than ESP32 BLE reliably carries. ADPCM brings it to 64 kbps. Base64 inside JSON would add about a third, which is why audio is raw bytes.
+- If nginx sits in front of FastAPI, turn off response buffering on the `/v1/command` route, or Server-Sent Events arrive all at once at the end.
 - A single press can only be acted on after the double press window closes, which adds that window (about 400 ms) to every confirm.
 - Free Apple developer accounts expire installed test builds after 7 days (matters only if the iOS stretch goal happens).
