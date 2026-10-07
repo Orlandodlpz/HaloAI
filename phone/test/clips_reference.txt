@@ -1,0 +1,5 @@
+block_3_4_tmrw_gym = "Block 3 p.m. to 4 p.m. tomorrow for the gym."
+calendar_12_2_meeting = "Add on my calendar on October 5th, a meeting between 12 p.m. and 2 p.m."
+delete_meetings_thursday = "Delete all my meetings on Thursday."
+email_meeting_moved = "Send an email to Victor saying the meeting got moved to Thursday."
+email_tomai_meeting_sick = "Email Tomai saying I cannot attend the meeting because I am sick."
