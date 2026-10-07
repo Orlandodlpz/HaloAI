@@ -1,6 +1,6 @@
 # BRIEFING.md: HaloAI Execution Plan
 
-**Last Updated:** 2026-10-06
+**Last Updated:** 2026-10-07
 **Purpose:** The operational plan for the whole team: what we're building, how the pieces fit, and the phased sequence to get there with minimal rework.
 
 > Relationship to other docs: CLAUDE.md tracks decisions, constraints and state. This document is the **execution plan**. Each person edits only their own phase section (Backend, Phone or Device); shared sections change only after the team agrees.
@@ -104,11 +104,19 @@ Each phase ends with a gate. The gate must pass before the next phase in that tr
 
 ### 3.1 Backend (Orlando, `pipeline/`, branch `AI-Pipeline`)
 
-#### Phase B0: Setup and model verification (PLANNED)
+#### Phase B0: Setup and model verification (DONE 2026-10-07)
 - **Goal:** prove Nemotron 3 Nano tool calling works on Token Factory from this codebase, with secrets handled correctly.
 - **Steps:** Python project (FastAPI, `openai` SDK, settings from environment); `.env.example`, `.env` gitignored; look up and record the exact model ID and base URL in CLAUDE.md; one plain completion and one tool-calling call with a toy tool; `/health`; per-hop timestamp logging.
 - **Gate:** tool-calling script returns a well-formed tool call with valid JSON arguments in 5 of 5 runs; model ID and base URL recorded; no secrets tracked; Zero Data Retention confirmed on by Orlando.
 - **Results (if DONE):**
+  - Tool calling: 5 of 5 pass (`scripts/smoke.py --runs 5`). Command "block 3 to 4 tomorrow for the gym" gave `create_event` with title "Gym", start `2026-10-07T15:00:00-05:00`, 60 minutes, every run. Reasoning off, no reasoning text returned.
+  - Latency, one model turn with tools: median 0.57 s, max 0.59 s (439 prompt tokens, 73 completion tokens). Plain completion 0.67 s. Measured from a laptop in Texas, not the Oracle server.
+  - Model ID `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B` and base URL recorded in CLAUDE.md, verified with `scripts/list_models.py`.
+  - Reasoning switch verified: off gave 4 output tokens on a trivial prompt, on gave 96.
+  - `/health` requires the API key (401 without, 200 with); one JSON timing line per hop with `request_id`. Offline tests: 3 of 3 pass (`.venv/bin/python -m pytest`).
+  - No secrets tracked: `pipeline/.env` ignored, key values found in no committable file. Zero Data Retention confirmed on by Orlando.
+  - Caveat: at temperature 0 the 5 runs are identical, so 5 of 5 proves well-formed output and a working setup, not accuracy. Accuracy is measured by the B2 eval set.
+  - Budget note: 0.57 s is one model turn. A write command needs at least one turn, a lookup then act needs two or more, so the 1.2 s slot allows about two turns at this prompt size. Keep prompts small.
 
 #### Phase B1: API contract and pending action state machine (PLANNED)
 - **Goal:** the request/response contract and the pending action lifecycle, built and tested before real tools exist.

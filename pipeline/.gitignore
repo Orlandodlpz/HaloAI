@@ -1,0 +1,11 @@
+# Secrets: never commit. .env.example lists the names.
+.env
+.env.*
+!.env.example
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/

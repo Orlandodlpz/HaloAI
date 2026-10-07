@@ -1,7 +1,7 @@
 # CLAUDE.md: HaloAI
 
 Project context and conventions for the whole team. Read this first in every session, whatever part of the project you work on.
-**Last Updated:** 2026-10-06
+**Last Updated:** 2026-10-07
 
 ## Interaction Mode: Always On
 
@@ -65,7 +65,12 @@ Entry: Nebius x NVIDIA Global AI Hackathon, **Personal AI track**. Submission de
 **Backend (Orlando)**
 - Host: Oracle Cloud Always Free **ARM (aarch64)** server, always on. Check every Python dependency has an aarch64 wheel or builds there.
 - Stack: Python 3.11 or newer, FastAPI, the `openai` Python SDK pointed at the Nebius Token Factory OpenAI-compatible endpoint, Postgres on the same server.
-- Model: Nemotron 3 Nano, sparse mixture of experts (about 31.6B total parameters, about 3.6B active per token), tool calling, reasoning on/off switch. **Do not hardcode the model ID from memory.** Record the verified model ID and base URL here: _not yet verified_.
+- Model: Nemotron 3 Nano, sparse mixture of experts (about 31.6B total parameters, about 3.6B active per token), tool calling, reasoning on/off switch. **Do not hardcode the model ID from memory.**
+  - Model ID (verified 2026-10-06 against `GET /v1/models`): `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B`
+  - Base URL (from Nebius API docs, confirmed by a live call): `https://api.tokenfactory.nebius.com/v1/`
+  - Verify: `cd pipeline && .venv/bin/python scripts/list_models.py`
+  - Reasoning switch: `extra_body={"chat_template_kwargs": {"enable_thinking": False}}`. Token Factory passes it through (verified). With reasoning off, use temperature 0 (model card: greedy).
+- Local dev: Python 3.13 venv in `pipeline/.venv` (`python3.13 -m venv .venv && .venv/bin/pip install -e '.[dev]'`). `openai` SDK is major version 3.
 - External services: Google Calendar, Gmail (send), Google People ("other contacts"), Tavily web search. One dedicated demo Google account; the OAuth app stays in Google's testing mode.
 - Credits: $25 Token Factory per member from the hackathon code, plus $25 Token Factory and $25 Tavily from the Nebius Builders Program. Nebius AI Cloud servers are not covered, which is why hosting is on Oracle.
 
@@ -151,7 +156,7 @@ Decided 2026-10-06. Full details in BRIEFING.md section 2. Changes need sign-off
 
 ## Current Status
 
-**Backend (Orlando):** Phase B0 not started. Waiting on: text budget numbers.
+**Backend (Orlando):** Phase B0 DONE (2026-10-07): tool calling 5 of 5, median 0.57 s per model turn, Zero Data Retention on. Next: B1. Text budget in config is a PROVISIONAL placeholder until Victor's F1 numbers.
 **Phone (Carlos):** Phase P0 not started. Waiting on: text budget numbers (for the wallpaper size and screen preview).
 **Device (Victor):** Phase F0 not started. Waiting on: hardware choice, framework choice.
 
@@ -163,3 +168,5 @@ Decided 2026-10-06. Full details in BRIEFING.md section 2. Changes need sign-off
 - If nginx sits in front of FastAPI, turn off response buffering on the `/v1/command` route, or Server-Sent Events arrive all at once at the end.
 - A single press can only be acted on after the double press window closes, which adds that window (about 400 ms) to every confirm.
 - Free Apple developer accounts expire installed test builds after 7 days (matters only if the iOS stretch goal happens).
+- Backend: third party model listings give the Nemotron 3 Nano ID without the `NVIDIA-` part; the real ID is `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B`. The Omni variant is dedicated endpoint only and not visible to a pay per token key.
+- Backend: with reasoning on, Nemotron returns its thinking in a `reasoning` field on the message (not `reasoning_content`), and `usage` has no reasoning token breakdown. On a trivial prompt reasoning took 96 output tokens versus 4 with it off.
