@@ -152,7 +152,16 @@ Decided 2026-10-06. Full details in BRIEFING.md section 2. Changes need sign-off
 ## Current Status
 
 **Backend (Orlando):** Phase B0 not started. Waiting on: text budget numbers.
-**Phone (Carlos):** Phase P0 not started. Waiting on: text budget numbers (for the wallpaper size and screen preview).
+**Phone (Carlos):** Phase P0 DONE 2026-10-07 (Parakeet v3 offline on the phone, 0.19 to 0.32 s per clip, 12.7% word error rate on 5 clips; details in BRIEFING P0). Next: P1. Waiting on: BLE JSON field names with Victor, text budget numbers (for the wallpaper size and screen preview).
+
+Phone gotchas:
+- Model: `sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8` from the sherpa-onnx `asr-models` GitHub release (487 MB download, 652 MB encoder). Never in git, never in the APK. Setup steps in `phone/README.md`.
+- Model folder on Android 11 and newer: the app must create `files/models/parakeet-v3` itself. A folder created with `adb shell mkdir` is owned by the shell user and the app cannot see files in it. After pushing, restart the app (`adb shell am force-stop com.haloai.haloai_phone`); a running app did not see newly pushed files.
+- Parakeet drops uncommon names ("Tomai" became "my") and misheard "12 p.m." as "2 p.m.". The confirm screen is the safety net for both.
+- Model load takes about 1.7 s. Load once and keep it in memory (in the P3 foreground service), never per command.
+- Release builds have no INTERNET permission until P2 adds it to `android/app/src/main/AndroidManifest.xml`. Debug and profile builds already have it.
+- Flutter background isolates: pass a top-level function to `compute()`. A closure inside a widget captures the widget state, which cannot be sent to another isolate, and fails at runtime with "object is unsendable".
+- Mac toolchain: `brew install --cask temurin@17` needs a sudo password, so use the `openjdk@17` formula and `flutter config --jdk-dir /opt/homebrew/opt/openjdk@17`. Android SDK lives at `/opt/homebrew/share/android-commandlinetools`.
 **Device (Victor):** Phase F0 not started. Waiting on: hardware choice, framework choice.
 
 **Known gotchas discovered so far:**
