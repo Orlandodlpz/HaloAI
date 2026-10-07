@@ -2,7 +2,21 @@
 
 Flutter, Android first. Turns device audio into text on the phone with Parakeet v3 (sherpa-onnx) and talks to the backend. See `docs/BRIEFING.md` section 3.2 for phases.
 
-Current state: P0 benchmark app. One button transcribes the 5 test clips in `assets/clips/` twice and prints `P0RESULT` lines to logcat.
+Current state: speech to text test bench.
+
+- **Run clips:** transcribes the 5 test clips in `assets/clips/` twice and prints `P0RESULT` lines to logcat.
+- **Hold to talk (test mic), TEST ONLY:** records from the phone's own mic while held, transcribes on release. Talk after the vibration (the mic needs about 0.2 s to start). Presses under 0.5 s are discarded, like a device hold. Each recording is saved for reuse as a test clip. In the real product audio comes from the device over BLE (P1); `lib/mic_test_recorder.dart` is not part of that path.
+
+Parakeet runs in a long-lived background isolate (`lib/stt_worker.dart`): the model loads once at app start and stays in memory. P1 feeds it decoded BLE audio the same way.
+
+## Pull mic test recordings
+
+```sh
+adb pull /sdcard/Android/data/com.haloai.haloai_phone/files/recordings ./recordings
+cat recordings/log.tsv   # file, audio s, decode ms, release to text ms, text
+```
+
+`recordings/` is gitignored. Add a good clip to `assets/clips/` and its spoken text to `test/clips_reference.txt` to make it part of the benchmark.
 
 ## Setup (macOS)
 

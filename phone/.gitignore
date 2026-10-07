@@ -49,3 +49,4 @@ app.*.map.json
 
 # P0: ASR model files (~650 MB), pushed to the phone, never committed
 models/
+recordings/
