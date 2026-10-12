@@ -158,7 +158,7 @@ Global rules from the spec (they take precedence over ordinary transitions):
 | Step | Owner | Target (s) | Measured (s) |
 | --- | --- | --- | --- |
 | Audio from device to phone over BLE | Victor | 0.5 | |
-| Parakeet transcription on phone | Carlos | 0.5 | |
+| Parakeet transcription on phone | Carlos | 0.5 | 0.19 to 0.32 (P0, 5 to 9 s clips, model already loaded) |
 | Phone to backend | Carlos | 0.2 | |
 | Nemotron tool loop | Orlando | 1.2 | |
 | Google or Tavily call | Orlando | 0.6 | |
@@ -232,11 +232,27 @@ Each phase ends with a gate. The gate must pass before the next phase in that tr
 
 ### 3.2 Phone (Carlos, `phone/`, branch `Phone-App`)
 
-#### Phase P0: Parakeet on the phone (PLANNED)
+#### Phase P0: Parakeet on the phone (DONE, 2026-10-07)
 - **Goal:** prove English speech to text runs fully on Carlos's phone, fast enough.
 - **Steps:** Flutter project for Android; Parakeet v3 on device; transcribe at least 5 English test WAV files (16 kHz mono) of real commands such as "send an email to Victor saying the meeting moved to Thursday" and "block 3 to 4 tomorrow for the gym".
 - **Gate:** transcription runs with no network; per-clip text, errors and time recorded here.
-- **Results (if DONE):**
+- **Results (if DONE):** gate passed.
+  - **Setup:** Samsung Galaxy Z Flip7 (SM-F766U, Exynos 2500, Android 17). sherpa_onnx 1.13.8 (Flutter), model `sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8`, 4 threads, CPU. Release build, whose manifest has no INTERNET permission, run with airplane mode on (verified: no active network).
+  - **Clips:** 5 commands recorded by Carlos on his phone mic (not the device mic), converted to 16 kHz mono WAV.
+  - **Model load:** 1.74 s, once per app start. It must stay loaded between commands, not reload per command.
+  - **Accuracy:** 7 word errors in 55 reference words (12.7% word error rate, lowercase, punctuation removed, "four" counted as "4"). 2 of 5 clips have errors that change the meaning.
+  - **Speed:** 186 to 320 ms per clip, about 0.04 times the audio length. Inside the 0.5 s budget. Warm runs within 7 ms of cold runs.
+
+  | Clip | Audio (s) | Decode (ms) | Said | Transcribed | Errors |
+  | --- | --- | --- | --- | --- | --- |
+  | block_3_4_tmrw_gym | 6.0 | 236 | Block 3 p.m. to 4 p.m. tomorrow for the gym. | Block 3 p.m. to four p.m. tomorrow for the gym. | none ("four" is formatting only) |
+  | calendar_12_2_meeting | 8.6 | 319 | Add on my calendar on October 5th, a meeting between 12 p.m. and 2 p.m. | Add to my calendar on October 5th, a meeting between 2 p.m. to 2 p.m. | 3, **12 heard as 2 (wrong time)** |
+  | delete_meetings_thursday | 4.7 | 186 | Delete all my meetings on Thursday. | Delete all my meetings on Thursday. | none |
+  | email_meeting_moved | 5.4 | 214 | Send an email to Victor saying the meeting got moved to Thursday. | Send an email to Victor saying the meeting moved to Thursday. | 1, harmless |
+  | email_tomai_meeting_sick | 6.8 | 270 | Email Tomai saying I cannot attend the meeting because I am sick. | Email to my saying I cannot attend a meeting because I am sick. | 3, **name "Tomai" lost** |
+
+  - **What it means:** speed is not a problem. Accuracy on uncommon names and on number ranges is the real risk, and those are exactly the fields that matter for email and calendar. Mitigations: REVIEW must always show the resolved recipient and times; a recipient that doesn't resolve must go to CONFLICT-AMBIGUOUS ("Email to my" should trigger a question, not a guess), which the V1 team additions now cover with the empty candidate list. Possible later improvement: sherpa-onnx hotwords or contextual biasing with names from the user's contacts (not tested yet).
+  - **Not yet tested:** the board's onboard mic (re-test in P1 when the board arrives); noisy environments; phone locked (P3).
 
 #### Phase P1: Bluetooth link and audio from the device (PLANNED)
 - **Goal:** receive audio from the device over BLE and transcribe it.
