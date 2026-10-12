@@ -72,6 +72,9 @@ Entry: Nebius x NVIDIA Global AI Hackathon, **Personal AI track**. Submission de
   - Verify: `cd pipeline && .venv/bin/python scripts/list_models.py`
   - Reasoning switch: `extra_body={"chat_template_kwargs": {"enable_thinking": False}}`. Token Factory passes it through (verified). With reasoning off, use temperature 0 (model card: greedy).
 - Local dev: Python 3.13 venv in `pipeline/.venv` (`python3.13 -m venv .venv && .venv/bin/pip install -e '.[dev]'`). `openai` SDK is major version 3.
+- Local database: Postgres 16 in Docker (`cd pipeline && docker compose up -d`), bound to `127.0.0.1:5433` only, databases `haloai` and `haloai_test`. Password and URLs in `pipeline/.env` (`HALOAI_DB_PASSWORD`, `DATABASE_URL`, `TEST_DATABASE_URL`). Migrations: `.venv/bin/python scripts/migrate.py` (add `--test` for the test database). Verify: `docker compose exec -T db psql -U haloai -d haloai -c '\dt'`.
+- Run the server with one worker only: `.venv/bin/uvicorn app.main:app --workers 1`. Retries, stream reattach and rate limits live in process memory.
+- API keys: stored as SHA-256 hashes. `scripts/create_key.py --client NAME --scope real|mock` prints a new key once. The `.env` `BACKEND_API_KEY` is registered as the `phone` key (scope `real`) at startup.
 - External services: Google Calendar, Gmail (send), Google People ("other contacts"), Tavily web search. One dedicated demo Google account; the OAuth app stays in Google's testing mode.
 - Credits: $25 Token Factory per member from the hackathon code, plus $25 Token Factory and $25 Tavily from the Nebius Builders Program. Nebius AI Cloud servers are not covered, which is why hosting is on Oracle.
 
@@ -165,7 +168,7 @@ Decided 2026-10-06, revised for V1 and signed off by Orlando, Carlos and Victor 
 
 ## Current Status
 
-**Backend (Orlando):** Phase B0 DONE (2026-10-07): tool calling 5 of 5, median 0.57 s per model turn, Zero Data Retention on. V1 API signed off 2026-10-12. Next: B1. Text budget in config is a PROVISIONAL placeholder until Victor's F1 numbers.
+**Backend (Orlando):** Phase B0 DONE (2026-10-07). Phase B1 DONE (2026-10-12): V1 API, request lifecycle and streams built and tested against mocks on Postgres, 59 of 59 tests (details in BRIEFING B1). Next: B2 (Nemotron loop with mock tools). Text budget in config is a PROVISIONAL placeholder until Victor's F1 numbers.
 **Phone (Carlos), update 2026-10-12:** Phase P0 DONE 2026-10-07 (Parakeet v3 offline on the phone, 0.19 to 0.32 s per clip, 12.7% word error rate on 5 clips; details in BRIEFING P0). Test only addition after P0: a hold to talk button that records from the phone mic for live speech to text testing (no change to the device or BLE plan). Next: P1. Waiting on: BLE JSON field names with Victor, text budget numbers (for the wallpaper size and screen preview).
 
 Phone gotchas:
@@ -190,6 +193,12 @@ Phone gotchas:
 - Free Apple developer accounts expire installed test builds after 7 days (matters only if the iOS stretch goal happens).
 - The V1 state machine spec is a reconstruction: its BOOT recovery, transport failure policy, pending-action persistence and wake-input consumption rules were proposals. The team confirmed persistence (backend plus device flash) on 2026-10-09; the rest are still proposals.
 - Backend: third party model listings give the Nemotron 3 Nano ID without the `NVIDIA-` part; the real ID is `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B`. The Omni variant is dedicated endpoint only and not visible to a pay per token key.
+- Backend: run uvicorn with exactly 1 worker. call_id waits, stream hubs and rate limit buckets are in memory; a second worker would miss them and break retries.
+- Backend: race tests need a pool that opens several connections up front (`min_size` > 1). With 1 connection, "simultaneous" calls queue and the test passes even with the lock removed.
+- Backend: Python's `ZoneInfo` raises a `KeyError` subclass for unknown zones, which pydantic does not turn into a 422. Catch it and raise `ValueError` in the validator.
+- Backend: in sse-starlette, the response's `sep` only applies to its pings; each `ServerSentEvent` needs its own `sep="\n"` or events use `\r\n`.
+- Backend: Postgres `jsonb` reorders object keys, so a replayed answer is equal JSON but not byte identical. Fine for JSON parsers; use `json` if byte identity ever matters.
+- Shell: zsh does not split unquoted variables into words like bash does (`cmd $ARGS` passes one argument). Pass arguments separately or use `${=ARGS}`.
 - Backend: with reasoning on, Nemotron returns its thinking in a `reasoning` field on the message (not `reasoning_content`), and `usage` has no reasoning token breakdown. On a trivial prompt reasoning took 96 output tokens versus 4 with it off.
 - Device: drive the vibration motor through a transistor, never straight from a GPIO pin, with a flyback diode across the motor. The transistor kit on the materials list is bipolar (TO-92 NPN/PNP), not MOSFET; pick a suitable driver transistor from it.
 - Device: before plugging a LiPo into the board's MX1.25 header, check the connector type and the red/black polarity with the multimeter. 1.25 mm plugs from different vendors look alike but do not share a polarity standard.

@@ -1,0 +1,50 @@
+"""API keys: one per client, stored as SHA-256 hashes, each with a scope and a rate limit."""
+
+import secrets
+from dataclasses import dataclass
+
+from fastapi import Request
+
+from app import ids
+from app.lifecycle import ApiError
+
+
+@dataclass
+class Caller:
+    key_id: str
+    user_id: str
+    client: str
+    scope: str  # 'real' (phone) or 'mock' (demo site)
+    rate_per_min: int
+
+
+async def create_key(pool, user_id: str, client: str, scope: str, rate_per_min: int = 60,
+                     key: str | None = None) -> str:
+    """Store a key's hash and return the key. The plain key is never stored."""
+    key = key or secrets.token_urlsafe(32)
+    async with pool.connection() as conn:
+        await conn.execute(
+            "INSERT INTO api_keys (user_id, client, scope, key_hash, rate_per_min) VALUES (%s, %s, %s, %s, %s)"
+            " ON CONFLICT (key_hash) DO NOTHING",
+            (user_id, client, scope, ids.key_hash(key), rate_per_min))
+    return key
+
+
+async def require_caller(request: Request) -> Caller:
+    """Hard constraint: every API request requires the API key."""
+    header = request.headers.get("authorization", "")
+    scheme, _, token = header.partition(" ")
+    if scheme.lower() != "bearer" or not token:
+        raise ApiError("unauthorized", 401, "missing API key")
+    services = request.app.state.services
+    async with services.pool.connection() as conn:
+        cur = await conn.execute(
+            "SELECT id, user_id, client, scope, rate_per_min FROM api_keys"
+            " WHERE key_hash = %s AND revoked_at IS NULL", (ids.key_hash(token),))
+        row = await cur.fetchone()
+    if row is None:
+        raise ApiError("unauthorized", 401, "invalid API key")
+    caller = Caller(str(row["id"]), str(row["user_id"]), row["client"], row["scope"], row["rate_per_min"])
+    if not services.limiter.allow(caller.key_id, caller.rate_per_min):
+        raise ApiError("rate_limited", 429, "too many requests for this key")
+    return caller

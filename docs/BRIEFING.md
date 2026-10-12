@@ -96,7 +96,7 @@ API rules:
 - **Language.** `language` is a hint ("en" until P5); other values are not rejected.
 - **API keys.** One key per client, each with a scope: the demo site key works only in sample data mode and can never send real email; the phone key can. In real mode the demo Gmail account sends only to an allowlist of addresses (the team, plus any added for judging). Keys are rate limited per key and can be replaced without code changes. The APK contains its key, so the APK is shared directly, never posted publicly.
 
-Errors have one shape. `message` is for logs only, never for the screen; `current` lets the phone resync without another call.
+Errors have one shape. `message` is for logs only, never for the screen; `current` lets the phone resync without another call. `expired` means the request is no longer open: expired, cancelled or finished (added in B1, Carlos to confirm).
 
 ```
 { "error": { "code": "stale_revision", "message": "...", "current": { result shape } or null } }
@@ -108,6 +108,7 @@ Errors have one shape. `message` is for logs only, never for the screen; `curren
 | 404 | `not_found` (unknown request or execution key) |
 | 409 | `stale_revision`, `hash_mismatch`, `expired`, `busy`, `already_executing`, `call_id_conflict` |
 | 422 | `invalid_request` |
+| 429 | `rate_limited` (too many requests for this key; wait and retry. Added in B1, Carlos to confirm) |
 | 502 | `upstream_error` (model, Google or Tavily failed) |
 
 *Status updates.* **Decided 2026-10-12 (Orlando, Carlos).** The start, addition and select calls stream Server-Sent Events, and every event carries `request_id` and `revision`. Order: exactly one `accepted` event first (`{"request_id", "revision", "call_id"}`, with the revision the server assigned), zero or more `status` events (`{"status_line": "Searching the web"}`), a `slow` event if processing passes the configured slow threshold (PROCESSING SLOW), then exactly one `result` event. Once an `accepted` arrives, the phone drops every older stream and any event for an older revision. Only meaningful steps produce a status event. A `: ping` comment every 10 s (config) keeps cellular connections open; the phone uses a read timeout of about 25 s that any bytes reset, and on timeout retries with the same `call_id`.
@@ -248,11 +249,18 @@ Each phase ends with a gate. The gate must pass before the next phase in that tr
   - Caveat: at temperature 0 the 5 runs are identical, so 5 of 5 proves well-formed output and a working setup, not accuracy. Accuracy is measured by the B2 eval set.
   - Budget note: 0.57 s is one model turn. A write command needs at least one turn, a lookup then act needs two or more, so the 1.2 s slot allows about two turns at this prompt size. Keep prompts small.
 
-#### Phase B1: API contract and request state machine (PLANNED)
+#### Phase B1: API contract and request state machine (DONE 2026-10-12)
 - **Goal:** the request/response contract and the request lifecycle (revisions, approval, execution keys), built and tested before real tools exist.
 - **Steps:** implement the API in section 2 (signed off 2026-10-12): endpoints including `touch`, `call_id` idempotency with 24 h retention and replay or reattach of streams, API keys with per-client scopes and rate limits, the error shape; Postgres schema and migrations for users, requests, revisions, segments, proposals, executions and history; latest revision wins and stale or cancelled responses are dropped; 60 s expiry in REVIEW and conflict states, reset by `touch`, additions, select and continue; approval bound to revision and proposal hash; short stable execution keys and the status endpoint; approve waits up to 5 s, then `executing`; a new request cancels an unapproved older one; saved pending executions; Server-Sent Events with `accepted`, `status`, `slow` and `result` events, `request_id` and `revision` on every event, `: ping` every 10 s.
 - **Gate:** tests pass for: an addition invalidates the old proposal and only the latest revision is returned; an addition with a stale base revision is appended, not rejected; select, continue or approve with a stale revision returns `409 stale_revision`; late responses for cancelled requests are ignored; 60 s expiry cancels decision states and `touch` resets it; approval with a wrong proposal hash is rejected; a repeated approval, with the same or a new `call_id`, executes once; a repeated `call_id` replays a finished stream and reattaches to a running one; the same `call_id` with a different body returns `409 call_id_conflict`; the status endpoint returns success, failure, executing or execution_uncertain; cancel after approval returns `409 already_executing`; a new request cancels an unapproved older one; cancel leaves nothing behind; requests without the API key, or with the demo key in real mode, are rejected.
-- **Results (if DONE):**
+- **Results (if DONE):** gate passed, **tested against mocks** (fake processor, fake executors, fake clock) on a real Postgres 16. Real model in B2, real Google tools in B4.
+  - Tests: 59 of 59 pass (`cd pipeline && .venv/bin/python -m pytest`, about 7 s). Lifecycle core 32, JSON endpoints 17, streams 10. Every gate item maps to at least one test; the timing sensitive stream tests passed 5 runs in a row.
+  - Tests checked by breaking the code on purpose (15 breaks: user lock, expiry, execution key dedupe, stale result drop, demo scope, replay, retention, body check, rate limit, wait for running call, reattach, stream replay, slow event, refusal storage, abandoned call). All 15 are caught. Two tests were too weak at first and were fixed: the concurrent approval test never overlapped (pool opened with 1 connection), and the refused start test could not tell a replay from a second refusal.
+  - Defense in depth: with the user lock removed on purpose, a second simultaneous approval fails on the execution key's primary key instead of executing twice. The database also enforces one open request per user (partial unique index) and one execution per request.
+  - Real server (uvicorn, 1 worker, dev database, curl and httpx): a full flow (stream start, approve, cancel refused, status, second approve with a new `call_id` returning the same key, one execution row). Events arrive live, not buffered: `accepted` 0.01 s, `: ping` every 1.5 s (test setting), `slow` at 2.0 s, `result` at 5.0 s with a 5 s fake processor. Plain `\n` line endings, no `\r`.
+  - Gate item "demo key in real mode is rejected": built as "a demo (`mock` scope) key can never reach real tools", since the API has no mode field; the key's scope decides. Tested with real tools switched on.
+  - Contract additions, Carlos to confirm: `429 rate_limited` (per key rate limit), and `expired` also covers a request that is cancelled or finished (no separate `cancelled` code).
+  - Local database: `cd pipeline && docker compose up -d` (Postgres 16, `127.0.0.1:5433` only), then `.venv/bin/python scripts/migrate.py` (and `--test`). Keys: `scripts/create_key.py --client NAME --scope real|mock`.
 
 #### Phase B2: Agent loop with mock tools (PLANNED)
 - **Goal:** Nemotron reliably picks the right tool with the right arguments, in English, against mock data.

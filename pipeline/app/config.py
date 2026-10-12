@@ -21,9 +21,11 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # Secrets (required, no defaults)
+    # Secrets (required, no defaults). Database URLs contain the password.
     nebius_api_key: SecretStr
     backend_api_key: SecretStr
+    database_url: SecretStr
+    test_database_url: SecretStr | None = None
 
     # Nebius Token Factory. Base URL from docs.tokenfactory.nebius.com/api-reference.
     nebius_base_url: str = "https://api.tokenfactory.nebius.com/v1/"
@@ -41,6 +43,18 @@ class Settings(BaseSettings):
     screen_landscape_lines: int = 12
     screen_portrait_chars: int = 20
     screen_portrait_lines: int = 20
+
+    # Request lifecycle (BRIEFING section 2). PROVISIONAL values are starting
+    # guesses until measured on the real hardware and network.
+    expiry_s: int = 60  # decision states expire 60 s after the last interaction
+    approve_wait_s: float = 5.0  # approve waits this long, then returns executing
+    execution_deadline_s: float = 30.0  # PROVISIONAL: after this an execution is unknown
+    processing_deadline_s: float = 20.0  # PROVISIONAL: after this processing is a failure
+    slow_threshold_s: float = 3.0  # PROVISIONAL: sends the slow event (PROCESSING SLOW)
+    sse_ping_s: float = 10.0  # keepalive comment interval on streams
+    call_retention_h: int = 24  # how long call_id results are kept for retries
+    # Off until B4: 'real' scoped keys fall back to mock tools. 'mock' keys always do.
+    real_tools_enabled: bool = False
 
 
 @lru_cache
