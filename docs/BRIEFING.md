@@ -251,7 +251,7 @@ Each phase ends with a gate. The gate must pass before the next phase in that tr
   | email_meeting_moved | 5.4 | 214 | Send an email to Victor saying the meeting got moved to Thursday. | Send an email to Victor saying the meeting moved to Thursday. | 1, harmless |
   | email_tomai_meeting_sick | 6.8 | 270 | Email Tomai saying I cannot attend the meeting because I am sick. | Email to my saying I cannot attend a meeting because I am sick. | 3, **name "Tomai" lost** |
 
-  - **What it means:** speed is not a problem. Accuracy on uncommon names and on number ranges is the real risk, and those are exactly the fields that matter for email and calendar. Mitigations: REVIEW must always show the resolved recipient and times; a recipient that doesn't resolve must go to CONFLICT-AMBIGUOUS ("Email to my" should trigger a question, not a guess), which the V1 team additions now cover with the empty candidate list. Possible later improvement: sherpa-onnx hotwords or contextual biasing with names from the user's contacts (not tested yet).
+  - **What it means:** speed is not a problem. Accuracy on uncommon names and on number ranges is the real risk, and those are exactly the fields that matter for email and calendar. Mitigations: the confirm screen must always show the resolved recipient and times; the backend must ask back when a recipient doesn't resolve ("Email to my" should trigger a question, not a guess). Possible later improvement: sherpa-onnx hotwords or contextual biasing with names from the user's contacts (not tested yet).
   - **Not yet tested:** the board's onboard mic (re-test in P1 when the board arrives); noisy environments; phone locked (P3).
 
 #### Phase P1: Bluetooth link and audio from the device (PLANNED)
