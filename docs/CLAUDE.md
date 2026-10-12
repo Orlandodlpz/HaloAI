@@ -1,7 +1,7 @@
 # CLAUDE.md: HaloAI
 
 Project context and conventions for the whole team. Read this first in every session, whatever part of the project you work on.
-**Last Updated:** 2026-10-10
+**Last Updated:** 2026-10-12
 
 ## Interaction Mode: Always On
 
@@ -129,7 +129,7 @@ Decisions already made. Do not re-litigate unless new evidence is presented, and
 **Phone**
 - Flutter, Android first; Carlos's phone for testing and the demo.
 - Parakeet v3 on the phone. English first.
-- Forwards device events to the backend: approve, addition (transcribed text of a new recording), candidate selection, continue despite a conflict, cancel, and execution status queries.
+- Forwards device events to the backend: approve, addition (transcribed text of a new recording), candidate selection, continue despite a conflict, cancel, knob activity (as `touch`), and execution status queries.
 - App features: Bluetooth pairing and status; orientation setting; wallpaper picker that resizes and dithers to the panel before sending; Google account link (sign-in happens on the backend); view, edit and delete memory; full text of long drafts.
 
 **Device**
@@ -141,15 +141,15 @@ Decisions already made. Do not re-litigate unless new evidence is presented, and
 
 ## Contracts
 
-Decided 2026-10-06. Full details in BRIEFING.md section 2. Changes need sign-off from both owners.
+Decided 2026-10-06, revised for V1 and signed off by Orlando, Carlos and Victor on 2026-10-12. Full details in BRIEFING.md section 2. Changes need sign-off from both owners.
 
 | Contract | Owners | Decision |
 | --- | --- | --- |
 | Message format, everywhere | Everyone | JSON for every message, with one exception: the Bluetooth audio channel carries raw bytes |
-| Phone to cloud API | Orlando, Carlos | REST endpoints under `/v1/`, JSON bodies, API key in the `Authorization` header. Revised for the V1 state machine (request ID, revision, `call_id` for idempotent retries, proposal hash, execution key, status endpoint): **PROPOSED 2026-10-09, Orlando and Carlos sign off at the start of B1** |
-| Status updates to the phone | Orlando, Carlos | Server-Sent Events streamed on the start, addition and select responses: `status` events, an optional `slow` event, then one `result` event. Approve, continue, cancel and status queries are plain JSON requests |
-| Audio from device to phone | Carlos, Victor | Raw bytes (not JSON), streamed in numbered chunks while the button is held. Each chunk carries request ID, revision, segment ID, sequence number, format, byte count and an integrity check; the phone acknowledges each stored chunk; a final marker closes the segment. Codec: IMA ADPCM 16 kHz mono for now, tunable. Byte layout: **PROPOSED, Carlos and Victor** |
-| Phone to device Bluetooth messages | Carlos, Victor | One custom BLE service with six characteristics: Audio (raw bytes), Audio Ack, Events, Screen, Wallpaper, Settings (JSON). Audio Ack and the V1 event and screen names: **PROPOSED 2026-10-09** |
+| Phone to cloud API | Orlando, Carlos | REST endpoints under `/v1/`, JSON bodies, scoped API key per client in the `Authorization` header, `call_id` on every POST except `touch` for idempotent retries, request ID and revision, proposal hash, short execution key, status endpoint in the result shape, `touch` for knob activity, one error shape. **Decided 2026-10-12** |
+| Status updates to the phone | Orlando, Carlos | Server-Sent Events on the start, addition and select responses: one `accepted` event, `status` events, an optional `slow` event, then one `result` event; every event carries request ID and revision; `: ping` every 10 s. Approve, continue, cancel, touch and status queries are plain JSON requests. **Decided 2026-10-12** |
+| Audio from device to phone | Carlos, Victor | Raw bytes (not JSON): 176 byte chunks (16 byte header with IDs, revision, sequence number, CRC16 and ADPCM state, then 20 ms of IMA ADPCM 16 kHz mono), streamed from a 2 s ring buffer while the button is held, cumulative acknowledgments, a final marker closes the segment. **Decided 2026-10-12** |
+| Phone to device Bluetooth messages | Carlos, Victor | One custom BLE service with six characteristics: Audio (raw bytes), Audio Ack, Events, Screen, Wallpaper, Settings (JSON). `hello` on connect, screen IDs echoed on approve, select and continue, `activity` on knob rotation, MTU at least 179. **Decided 2026-10-12**; JSON field names written in P1 and F2 |
 | Screen text | Victor, for everyone | Fixed-width font on the device; backend sends pre-wrapped `screen_lines`. Panel: 800 x 480. Budget numbers (characters per line, lines per screen, per orientation) **still pending the font choice (Victor, F1)** |
 | Source of truth for state | Everyone | Backend owns requests, revisions, proposals and execution status. The device enters a decision or outcome state only when the phone sends that screen. The device runs BOOT / RECOVERY, READY, WALLPAPER, PHONE / BLUETOOTH CHECK, PHONE DISCONNECTED, RECORDING, RECORD ADDITION, FINALIZE AUDIO and CRITICAL BATTERY on its own |
 
@@ -160,12 +160,12 @@ Decided 2026-10-06. Full details in BRIEFING.md section 2. Changes need sign-off
 - Every hop logs timestamps so latency can be attributed (device, phone and backend each log their own hops).
 - Never claim something works without running it on the real target (real phone, real device, real service), or saying explicitly that only a mock or simulator was tested.
 - Backend: any change to the system prompt, tool schemas or model settings is re-run against the eval set and compared with the previous run.
-- Backend: request tests cover latest revision wins and stale responses are dropped, late responses for cancelled requests are ignored, 60 s expiry in decision states, approval only for the displayed revision and proposal hash, a repeated approval or status query executes once, and a repeated `call_id` returns the original result.
+- Backend: request tests cover latest revision wins and stale responses are dropped, late responses for cancelled requests are ignored, 60 s expiry in decision states and its reset by `touch`, approval only for the displayed revision and proposal hash, a repeated approval (same or new `call_id`) or status query executes once, a repeated `call_id` replays or reattaches its stream, the same `call_id` with a different body is rejected, and the demo key never reaches real tools.
 - Device: state machine tests cover every transition in the V1 table (BRIEFING.md section 2) plus the team additions, and the battery override from every state.
 
 ## Current Status
 
-**Backend (Orlando):** Phase B0 DONE (2026-10-07): tool calling 5 of 5, median 0.57 s per model turn, Zero Data Retention on. Next: B1, once Carlos signs off on the PROPOSED V1 API. Text budget in config is a PROVISIONAL placeholder until Victor's F1 numbers.
+**Backend (Orlando):** Phase B0 DONE (2026-10-07): tool calling 5 of 5, median 0.57 s per model turn, Zero Data Retention on. V1 API signed off 2026-10-12. Next: B1. Text budget in config is a PROVISIONAL placeholder until Victor's F1 numbers.
 **Phone (Carlos), update 2026-10-12:** Phase P0 DONE 2026-10-07 (Parakeet v3 offline on the phone, 0.19 to 0.32 s per clip, 12.7% word error rate on 5 clips; details in BRIEFING P0). Test only addition after P0: a hold to talk button that records from the phone mic for live speech to text testing (no change to the device or BLE plan). Next: P1. Waiting on: BLE JSON field names with Victor, text budget numbers (for the wallpaper size and screen preview).
 
 Phone gotchas:

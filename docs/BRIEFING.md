@@ -1,6 +1,6 @@
 # BRIEFING.md: HaloAI Execution Plan
 
-**Last Updated:** 2026-10-10
+**Last Updated:** 2026-10-12
 **Purpose:** The operational plan for the whole team: what we're building, how the pieces fit, and the phased sequence to get there with minimal rework.
 
 > Relationship to other docs: CLAUDE.md tracks decisions, constraints and state. This document is the **execution plan**. Each person edits only their own phase section (Backend, Phone or Device); shared sections change only after the team agrees.
@@ -31,9 +31,9 @@ Demo site --> Backend (sample data mode uses mock tools)
 - **Phone** turns audio into text with Parakeet v3, adds date, time, IANA timezone, language and orientation, and talks to the backend. Relays replies and status to the device and signals to the backend. Never sends audio to the cloud.
 - **Backend** runs the Nemotron tool-calling loop, owns requests, revisions and proposals, executes approved actions exactly once, answers execution status queries, stores memory and serves the demo site.
 
-**Contracts** (decided 2026-10-06, revised 2026-10-09 for the V1 state machine; summary in CLAUDE.md, "Contracts"). Every message is JSON except the Bluetooth audio channel. Parts marked PROPOSED need sign-off from both owners before anyone builds on them.
+**Contracts** (decided 2026-10-06, revised 2026-10-09 for the V1 state machine, signed off 2026-10-12 by Orlando, Carlos and Victor after the API and BLE reviews; summary in CLAUDE.md, "Contracts"). Every message is JSON except the Bluetooth audio channel. Changes need sign-off from the owners of that contract.
 
-*Phone to cloud API.* **PROPOSED 2026-10-09 for the V1 state machine; Orlando and Carlos sign off at the start of B1.** It replaces the earlier `/v1/command` and `/v1/actions/...` draft. Base path `/v1/`. Every call carries `Authorization: Bearer <API key>` and a phone-generated `call_id` (UUID): a repeated `call_id` returns the original result and never repeats an action. `request_id` names the user's request across all its revisions.
+*Phone to cloud API.* **Decided 2026-10-12 (Orlando, Carlos).** Base path `/v1/`. Every call carries `Authorization: Bearer <API key>`. Every POST except `touch` carries a phone-generated `call_id` (UUID); GETs and `touch` do not, because repeating them changes nothing. `request_id` (UUID, from the phone) names the user's request across all its revisions; `segment_id` (UUID) names one recording.
 
 ```
 POST /v1/requests                              (Server-Sent Events)  start a request
@@ -43,9 +43,10 @@ POST /v1/requests                              (Server-Sent Events)  start a req
   "language": "en", "orientation": "landscape" }
 
 POST /v1/requests/{request_id}/additions       (Server-Sent Events)  RECORD ADDITION text
-{ "call_id": "uuid", "revision": 2, "segment_id": "uuid", "text": "make it Thursday instead" }
+{ "call_id": "uuid", "revision": 2, "segment_id": "uuid",
+  "text": "make it Thursday instead", "sent_at": "2026-10-06T15:24:40-05:00" }
 
-POST /v1/requests/{request_id}/select          (Server-Sent Events)  CONFLICT-AMBIGUOUS
+POST /v1/requests/{request_id}/select          (Server-Sent Events)  CONFLICT-AMBIGUOUS, single press
 { "call_id": "uuid", "revision": 2, "candidate_id": "..." }
 
 POST /v1/requests/{request_id}/continue        CONFLICT-SCHEDULE, continue despite conflict
@@ -57,10 +58,13 @@ POST /v1/requests/{request_id}/approve         REVIEW, single press
 POST /v1/requests/{request_id}/cancel          double press before approval
 { "call_id": "uuid" }
 
-GET  /v1/executions/{execution_key}            RECONCILE STATUS: applied | not_applied | unknown
+POST /v1/requests/{request_id}/touch           knob activity in a decision state
+{ "revision": 2 }
+
+GET  /v1/executions/{execution_key}            RECONCILE STATUS, and polling after approve
 ```
 
-Every result (the `result` event and the JSON response of the other calls) has one shape:
+Every result (the `result` event, and the JSON response of every other call, including the status endpoint) has one shape:
 
 ```
 { "state": "conflict_ambiguous | conflict_schedule | review | read_only_result | executing |
@@ -71,25 +75,81 @@ Every result (the `result` event and the JSON response of the other calls) has o
   "proposal_hash": "..." or null,
   "execution_key": "..." or null,
   "draft": { full email or event, for the phone app } or null,
-  "expires_at": "RFC 3339 timestamp" or null }
+  "expires_at": "RFC 3339 timestamp" or null,
+  "expires_in_s": 60 or null,
+  "timings": { "model_ms": 0, "tools_ms": 0, "backend_total_ms": 0 } }
 ```
 
-An empty `candidates` list means no contact matched: the screen asks the user to hold and say the address. `expires_at` is the 60 s expiry of a decision state. A response for an older revision or a cancelled request is ignored.
+An empty `candidates` list means no contact matched: the screen asks the user to hold and say the address. `expires_at` and `expires_in_s` describe the 60 s expiry of a decision state; count down from `expires_in_s` (seconds left when the result was sent), `expires_at` is for logs. `timings` holds the backend's hops for I4; the phone adds its own.
 
-*Status updates.* The start, addition and select calls stream Server-Sent Events: zero or more `status` events (`{"status_line": "Searching the web"}`), a `slow` event if processing passes the configured slow threshold (PROCESSING SLOW), then exactly one `result` event. Only meaningful steps produce a status event.
+API rules:
+- **Revision.** `select`, `continue` and `approve` carry the revision on screen; if it is not the latest, the answer is `409 stale_revision` with the current result. `additions` carry the base revision the phone saw and are never rejected for a stale base: the server adds the segment to the same request (like adding to a conversation, not starting a new one) and assigns the next revision, returned in `accepted`. Only the backend assigns revisions.
+- **Retries.** A repeated `call_id` never reruns anything. On a streaming call, a finished call replays `accepted` and the stored `result`; a call still running sends `accepted`, the latest `status`, then the rest of the live stream. Same `call_id` with a different body: `409 call_id_conflict`. `call_id` values are kept for 24 h.
+- **Approval exactly once.** The execution key is derived from request, revision and proposal hash, and is short (26 characters) so the device can keep it in flash and send it in `hello`. A second approve for the same request, revision and hash, even with a new `call_id` after an app restart, returns the existing execution's state and never executes again.
+- **Approve timing.** Approve waits up to 5 s (config) for Gmail or Calendar, then returns `executing` with `execution_key`, and the phone polls `GET /v1/executions/{execution_key}` about once a second. Timeouts must stay in this order: server wait (5 s) < phone HTTP timeout on approve (10 s) < device EXECUTING timeout.
+- **Status endpoint.** Returns the result shape. `state` is `success` (applied), `failure` (not applied), `executing` (still running, keep polling) or `execution_uncertain` (unknown).
+- **Cancel.** Before approval: `cancelled`. After approval: `409 already_executing` with the current result, and nothing is cancelled. On a request that is already cancelled or expired: `200` with `cancelled`, so a retried cancel is harmless.
+- **One request at a time.** A new `POST /v1/requests` cancels an older request that has not been approved. It is refused with `409 busy` only while the older request's Gmail or Calendar call is running. A finished or uncertain execution blocks nothing.
+- **Expiry.** Decision states expire 60 s after the last interaction. Knob rotation reaches the backend as `touch` (from the BLE `activity` event, at most one every 10 s), which resets the timer and returns the result with the new expiry; `additions`, `select` and `continue` also reset it. A `touch` that fails for lack of network loses nothing, since approval needs the network too.
+- **Time.** Each segment is read against its own `sent_at`, so "tomorrow" keeps its meaning when an addition after midnight reruns the request.
+- **Empty transcripts (phone, no backend call).** On a new request the phone shows FAILURE. On an addition it does not: the phone resends the current screen with the same revision and sends a `touch`, so the proposal survives.
+- **Language.** `language` is a hint ("en" until P5); other values are not rejected.
+- **API keys.** One key per client, each with a scope: the demo site key works only in sample data mode and can never send real email; the phone key can. In real mode the demo Gmail account sends only to an allowlist of addresses (the team, plus any added for judging). Keys are rate limited per key and can be replaced without code changes. The APK contains its key, so the APK is shared directly, never posted publicly.
 
-*Bluetooth (phone and device).* One custom BLE service, six characteristics (Audio Ack and the V1 event and screen names are **PROPOSED 2026-10-09**):
+Errors have one shape. `message` is for logs only, never for the screen; `current` lets the phone resync without another call.
+
+```
+{ "error": { "code": "stale_revision", "message": "...", "current": { result shape } or null } }
+```
+
+| HTTP | Codes |
+| --- | --- |
+| 401 | `unauthorized` |
+| 404 | `not_found` (unknown request or execution key) |
+| 409 | `stale_revision`, `hash_mismatch`, `expired`, `busy`, `already_executing`, `call_id_conflict` |
+| 422 | `invalid_request` |
+| 502 | `upstream_error` (model, Google or Tavily failed) |
+
+*Status updates.* **Decided 2026-10-12 (Orlando, Carlos).** The start, addition and select calls stream Server-Sent Events, and every event carries `request_id` and `revision`. Order: exactly one `accepted` event first (`{"request_id", "revision", "call_id"}`, with the revision the server assigned), zero or more `status` events (`{"status_line": "Searching the web"}`), a `slow` event if processing passes the configured slow threshold (PROCESSING SLOW), then exactly one `result` event. Once an `accepted` arrives, the phone drops every older stream and any event for an older revision. Only meaningful steps produce a status event. A `: ping` comment every 10 s (config) keeps cellular connections open; the phone uses a read timeout of about 25 s that any bytes reset, and on timeout retries with the same `call_id`.
+
+*Bluetooth (phone and device).* **Decided 2026-10-12 (Carlos, Victor).** One custom BLE service, six characteristics:
 
 | Characteristic | Direction | Format | Carries |
 | --- | --- | --- | --- |
-| Audio | device to phone (notify) | raw bytes: header with request ID, revision, segment ID, sequence number, format, byte count and integrity check, then audio data; a final marker closes the segment | 16 kHz mono speech (IMA ADPCM for now, tunable), streamed from a fixed-size ring buffer while the button is held |
-| Audio Ack | phone to device (write) | JSON | acknowledgment of each stored chunk and of the final marker; the device frees acknowledged chunks |
-| Events | device to phone (notify) | JSON | `wake`, `record_start`, `record_end`, `approve`, `select` (candidate ID), `continue`, `cancel`, `dismiss`, `ack`, `status_query` |
-| Screen | phone to device (write) | JSON | screen type (one of the V1 state names), `screen_lines`, `status_line`, candidates with stable IDs, revision |
+| Audio | device to phone (notify) | raw bytes, layout below | 16 kHz mono IMA ADPCM, 20 ms per chunk, streamed from the ring buffer while the button is held |
+| Audio Ack | phone to device (write) | JSON | cumulative: `{"req", "seg", "upto"}` (highest sequence number stored with nothing missing before it) every 10 chunks or 200 ms, plus `resend_from` when a chunk is missing; also acknowledges the final marker. The device frees acknowledged chunks |
+| Events | device to phone (notify) | JSON | `hello`, `wake`, `record_start`, `record_end`, `approve`, `select` (candidate index), `continue`, `cancel`, `dismiss`, `ack`, `status_query`, `activity` |
+| Screen | phone to device (write) | JSON | screen ID `sid`, screen type (one of the V1 state names), `screen_lines`, `status_line`, candidates in display order, revision |
 | Wallpaper | phone to device (write) | JSON chunks with offset and checksum, image data base64 | already resized and dithered image |
 | Settings | phone to device (write) | JSON | orientation, current time |
 
-Request the largest MTU the phone allows on connect, and the 2M PHY if the chip supports it. JSON messages bigger than one packet are split with a sequence number. Exact JSON field names for the BLE messages: Carlos and Victor write them here in P1 and F2.
+Audio chunk: a 16 byte header, little endian, then 160 bytes of IMA ADPCM (320 samples, 20 ms at 16 kHz). 176 bytes per chunk.
+
+| Byte | Field | Notes |
+| --- | --- | --- |
+| 0 | format | codec ID |
+| 1 | flags | bit 0 = final marker; other bits 0 |
+| 2 to 3 | req ID | device local request counter |
+| 4 | rev | revision the device was displaying when the hold started |
+| 5 | seg ID | device local segment counter |
+| 6 to 7 | seq | chunk sequence number |
+| 8 to 9 | payload length | bytes after the header |
+| 10 to 11 | CRC16 | CRC-16/CCITT-FALSE over header bytes 0 to 9 and the payload |
+| 12 to 13 | ADPCM predictor | signed 16 bit, decoder state at the start of this chunk |
+| 14 | ADPCM step index | decoder state at the start of this chunk |
+| 15 | reserved | 0 |
+
+Every chunk carries its ADPCM state, so it decodes on its own and a lost chunk does not corrupt the ones after it. The final marker uses the same header with flag bit 0 set and a 6 byte payload: total chunks (unsigned 16 bit), then total samples (unsigned 32 bit). The final marker, not `record_end`, decides that a recording is complete; `record_end` is informational.
+
+BLE rules:
+- **IDs.** The req ID and seg ID in the audio header are device local counters; the phone maps them to the API's `request_id` and `segment_id` UUIDs. The device sends the revision it was displaying when the hold started; only the backend assigns new revisions.
+- **MTU and PHY.** The phone requests an MTU of 517; the device's preferred MTU is 256 (the NimBLE default); the smaller value wins. A 176 byte chunk needs a negotiated ATT MTU of at least 179 (3 bytes of ATT header). Below that the connection fails loudly instead of streaming, so there is no MTU adaptive logic. Request the 2M PHY if the chip supports it.
+- **Ring buffer.** 2 s of audio on the device (100 chunks, about 17.6 KB), provisional until tested in F2. If the link stalls beyond it, capture stops with FAILURE; audio is never silently dropped.
+- **`hello`.** Sent by the device on every connect: firmware version, current state, req ID and any pending execution key. The phone uses it to resync after a reconnect.
+- **Screen IDs.** Every Screen write carries a new `sid`. `approve`, `select` and `continue` echo the `sid` of the screen they acted on, and `select` sends the candidate's index on that screen. The phone maps `sid` to revision and proposal hash, and the index to `candidate_id`, so approval binds to exactly what was drawn and no hashes cross BLE.
+- **`activity`.** Sent on knob rotation in a decision state, at most one every 10 s; the phone forwards it as `touch`.
+- **Large JSON.** JSON messages bigger than one packet are split with a sequence number. Exact JSON field names for the BLE messages: Carlos and Victor write them here in P1 and F2.
+- **Development stand-in.** Until the board arrives, the Raspberry Pi runs a fake BLE device with the same service (Carlos, in `phone/tools`).
 
 *State ownership.* The backend owns requests, revisions, proposals and execution status. The device enters a decision or outcome state (and starts the 1 s guard in REVIEW) only when the phone sends that screen. The device handles BOOT / RECOVERY, READY, WALLPAPER, PHONE / BLUETOOTH CHECK, PHONE DISCONNECTED, RECORDING, RECORD ADDITION, FINALIZE AUDIO and CRITICAL BATTERY locally. If the link stalls beyond the audio buffer, capture stops with FAILURE; audio is never silently dropped.
 
@@ -190,8 +250,8 @@ Each phase ends with a gate. The gate must pass before the next phase in that tr
 
 #### Phase B1: API contract and request state machine (PLANNED)
 - **Goal:** the request/response contract and the request lifecycle (revisions, approval, execution keys), built and tested before real tools exist.
-- **Steps:** get Carlos's sign-off on the PROPOSED API in section 2, then implement it (endpoints, `call_id` idempotency, API key check); Postgres schema and migrations for users, requests, revisions, proposals, executions and history; latest revision wins and stale or cancelled responses are dropped; 60 s expiry in REVIEW and conflict states; approval bound to revision and proposal hash; stable execution keys and the status endpoint; saved pending executions; Server-Sent Events with `status`, `slow` and `result` events.
-- **Gate:** tests pass for: an addition invalidates the old proposal and only the latest revision is returned; late responses for cancelled requests are ignored; 60 s expiry cancels decision states; approval with a stale revision or wrong proposal hash is rejected; a repeated approval or `call_id` executes once; the status endpoint answers applied, not applied or unknown for an execution key; cancel leaves nothing behind; requests without the API key are rejected.
+- **Steps:** implement the API in section 2 (signed off 2026-10-12): endpoints including `touch`, `call_id` idempotency with 24 h retention and replay or reattach of streams, API keys with per-client scopes and rate limits, the error shape; Postgres schema and migrations for users, requests, revisions, segments, proposals, executions and history; latest revision wins and stale or cancelled responses are dropped; 60 s expiry in REVIEW and conflict states, reset by `touch`, additions, select and continue; approval bound to revision and proposal hash; short stable execution keys and the status endpoint; approve waits up to 5 s, then `executing`; a new request cancels an unapproved older one; saved pending executions; Server-Sent Events with `accepted`, `status`, `slow` and `result` events, `request_id` and `revision` on every event, `: ping` every 10 s.
+- **Gate:** tests pass for: an addition invalidates the old proposal and only the latest revision is returned; an addition with a stale base revision is appended, not rejected; select, continue or approve with a stale revision returns `409 stale_revision`; late responses for cancelled requests are ignored; 60 s expiry cancels decision states and `touch` resets it; approval with a wrong proposal hash is rejected; a repeated approval, with the same or a new `call_id`, executes once; a repeated `call_id` replays a finished stream and reattaches to a running one; the same `call_id` with a different body returns `409 call_id_conflict`; the status endpoint returns success, failure, executing or execution_uncertain; cancel after approval returns `409 already_executing`; a new request cancels an unapproved older one; cancel leaves nothing behind; requests without the API key, or with the demo key in real mode, are rejected.
 - **Results (if DONE):**
 
 #### Phase B2: Agent loop with mock tools (PLANNED)
@@ -256,13 +316,13 @@ Each phase ends with a gate. The gate must pass before the next phase in that tr
 
 #### Phase P1: Bluetooth link and audio from the device (PLANNED)
 - **Goal:** receive audio from the device over BLE and transcribe it.
-- **Steps:** implement the BLE service in section 2 with Victor (write the exact JSON field names there); pairing and reconnect handling; store each Audio chunk and acknowledge it on Audio Ack, drop duplicates by identity, reassemble by sequence number, acknowledge the final marker, decode to 16 kHz mono PCM; feed Parakeet once the segment is complete.
+- **Steps:** implement the BLE service in section 2 with Victor (write the exact JSON field names there); pairing and reconnect handling, resyncing from `hello`; store each Audio chunk, check its CRC and send cumulative acknowledgments on Audio Ack (with `resend_from` for gaps), drop duplicates by identity, reassemble by sequence number, acknowledge the final marker, decode to 16 kHz mono PCM from each chunk's ADPCM state; feed Parakeet once the final marker confirms the segment is complete; map device IDs to API UUIDs and `sid` to revision and proposal hash; until the board arrives, test against the Raspberry Pi fake device in `phone/tools`.
 - **Gate:** a spoken command on the real device comes out as correct text on the phone; BLE transfer time measured against the budget.
 - **Results (if DONE):**
 
 #### Phase P2: Backend client (PLANNED)
 - **Goal:** the phone talks to the backend with the agreed contract.
-- **Steps:** send text with date, time, IANA timezone, language and orientation; send the API key and a new `call_id` per call (reused on retry) plus the request ID and revision; read the Server-Sent Events streams; forward `screen_lines` and status to the device; forward approve, additions, candidate selection, continue, cancel, acknowledgments and execution status queries; drop responses for older revisions or cancelled requests.
+- **Steps:** send text with date, time, IANA timezone, language and orientation; send the API key and a new `call_id` per POST (reused on retry) plus the request ID and revision; read the Server-Sent Events streams with a 25 s read timeout and retry on the same `call_id`; forward `screen_lines` and status to the device; forward approve, additions, candidate selection, continue, cancel, `touch` (from `activity`), acknowledgments and execution status queries; poll the status endpoint after an `executing` approve; drop streams and events older than the latest `accepted`; handle empty transcripts without calling the backend (section 2).
 - **Gate:** against the backend in mock mode, a calendar flow and an email flow (including an addition, a candidate selection and a cancel) complete from the phone.
 - **Results (if DONE):**
 
@@ -305,7 +365,7 @@ Each phase ends with a gate. The gate must pass before the next phase in that tr
 
 #### Phase F2: Microphone and BLE audio (PLANNED)
 - **Goal:** recorded speech reaches the phone as streamed IMA ADPCM.
-- **Steps:** capture 16 kHz mono from the board's onboard microphone (ES8311 audio codec) while the button is held; encode IMA ADPCM; stream raw-byte Audio chunks with the agreed identity header from a fixed-size ring buffer during the hold and free them on Audio Ack; on release send the final marker and wait for its acknowledgment (FINALIZE AUDIO); stop capture with FAILURE if the link stalls beyond the buffer; send `record_start` and `record_end` as JSON Events; request the largest MTU and 2M PHY; write the BLE JSON field names into section 2 with Carlos.
+- **Steps:** capture 16 kHz mono from the board's onboard microphone (ES8311 audio codec) while the button is held; encode IMA ADPCM; stream raw-byte Audio chunks in the section 2 layout (ADPCM state and CRC in every chunk) from a 2 s ring buffer during the hold and free them on cumulative Audio Ack, resending from `resend_from`; on release send the final marker and wait for its acknowledgment (FINALIZE AUDIO); stop capture with FAILURE if the link stalls beyond the buffer; send `hello` on every connect, `record_start` and `record_end` as JSON Events, and rate-limited `activity` on knob rotation; preferred MTU 256, fail the connection below 179, 2M PHY if supported; write the BLE JSON field names into section 2 with Carlos.
 - **Gate:** Carlos's phone transcribes audio recorded on the device correctly; transfer time measured against the budget.
 - **Results (if DONE):**
 
@@ -335,13 +395,13 @@ Target dates for I1 to I4: _to be set by the team_.
 
 - Text budget numbers wait on the font choice for the 800 x 480 panel (F1). The backend and the phone app keep them as configuration until then.
 - The final badge hardware (Waveshare board, flat LiPo, side buttons, vibration motors) is Planned or in the cart, not confirmed purchased (materials inventory, 2026-10-09). Shipping time comes out of the October 30 deadline: order early, and prototype on the temporary e-ink display until it arrives.
-- Bluetooth throughput for 64 kbps ADPCM plus JSON messages is unmeasured. Victor measures it early in F2; if it falls short, the fallback is record then send.
+- Bluetooth throughput for about 70 kbps of audio chunks (64 kbps ADPCM plus headers) plus JSON messages is unmeasured. Victor measures it early in F2; if it falls short, the fallback is record then send.
 - Prompt injection through tool results (a web page or email telling the model to act). Mitigation: tool output treated as data; the confirmation gate stays the backstop for every write.
 - Spoken email addresses transcribe badly. Mitigation: contacts first; dictated addresses always shown in full in REVIEW.
 - Android killing background work. Mitigation: foreground service, tested in P3.
 - E-ink refresh time eating the budget. Mitigation: partial refresh for status, one full refresh per final screen.
 - Accidental presses in a pocket. Mitigation: 1 s confirm guard in REVIEW; send is never a default.
-- The V1 API, BLE event and screen names, Audio Ack and the audio byte layout are PROPOSED. They block B1, P1, P2, F2 and F3 until both owners sign off.
+- The V1 API, BLE characteristics and audio byte layout were signed off on 2026-10-12. Still open: the exact JSON field names for the BLE messages (Carlos and Victor, P1 and F2) and the ring buffer size, which is provisional until F2 testing.
 - Google OAuth testing mode tokens expire every 7 days. Re-authorize before the video and before judging.
 - Oracle Always Free ARM capacity is sometimes unavailable when creating instances. Create the server early.
 - Token Factory credits are finite. Log token usage per request.
