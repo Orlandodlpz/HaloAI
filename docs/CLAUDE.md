@@ -166,8 +166,7 @@ Decided 2026-10-06. Full details in BRIEFING.md section 2. Changes need sign-off
 ## Current Status
 
 **Backend (Orlando):** Phase B0 DONE (2026-10-07): tool calling 5 of 5, median 0.57 s per model turn, Zero Data Retention on. Next: B1, once Carlos signs off on the PROPOSED V1 API. Text budget in config is a PROVISIONAL placeholder until Victor's F1 numbers.
-**Phone (Carlos):** Phase P0 not started. Waiting on: text budget numbers (for the wallpaper size and screen preview).
-**Phone (Carlos), update 2026-10-12, supersedes the line above:** Phase P0 DONE 2026-10-07 (Parakeet v3 offline on the phone, 0.19 to 0.32 s per clip, 12.7% word error rate on 5 clips; details in BRIEFING P0). Test only addition after P0: a hold to talk button that records from the phone mic for live speech to text testing (no change to the device or BLE plan). Next: P1. Waiting on: BLE JSON field names with Victor, text budget numbers (for the wallpaper size and screen preview).
+**Phone (Carlos), update 2026-10-12:** Phase P0 DONE 2026-10-07 (Parakeet v3 offline on the phone, 0.19 to 0.32 s per clip, 12.7% word error rate on 5 clips; details in BRIEFING P0). Test only addition after P0: a hold to talk button that records from the phone mic for live speech to text testing (no change to the device or BLE plan). Next: P1. Waiting on: BLE JSON field names with Victor, text budget numbers (for the wallpaper size and screen preview).
 
 Phone gotchas:
 - Model: `sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8` from the sherpa-onnx `asr-models` GitHub release (487 MB download, 652 MB encoder). Never in git, never in the APK. Setup steps in `phone/README.md`.
