@@ -167,6 +167,18 @@ Decided 2026-10-06. Full details in BRIEFING.md section 2. Changes need sign-off
 
 **Backend (Orlando):** Phase B0 DONE (2026-10-07): tool calling 5 of 5, median 0.57 s per model turn, Zero Data Retention on. Next: B1, once Carlos signs off on the PROPOSED V1 API. Text budget in config is a PROVISIONAL placeholder until Victor's F1 numbers.
 **Phone (Carlos):** Phase P0 not started. Waiting on: text budget numbers (for the wallpaper size and screen preview).
+**Phone (Carlos), update 2026-10-12, supersedes the line above:** Phase P0 DONE 2026-10-07 (Parakeet v3 offline on the phone, 0.19 to 0.32 s per clip, 12.7% word error rate on 5 clips; details in BRIEFING P0). Test only addition after P0: a hold to talk button that records from the phone mic for live speech to text testing (no change to the device or BLE plan). Next: P1. Waiting on: BLE JSON field names with Victor, text budget numbers (for the wallpaper size and screen preview).
+
+Phone gotchas:
+- Model: `sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8` from the sherpa-onnx `asr-models` GitHub release (487 MB download, 652 MB encoder). Never in git, never in the APK. Setup steps in `phone/README.md`.
+- Model folder on Android 11 and newer: the app must create `files/models/parakeet-v3` itself. A folder created with `adb shell mkdir` is owned by the shell user and the app cannot see files in it. After pushing, restart the app (`adb shell am force-stop com.haloai.haloai_phone`); a running app did not see newly pushed files.
+- Parakeet drops uncommon names ("Tomai" became "my") and misheard "12 p.m." as "2 p.m.". The confirm screen is the safety net for both. (Update 2026-10-12: in V1 terms, the confirm screen is REVIEW, and a recipient that does not resolve goes to CONFLICT-AMBIGUOUS with an empty candidate list.)
+- Model load takes about 1.7 s. Load once and keep it in memory (in the P3 foreground service), never per command.
+- Phone mic test button: the mic takes about 0.2 s to start after the press, so the app vibrates only once it is recording. Speech before the buzz is lost. The device will have its own start delay; Victor measures it in F2.
+- Release builds have no INTERNET permission until P2 adds it to `android/app/src/main/AndroidManifest.xml`. Debug and profile builds already have it.
+- Flutter background isolates: pass a top-level function to `compute()`. A closure inside a widget captures the widget state, which cannot be sent to another isolate, and fails at runtime with "object is unsendable".
+- Mac toolchain: `brew install --cask temurin@17` needs a sudo password, so use the `openjdk@17` formula and `flutter config --jdk-dir /opt/homebrew/opt/openjdk@17`. Android SDK lives at `/opt/homebrew/share/android-commandlinetools`.
+
 **Device (Victor):** Phase F0 not started. Hardware target set in the materials inventory (final board Planned, not yet in hand). Waiting on: framework choice.
 
 **Known gotchas discovered so far:**
