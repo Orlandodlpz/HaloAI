@@ -48,7 +48,7 @@ Every event has `"type"`. IDs in events are the same device local counters as in
 
 | type | Fields | When |
 | --- | --- | --- |
-| `hello` | `fw` (string), `boot` (u32, random per power up), `state` (V1 state name), `req` (current req ID), `sid` (last screen drawn, or null), `pending_key` (26 char execution key, or null), `battery` (percent) | Every connect, before anything else |
+| `hello` | `fw` (string), `boot` (u32, random per power up), `state` (V1 state name), `req` (current req ID), `sid` (last screen drawn, or null), `pending_key` (26 char execution key, or null), `battery` (percent) | Every connect, as soon as the phone turns on Events notifications (sent earlier, it is lost: nobody is subscribed yet). The phone subscribes to Audio first and Events last, so it is ready to answer |
 | `wake` | none | WALLPAPER woken (input consumed) |
 | `record_start` | `req`, `seg`, `rev`, `addition` (bool) | Hold begins (RECORDING or RECORD ADDITION) |
 | `record_end` | `req`, `seg`, `chunks`, `ms` (hold length) | Release; informational, the final marker decides |
@@ -109,7 +109,7 @@ With NimBLE on Arduino, the preferred MTU is set with `NimBLEDevice::setMTU(256)
 ## Questions for Victor
 
 1. OK with the UUIDs and properties above?
-2. OK with `boot` in `hello`, and with `phone_ready` in Settings?
+2. OK with `boot` in `hello`, with `hello` sent when Events notifications are turned on, and with `phone_ready` in Settings?
 3. OK with the final marker resend after 300 ms?
 4. The 2 byte prefix for JSON fragments, or would you rather put the sequence number inside the JSON?
 5. Anything the firmware needs that is missing (for example a battery event outside `hello`)?

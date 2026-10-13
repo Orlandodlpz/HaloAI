@@ -1,9 +1,15 @@
+import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 
+import 'ble/device_session.dart';
+import 'ble/device_transport.dart';
+import 'ble/fbp_transport.dart';
+import 'ble/loopback.dart';
 import 'mic_test_recorder.dart';
 import 'stt_worker.dart';
 
@@ -14,6 +20,12 @@ import 'stt_worker.dart';
 /// - Hold to talk (TEST ONLY): records from the phone mic while held and
 ///   transcribes on release, mimicking the device's hold gesture. Every
 ///   recording is saved as a WAV in files/recordings/ with a log.tsv line.
+/// - Device (P1): connects to the HaloAI device over BLE, receives audio,
+///   transcribes each finished segment (BLERESULT lines in logcat), and can
+///   send a test screen.
+/// - Loopback (P1): the test clips through the whole BLE audio path (encode,
+///   chunks with some lost on purpose, receiver, decode) without a radio,
+///   compared with the original WAV's transcript (LOOPRESULT lines).
 
 const _clips = [
   'block_3_4_tmrw_gym',
@@ -56,6 +68,11 @@ class _BenchPageState extends State<BenchPage> {
   bool _fingerDown = false;
   final _holdTimer = Stopwatch();
 
+  DeviceSession? _device;
+  LinkStatus _link = const LinkStatus(LinkState.off);
+  final _deviceLog = <String>[];
+  final _deviceSubs = <StreamSubscription>[];
+
   @override
   void initState() {
     super.initState();
@@ -64,6 +81,10 @@ class _BenchPageState extends State<BenchPage> {
 
   @override
   void dispose() {
+    for (final s in _deviceSubs) {
+      s.cancel();
+    }
+    _device?.stop();
     _stt?.dispose();
     _mic.dispose();
     super.dispose();
@@ -89,6 +110,7 @@ class _BenchPageState extends State<BenchPage> {
         _stt = stt;
         _status = 'Ready. Model load ${stt.loadMs} ms, ${SttWorker.numThreads} threads.';
       });
+      await _device?.phoneReadyChanged();
       await _mic.ensurePermission();
     } catch (e, st) {
       debugPrint('P0ERROR $e\n$st');
@@ -201,6 +223,94 @@ class _BenchPageState extends State<BenchPage> {
     }
   }
 
+  Future<void> _toggleDevice() async {
+    if (_device != null) {
+      for (final s in _deviceSubs) {
+        await s.cancel();
+      }
+      _deviceSubs.clear();
+      await _device!.stop();
+      setState(() {
+        _device = null;
+        _link = const LinkStatus(LinkState.off);
+      });
+      return;
+    }
+    final session = DeviceSession(
+      transport: FbpTransport(),
+      sttReady: () => _stt?.isAlive ?? false,
+      transcribe: (samples, sr, {tag}) {
+        final stt = _stt;
+        if (stt == null) throw StateError('speech model not loaded');
+        return stt.transcribeSamples(samples, sr, tag: tag);
+      },
+    );
+    _deviceSubs
+      ..add(session.log.listen((l) {
+        debugPrint('BLELOG $l');
+        setState(() {
+          _link = session.status;
+          _deviceLog.insert(0, l);
+          if (_deviceLog.length > 6) _deviceLog.removeLast();
+        });
+      }))
+      ..add(session.transcripts.listen((t) => setState(() {
+            _entries.insert(0, Entry('device | req ${t.req} seg ${t.seg} rev ${t.rev}', t.result,
+                releaseToTextMs: t.releaseToTextMs));
+            _status = 'Device: release to text ${t.releaseToTextMs} ms '
+                '(BLE ${t.releaseToCompleteMs} ms, ${t.stats.resendRequests} resend requests)';
+          })));
+    setState(() => _device = session);
+    await session.start();
+  }
+
+  Future<void> _sendTestScreen() async {
+    try {
+      await _device!.sendScreen('REVIEW',
+          requestId: 'test',
+          revision: 1,
+          proposalHash: 'test',
+          screenLines: ['To: victor@example.com', 'Subject: Meeting moved', 'The meeting moved to', 'Thursday at 3 pm.'],
+          statusLine: 'Ready to confirm',
+          expiresInS: 60);
+    } catch (e) {
+      setState(() => _status = 'Screen write failed: $e');
+    }
+  }
+
+  Future<void> _runLoopback() async {
+    final stt = _stt!;
+    setState(() {
+      _busy = true;
+      _status = 'Loopback...';
+    });
+    var same = 0;
+    try {
+      for (final n in _clips) {
+        final data = await rootBundle.load('assets/clips/$n.wav');
+        final pcm = wavPcm16(data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes));
+        final orig = Float32List.fromList([for (final v in pcm) v / 32768.0]);
+        final sw = Stopwatch()..start();
+        final lb = loopback(pcm);
+        final pathMs = sw.elapsedMilliseconds;
+        final a = await stt.transcribeSamples(orig, 16000);
+        final b = await stt.transcribeSamples(lb.audio.toFloat(), 16000);
+        if (a.text == b.text) same++;
+        // ignore: avoid_print
+        print('LOOPRESULT clip=$n same=${a.text == b.text} lost=${lb.lost} resend=${lb.resendRequests} '
+            'path=${pathMs}ms decode=${b.decodeMs}ms original="${a.text}" loopback="${b.text}"');
+        setState(() => _entries.insert(0, Entry('loopback | $n | ${a.text == b.text ? 'same' : 'DIFFERENT'} '
+            '| lost ${lb.lost}', b)));
+      }
+      setState(() => _status = 'Loopback: $same of ${_clips.length} transcripts identical to the original WAV.');
+    } catch (e, st) {
+      debugPrint('P1ERROR $e\n$st');
+      setState(() => _status = 'Error: $e');
+    } finally {
+      setState(() => _busy = false);
+    }
+  }
+
   static String _stamp(DateTime t) {
     String two(int v) => v.toString().padLeft(2, '0');
     return '${t.year}${two(t.month)}${two(t.day)}_${two(t.hour)}${two(t.minute)}${two(t.second)}';
@@ -216,8 +326,23 @@ class _BenchPageState extends State<BenchPage> {
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Text(_status),
           const SizedBox(height: 8),
-          OutlinedButton(onPressed: ready ? _runClips : null, child: const Text('Run clips')),
-          const SizedBox(height: 16),
+          Row(children: [
+            Expanded(child: OutlinedButton(onPressed: ready ? _runClips : null, child: const Text('Run clips'))),
+            const SizedBox(width: 8),
+            Expanded(child: OutlinedButton(onPressed: ready ? _runLoopback : null, child: const Text('Loopback'))),
+          ]),
+          const SizedBox(height: 8),
+          Row(children: [
+            Expanded(child: Text('Device: $_link', style: Theme.of(context).textTheme.bodySmall)),
+            TextButton(
+                onPressed: _device != null && _link.state == LinkState.connected ? _sendTestScreen : null,
+                child: const Text('Test screen')),
+            FilledButton.tonal(
+                onPressed: _toggleDevice, child: Text(_device == null ? 'Connect' : 'Disconnect')),
+          ]),
+          for (final l in _deviceLog.take(3))
+            Text(l, maxLines: 1, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.bodySmall),
+          const SizedBox(height: 8),
           // Listener instead of a button: recording starts on finger down and
           // ends on finger up, with no tap or long press delay in between.
           Listener(
@@ -225,7 +350,7 @@ class _BenchPageState extends State<BenchPage> {
             onPointerUp: (_) => _holdEnd(),
             onPointerCancel: (_) => _holdEnd(),
             child: Container(
-              height: 120,
+              height: 96,
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: _recording
