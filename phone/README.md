@@ -2,12 +2,35 @@
 
 Flutter, Android first. Turns device audio into text on the phone with Parakeet v3 (sherpa-onnx) and talks to the backend. See `docs/BRIEFING.md` section 3.2 for phases.
 
-Current state: speech to text test bench.
+Current state: speech to text test bench, plus the P1 BLE link to the device.
 
 - **Run clips:** transcribes the 5 test clips in `assets/clips/` twice and prints `P0RESULT` lines to logcat.
 - **Hold to talk (test mic), TEST ONLY:** records from the phone's own mic while held, transcribes on release. Talk after the vibration (the mic needs about 0.2 s to start). Presses under 0.5 s are discarded, like a device hold. Each recording is saved for reuse as a test clip. In the real product audio comes from the device over BLE (P1); `lib/mic_test_recorder.dart` is not part of that path.
 
+- **Loopback (P1):** runs the 5 clips through the whole BLE audio path without a radio (IMA ADPCM encode, 176 byte chunks with every 9th lost on purpose, cumulative acks and `resend_from`, decode) and compares the transcript with the original WAV's. Prints `LOOPRESULT` lines.
+- **Connect (P1):** scans for the HaloAI service, connects, asks for MTU 517 (fails loudly below 179), requests the 2M PHY, then receives audio and events. Each finished segment is transcribed and printed as a `BLERESULT` line with release to complete (BLE) and release to text times. **Test screen** writes a sample REVIEW screen. Needs Victor's firmware on the Waveshare ESP32-S3 board.
+
 Parakeet runs in a long-lived background isolate (`lib/stt_worker.dart`): the model loads once at app start and stays in memory. P1 feeds it decoded BLE audio the same way.
+
+## BLE (P1)
+
+Code in `lib/ble/`. Protocol from BRIEFING section 2; UUIDs and JSON field names in `docs/ble_fields_draft.md` (DRAFT until Victor agrees). The BLE package (flutter_blue_plus) sits behind `DeviceTransport`, so everything else is tested with a fake transport.
+
+```sh
+adb logcat -c
+# open the app, tap Connect, hold the device button and talk
+adb logcat -d | grep -E 'BLERESULT|BLELOG'
+# or, without the device: tap Loopback
+adb logcat -d | grep LOOPRESULT
+```
+
+Firmware check: `test/golden/adpcm_chunks.json` holds a test signal and the exact packets the phone expects; `tools/audio_reference/` is the Python reference that writes it.
+
+```sh
+python3 -m venv tools/audio_reference/.venv && tools/audio_reference/.venv/bin/pip install pytest
+tools/audio_reference/.venv/bin/python -m pytest -q tools/audio_reference/tests
+python3 tools/audio_reference/make_golden.py   # regenerate the golden vectors
+```
 
 ## Pull mic test recordings
 
