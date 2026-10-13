@@ -1,6 +1,6 @@
 # BRIEFING.md: HaloAI Execution Plan
 
-**Last Updated:** 2026-10-12
+**Last Updated:** 2026-10-13
 **Purpose:** The operational plan for the whole team: what we're building, how the pieces fit, and the phased sequence to get there with minimal rework.
 
 > Relationship to other docs: CLAUDE.md tracks decisions, constraints and state. This document is the **execution plan**. Each person edits only their own phase section (Backend, Phone or Device); shared sections change only after the team agrees.
@@ -150,7 +150,7 @@ BLE rules:
 - **Screen IDs.** Every Screen write carries a new `sid`. `approve`, `select` and `continue` echo the `sid` of the screen they acted on, and `select` sends the candidate's index on that screen. The phone maps `sid` to revision and proposal hash, and the index to `candidate_id`, so approval binds to exactly what was drawn and no hashes cross BLE.
 - **`activity`.** Sent on knob rotation in a decision state, at most one every 10 s; the phone forwards it as `touch`.
 - **Large JSON.** JSON messages bigger than one packet are split with a sequence number. Exact JSON field names for the BLE messages: Carlos and Victor write them here in P1 and F2.
-- **Development stand-in.** Until the board arrives, the Raspberry Pi runs a fake BLE device with the same service (Carlos, in `phone/tools`).
+- **Development stand-in.** Until the board arrives, the Raspberry Pi runs a fake BLE device with the same service (Carlos, in `phone/tools`). **Update 2026-10-13: superseded.** There is no Raspberry Pi stand-in. The board is in hand, and the phone tests against Victor's F2 firmware on the Waveshare ESP32-S3 e-Paper 3.97 board. `phone/tools/audio_reference/` keeps a Python reference encoder and golden test vectors, so the firmware can check its chunks byte for byte against what the phone expects.
 
 *State ownership.* The backend owns requests, revisions, proposals and execution status. The device enters a decision or outcome state (and starts the 1 s guard in REVIEW) only when the phone sends that screen. The device handles BOOT / RECOVERY, READY, WALLPAPER, PHONE / BLUETOOTH CHECK, PHONE DISCONNECTED, RECORDING, RECORD ADDITION, FINALIZE AUDIO and CRITICAL BATTERY locally. If the link stalls beyond the audio buffer, capture stops with FAILURE; audio is never silently dropped.
 
@@ -324,7 +324,7 @@ Each phase ends with a gate. The gate must pass before the next phase in that tr
 
 #### Phase P1: Bluetooth link and audio from the device (PLANNED)
 - **Goal:** receive audio from the device over BLE and transcribe it.
-- **Steps:** implement the BLE service in section 2 with Victor (write the exact JSON field names there); pairing and reconnect handling, resyncing from `hello`; store each Audio chunk, check its CRC and send cumulative acknowledgments on Audio Ack (with `resend_from` for gaps), drop duplicates by identity, reassemble by sequence number, acknowledge the final marker, decode to 16 kHz mono PCM from each chunk's ADPCM state; feed Parakeet once the final marker confirms the segment is complete; map device IDs to API UUIDs and `sid` to revision and proposal hash; until the board arrives, test against the Raspberry Pi fake device in `phone/tools`.
+- **Steps:** implement the BLE service in section 2 with Victor (write the exact JSON field names there); pairing and reconnect handling, resyncing from `hello`; store each Audio chunk, check its CRC and send cumulative acknowledgments on Audio Ack (with `resend_from` for gaps), drop duplicates by identity, reassemble by sequence number, acknowledge the final marker, decode to 16 kHz mono PCM from each chunk's ADPCM state; feed Parakeet once the final marker confirms the segment is complete; map device IDs to API UUIDs and `sid` to revision and proposal hash; until the board arrives, test against the Raspberry Pi fake device in `phone/tools`. (Update 2026-10-13: no Raspberry Pi. Test against Victor's firmware on the Waveshare ESP32-S3 board, which is in hand. Until his F2 build streams audio, the phone side is proven with unit tests and the golden vectors in `phone/tools/audio_reference/`.)
 - **Gate:** a spoken command on the real device comes out as correct text on the phone; BLE transfer time measured against the budget.
 - **Results (if DONE):**
 
@@ -367,7 +367,7 @@ Each phase ends with a gate. The gate must pass before the next phase in that tr
 
 #### Phase F1: Hardware choice and e-ink screen (PLANNED)
 - **Goal:** the final board driving real screens.
-- **Steps:** get the final hardware from the materials inventory (Waveshare ESP32-S3 e-Paper 3.97, a flat 3.7 V LiPo that fits a body of roughly credit card size, side button, vibration motor with driver; see CLAUDE.md Environment); prototype on the temporary e-ink display until the board arrives; render each state's screen; partial refresh for the status bar, full refresh for final screens; wallpaper stored in flash and shown in WALLPAPER; report the text budget per orientation (800 x 480 panel) to the team.
+- **Steps:** get the final hardware from the materials inventory (Waveshare ESP32-S3 e-Paper 3.97, a flat 3.7 V LiPo that fits a body of roughly credit card size, side button, vibration motor with driver; see CLAUDE.md Environment); prototype on the temporary e-ink display until the board arrives (update 2026-10-13: the board is in hand); render each state's screen; partial refresh for the status bar, full refresh for final screens; wallpaper stored in flash and shown in WALLPAPER; report the text budget per orientation (800 x 480 panel) to the team.
 - **Gate:** every state's screen renders on the real panel; full and partial refresh times measured; text budget written into section 2.
 - **Results (if DONE):**
 
@@ -402,7 +402,7 @@ Target dates for I1 to I4: _to be set by the team_.
 ## 4. Open Risks
 
 - Text budget numbers wait on the font choice for the 800 x 480 panel (F1). The backend and the phone app keep them as configuration until then.
-- The final badge hardware (Waveshare board, flat LiPo, side buttons, vibration motors) is Planned or in the cart, not confirmed purchased (materials inventory, 2026-10-09). Shipping time comes out of the October 30 deadline: order early, and prototype on the temporary e-ink display until it arrives.
+- The final badge hardware (Waveshare board, flat LiPo, side buttons, vibration motors) is Planned or in the cart, not confirmed purchased (materials inventory, 2026-10-09). Shipping time comes out of the October 30 deadline: order early, and prototype on the temporary e-ink display until it arrives. (Update 2026-10-13: the Waveshare ESP32-S3 e-Paper 3.97 board is in hand. As far as these docs know, the flat LiPo, side buttons and vibration motors are still Planned or in the cart.)
 - Bluetooth throughput for about 70 kbps of audio chunks (64 kbps ADPCM plus headers) plus JSON messages is unmeasured. Victor measures it early in F2; if it falls short, the fallback is record then send.
 - Prompt injection through tool results (a web page or email telling the model to act). Mitigation: tool output treated as data; the confirmation gate stays the backstop for every write.
 - Spoken email addresses transcribe badly. Mitigation: contacts first; dictated addresses always shown in full in REVIEW.

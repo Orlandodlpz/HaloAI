@@ -1,7 +1,7 @@
 # CLAUDE.md: HaloAI
 
 Project context and conventions for the whole team. Read this first in every session, whatever part of the project you work on.
-**Last Updated:** 2026-10-12
+**Last Updated:** 2026-10-13
 
 ## Interaction Mode: Always On
 
@@ -85,12 +85,12 @@ Entry: Nebius x NVIDIA Global AI Hackathon, **Personal AI track**. Submission de
 
 **Device (Victor)**
 - Hardware source of truth: the team's materials inventory, `AI_Badge_Hackathon_Materials_Updated.pdf` (2026-10-09). Status words below are copied from it: "Planned" and "Cart" mean not confirmed purchased. Board details marked (Waveshare) come from the vendor's spec page.
-- Final board (Planned, 3 units target): Waveshare ESP32-S3 e-Paper 3.97 in. Integrated ESP32-S3 with Wi-Fi and BLE, 800 x 480 e-paper, onboard microphone, battery management and buttons. (Waveshare: 4 gray levels; ES8311 audio codec; TG28 power management chip with charging; MX1.25 battery header; PWR, BOOT and a rotary button with up, down and press; refresh full about 3.5 s, partial about 0.6 s, not yet measured by us.)
+- Final board (Planned, 3 units target): Waveshare ESP32-S3 e-Paper 3.97 in. Integrated ESP32-S3 with Wi-Fi and BLE, 800 x 480 e-paper, onboard microphone, battery management and buttons. (Waveshare: 4 gray levels; ES8311 audio codec; TG28 power management chip with charging; MX1.25 battery header; PWR, BOOT and a rotary button with up, down and press; refresh full about 3.5 s, partial about 0.6 s, not yet measured by us.) (Update 2026-10-13: the board is in hand, and development runs on it instead of the Raspberry Pi.)
 - Body: roughly credit card footprint (85.6 x 54 mm) and as thin as practical (thin enclosure: Future). The panel's active area alone is 86.40 x 51.84 mm (Waveshare), so the body will end up somewhat larger than a card.
 - Inputs: 1 to 2 physical side buttons per badge (Planned) for press, double press and hold, prototyped with the tactile push button kit (Cart); the board's rotary button for rotate and wake.
 - Feedback: the screen plus a vibration motor with driver, 1 per badge (Planned), prototyped with 3 V coin motors (Cart). No speaker: the team removed speaker output, so the board's speaker header and amplifier stay unused.
 - Battery: flat 3.7 V LiPo, 1 per badge (Planned), capacity reduced if needed for thickness; prototyped with 3.7 V 1100 mAh packs with a 1.25 mm plug (Cart).
-- In hand now: Raspberry Pi (temporary shared development computer over SSH and Tailscale) and a temporary e-ink display for prototype UI and low-power tests. The text budget and refresh times come from the final board, not the temporary display.
+- In hand now: Raspberry Pi (temporary shared development computer over SSH and Tailscale) and a temporary e-ink display for prototype UI and low-power tests. The text budget and refresh times come from the final board, not the temporary display. (Update 2026-10-13: the team moved off the Raspberry Pi. Development, testing and the final product all use the Waveshare ESP32-S3 e-Paper 3.97 board, which is in hand, so the Pi is no longer part of the plan.)
 - Support materials (Recommended or Optional): transistor kit for the motor driver, resistor and diode kit, 3 breadboards, jumper wires, USB-C data cables, microSD cards, multimeter.
 - Removed or replaced: XIAO ESP32-S3 boards and INMP441 microphones (the final board has both built in), speaker amplifier and speakers (speaker output removed), IR transmitter and receiver (feature dropped), round, AMOLED and IPS display boards (e-ink chosen for idle power).
 - Firmware framework (Arduino core or ESP-IDF): _not chosen yet_.
@@ -169,7 +169,7 @@ Decided 2026-10-06, revised for V1 and signed off by Orlando, Carlos and Victor 
 ## Current Status
 
 **Backend (Orlando):** Phase B0 DONE (2026-10-07). Phase B1 DONE (2026-10-12): V1 API, request lifecycle and streams built and tested against mocks on Postgres, 59 of 59 tests (details in BRIEFING B1). Next: B2 (Nemotron loop with mock tools). Text budget in config is a PROVISIONAL placeholder until Victor's F1 numbers.
-**Phone (Carlos), update 2026-10-12:** Phase P0 DONE 2026-10-07 (Parakeet v3 offline on the phone, 0.19 to 0.32 s per clip, 12.7% word error rate on 5 clips; details in BRIEFING P0). Test only addition after P0: a hold to talk button that records from the phone mic for live speech to text testing (no change to the device or BLE plan). Next: P1. Waiting on: BLE JSON field names with Victor, text budget numbers (for the wallpaper size and screen preview).
+**Phone (Carlos), update 2026-10-12:** Phase P0 DONE 2026-10-07 (Parakeet v3 offline on the phone, 0.19 to 0.32 s per clip, 12.7% word error rate on 5 clips; details in BRIEFING P0). Test only addition after P0: a hold to talk button that records from the phone mic for live speech to text testing (no change to the device or BLE plan). Next: P1. Waiting on: BLE JSON field names with Victor, text budget numbers (for the wallpaper size and screen preview). (Update 2026-10-13: P1 in progress. No Raspberry Pi stand-in: the phone tests against Victor's firmware on the Waveshare ESP32-S3 board. BLE field names draft for Victor in `phone/docs/ble_fields_draft.md`.)
 
 Phone gotchas:
 - Model: `sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8` from the sherpa-onnx `asr-models` GitHub release (487 MB download, 652 MB encoder). Never in git, never in the APK. Setup steps in `phone/README.md`.
@@ -181,7 +181,7 @@ Phone gotchas:
 - Flutter background isolates: pass a top-level function to `compute()`. A closure inside a widget captures the widget state, which cannot be sent to another isolate, and fails at runtime with "object is unsendable".
 - Mac toolchain: `brew install --cask temurin@17` needs a sudo password, so use the `openjdk@17` formula and `flutter config --jdk-dir /opt/homebrew/opt/openjdk@17`. Android SDK lives at `/opt/homebrew/share/android-commandlinetools`.
 
-**Device (Victor):** Phase F0 not started. Hardware target set in the materials inventory (final board Planned, not yet in hand). Waiting on: framework choice.
+**Device (Victor):** Phase F0 not started. Hardware target set in the materials inventory (final board Planned, not yet in hand). (Update 2026-10-13: the Waveshare ESP32-S3 e-Paper 3.97 board is in hand.) Waiting on: framework choice.
 
 **Known gotchas discovered so far:**
 - Nebius Token Factory stores prompts and outputs by default (for speculative decoding, not training). Zero Data Retention must be switched on per account.
