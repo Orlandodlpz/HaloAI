@@ -1,0 +1,7 @@
+# Host test build
+build/
+
+# ESP32 build output (once a framework is chosen)
+.pio/
+managed_components/
+sdkconfig.old
