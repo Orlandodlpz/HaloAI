@@ -71,7 +71,7 @@ def create_app(services: Services | None = None) -> FastAPI:
 
     @app.exception_handler(ApiError)
     async def api_error(_request: Request, err: ApiError):
-        return JSONResponse(error_payload(err), status_code=err.http_status)
+        return JSONResponse(error_payload(err), status_code=err.http_status, headers=err.headers)
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(_request: Request, err: RequestValidationError):

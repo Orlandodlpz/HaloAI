@@ -96,7 +96,7 @@ API rules:
 - **Language.** `language` is a hint ("en" until P5); other values are not rejected.
 - **API keys.** One key per client, each with a scope: the demo site key works only in sample data mode and can never send real email; the phone key can. In real mode the demo Gmail account sends only to an allowlist of addresses (the team, plus any added for judging). Keys are rate limited per key and can be replaced without code changes. The APK contains its key, so the APK is shared directly, never posted publicly.
 
-Errors have one shape. `message` is for logs only, never for the screen; `current` lets the phone resync without another call. `expired` means the request is no longer open: expired, cancelled or finished (added in B1, Carlos to confirm).
+Errors have one shape. `message` is for logs only, never for the screen; `current` lets the phone resync without another call. `expired` means the request is no longer open: expired, cancelled or finished; there is no separate `cancelled` code (decided 2026-10-13, Orlando and Carlos).
 
 ```
 { "error": { "code": "stale_revision", "message": "...", "current": { result shape } or null } }
@@ -108,7 +108,7 @@ Errors have one shape. `message` is for logs only, never for the screen; `curren
 | 404 | `not_found` (unknown request or execution key) |
 | 409 | `stale_revision`, `hash_mismatch`, `expired`, `busy`, `already_executing`, `call_id_conflict` |
 | 422 | `invalid_request` |
-| 429 | `rate_limited` (too many requests for this key; wait and retry. Added in B1, Carlos to confirm) |
+| 429 | `rate_limited` (too many requests for this key; the response has a `Retry-After` header with the whole seconds to wait, then retry with the same `call_id`. A 429 while polling the status endpoint after approve keeps the device in EXECUTING and polling continues: it is never a failure or uncertain, because the action may be running fine. Decided 2026-10-13, Orlando and Carlos) |
 | 502 | `upstream_error` (model, Google or Tavily failed) |
 
 *Status updates.* **Decided 2026-10-12 (Orlando, Carlos).** The start, addition and select calls stream Server-Sent Events, and every event carries `request_id` and `revision`. Order: exactly one `accepted` event first (`{"request_id", "revision", "call_id"}`, with the revision the server assigned), zero or more `status` events (`{"status_line": "Searching the web"}`), a `slow` event if processing passes the configured slow threshold (PROCESSING SLOW), then exactly one `result` event. Once an `accepted` arrives, the phone drops every older stream and any event for an older revision. Only meaningful steps produce a status event. A `: ping` comment every 10 s (config) keeps cellular connections open; the phone uses a read timeout of about 25 s that any bytes reset, and on timeout retries with the same `call_id`.
@@ -259,7 +259,7 @@ Each phase ends with a gate. The gate must pass before the next phase in that tr
   - Defense in depth: with the user lock removed on purpose, a second simultaneous approval fails on the execution key's primary key instead of executing twice. The database also enforces one open request per user (partial unique index) and one execution per request.
   - Real server (uvicorn, 1 worker, dev database, curl and httpx): a full flow (stream start, approve, cancel refused, status, second approve with a new `call_id` returning the same key, one execution row). Events arrive live, not buffered: `accepted` 0.01 s, `: ping` every 1.5 s (test setting), `slow` at 2.0 s, `result` at 5.0 s with a 5 s fake processor. Plain `\n` line endings, no `\r`.
   - Gate item "demo key in real mode is rejected": built as "a demo (`mock` scope) key can never reach real tools", since the API has no mode field; the key's scope decides. Tested with real tools switched on.
-  - Contract additions, Carlos to confirm: `429 rate_limited` (per key rate limit), and `expired` also covers a request that is cancelled or finished (no separate `cancelled` code).
+  - Contract additions, confirmed by Carlos on 2026-10-13 and written into section 2: `429 rate_limited` (per key rate limit), and `expired` also covers a request that is cancelled or finished (no separate `cancelled` code).
   - Local database: `cd pipeline && docker compose up -d` (Postgres 16, `127.0.0.1:5433` only), then `.venv/bin/python scripts/migrate.py` (and `--test`). Keys: `scripts/create_key.py --client NAME --scope real|mock`.
 
 #### Phase B2: Agent loop with mock tools (PLANNED)

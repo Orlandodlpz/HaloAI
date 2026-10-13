@@ -43,6 +43,7 @@ async def test_rate_limit_per_key(client, keys):
     assert codes == [200, 200, 200, 429]
     r = await client.get("/health", headers=auth(keys["slow"]))
     assert r.json()["error"]["code"] == "rate_limited"
+    assert 1 <= int(r.headers["retry-after"]) <= 20  # 3 per minute: one every 20 s
     assert (await client.get("/health", headers=auth(keys["phone"]))).status_code == 200  # other keys unaffected
 
 

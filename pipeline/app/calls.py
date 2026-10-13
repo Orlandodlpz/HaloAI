@@ -89,12 +89,13 @@ class RateLimiter:
     def __init__(self):
         self._buckets: dict[str, tuple[float, float]] = {}
 
-    def allow(self, key_id: str, rate_per_min: int) -> bool:
+    def check(self, key_id: str, rate_per_min: int) -> float:
+        """0 if this call is allowed (and counted), otherwise the seconds until the next one is."""
         now = time.monotonic()
         tokens, last = self._buckets.get(key_id, (float(rate_per_min), now))
         tokens = min(float(rate_per_min), tokens + (now - last) * rate_per_min / 60.0)
         if tokens < 1.0:
             self._buckets[key_id] = (tokens, now)
-            return False
+            return (1.0 - tokens) * 60.0 / rate_per_min
         self._buckets[key_id] = (tokens - 1.0, now)
-        return True
+        return 0.0
