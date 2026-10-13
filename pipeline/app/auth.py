@@ -1,5 +1,6 @@
 """API keys: one per client, stored as SHA-256 hashes, each with a scope and a rate limit."""
 
+import math
 import secrets
 from dataclasses import dataclass
 
@@ -45,6 +46,8 @@ async def require_caller(request: Request) -> Caller:
     if row is None:
         raise ApiError("unauthorized", 401, "invalid API key")
     caller = Caller(str(row["id"]), str(row["user_id"]), row["client"], row["scope"], row["rate_per_min"])
-    if not services.limiter.allow(caller.key_id, caller.rate_per_min):
-        raise ApiError("rate_limited", 429, "too many requests for this key")
+    wait_s = services.limiter.check(caller.key_id, caller.rate_per_min)
+    if wait_s > 0:
+        raise ApiError("rate_limited", 429, "too many requests for this key",
+                       headers={"Retry-After": str(max(1, math.ceil(wait_s)))})
     return caller

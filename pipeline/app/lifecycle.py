@@ -32,12 +32,14 @@ EXECUTION_STATE = {"pending": "executing", "applied": "success", "not_applied": 
 class ApiError(Exception):
     """An error with the contract's code; current is the request's result, if any."""
 
-    def __init__(self, code: str, http_status: int, message: str = "", current: dict | None = None):
+    def __init__(self, code: str, http_status: int, message: str = "", current: dict | None = None,
+                 headers: dict[str, str] | None = None):
         super().__init__(message or code)
         self.code = code
         self.http_status = http_status
         self.message = message or code
         self.current = current
+        self.headers = headers  # extra HTTP headers, for example Retry-After on 429
 
 
 async def _no_status(_line: str) -> None:
@@ -297,7 +299,11 @@ class Lifecycle:
             req = await self._load(conn, user_id, request_id)
             cur = await conn.execute("SELECT * FROM executions WHERE execution_key = %s", (key,))
             if await cur.fetchone():
-                return await self._result(conn, req)  # same approval again: no second execution
+                # Same approval again (retry, or app restart with a new call_id): return the
+                # existing execution's state. This must stay BEFORE _closed_check, so a re-approve
+                # of an executed proposal gets its outcome, never 409. Locked by
+                # test_repeated_approval_executes_once.
+                return await self._result(conn, req)
             req = await self._closed_check(conn, req)
             if req["state"] != "review" or body["revision"] != req["current_revision"]:
                 raise ApiError("stale_revision", 409, "not the displayed revision", await self._result(conn, req))

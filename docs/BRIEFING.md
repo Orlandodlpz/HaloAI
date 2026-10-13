@@ -96,7 +96,7 @@ API rules:
 - **Language.** `language` is a hint ("en" until P5); other values are not rejected.
 - **API keys.** One key per client, each with a scope: the demo site key works only in sample data mode and can never send real email; the phone key can. In real mode the demo Gmail account sends only to an allowlist of addresses (the team, plus any added for judging). Keys are rate limited per key and can be replaced without code changes. The APK contains its key, so the APK is shared directly, never posted publicly.
 
-Errors have one shape. `message` is for logs only, never for the screen; `current` lets the phone resync without another call. `expired` means the request is no longer open: expired, cancelled or finished (added in B1, Carlos to confirm).
+Errors have one shape. `message` is for logs only, never for the screen; `current` lets the phone resync without another call. `expired` means the request is no longer open: expired, cancelled or finished; there is no separate `cancelled` code (decided 2026-10-13, Orlando and Carlos).
 
 ```
 { "error": { "code": "stale_revision", "message": "...", "current": { result shape } or null } }
@@ -108,7 +108,7 @@ Errors have one shape. `message` is for logs only, never for the screen; `curren
 | 404 | `not_found` (unknown request or execution key) |
 | 409 | `stale_revision`, `hash_mismatch`, `expired`, `busy`, `already_executing`, `call_id_conflict` |
 | 422 | `invalid_request` |
-| 429 | `rate_limited` (too many requests for this key; wait and retry. Added in B1, Carlos to confirm) |
+| 429 | `rate_limited` (too many requests for this key; the response has a `Retry-After` header with the whole seconds to wait, then retry with the same `call_id`. A 429 while polling the status endpoint after approve keeps the device in EXECUTING and polling continues: it is never a failure or uncertain, because the action may be running fine. Decided 2026-10-13, Orlando and Carlos) |
 | 502 | `upstream_error` (model, Google or Tavily failed) |
 
 *Status updates.* **Decided 2026-10-12 (Orlando, Carlos).** The start, addition and select calls stream Server-Sent Events, and every event carries `request_id` and `revision`. Order: exactly one `accepted` event first (`{"request_id", "revision", "call_id"}`, with the revision the server assigned), zero or more `status` events (`{"status_line": "Searching the web"}`), a `slow` event if processing passes the configured slow threshold (PROCESSING SLOW), then exactly one `result` event. Once an `accepted` arrives, the phone drops every older stream and any event for an older revision. Only meaningful steps produce a status event. A `: ping` comment every 10 s (config) keeps cellular connections open; the phone uses a read timeout of about 25 s that any bytes reset, and on timeout retries with the same `call_id`.
@@ -150,7 +150,7 @@ BLE rules:
 - **Screen IDs.** Every Screen write carries a new `sid`. `approve`, `select` and `continue` echo the `sid` of the screen they acted on, and `select` sends the candidate's index on that screen. The phone maps `sid` to revision and proposal hash, and the index to `candidate_id`, so approval binds to exactly what was drawn and no hashes cross BLE.
 - **`activity`.** Sent on knob rotation in a decision state, at most one every 10 s; the phone forwards it as `touch`.
 - **Large JSON.** JSON messages bigger than one packet are split with a sequence number. Exact JSON field names for the BLE messages: Carlos and Victor write them here in P1 and F2.
-- **Development stand-in.** Until the board arrives, the Raspberry Pi runs a fake BLE device with the same service (Carlos, in `phone/tools`). **Update 2026-10-13: superseded.** There is no Raspberry Pi stand-in. The board is in hand, and the phone tests against Victor's F2 firmware on the Waveshare ESP32-S3 e-Paper 3.97 board. `phone/tools/audio_reference/` keeps a Python reference encoder and golden test vectors, so the firmware can check its chunks byte for byte against what the phone expects.
+- **Testing without a stand-in.** There is no prototype or stand-in device (decided 2026-10-13): the phone tests directly against Victor's firmware on the Waveshare ESP32-S3 e-Paper 3.97 board. `phone/tools/audio_reference/` keeps a Python reference encoder and golden test vectors, so the firmware can check its chunks byte for byte against what the phone expects before the two ever connect.
 
 *State ownership.* The backend owns requests, revisions, proposals and execution status. The device enters a decision or outcome state (and starts the 1 s guard in REVIEW) only when the phone sends that screen. The device handles BOOT / RECOVERY, READY, WALLPAPER, PHONE / BLUETOOTH CHECK, PHONE DISCONNECTED, RECORDING, RECORD ADDITION, FINALIZE AUDIO and CRITICAL BATTERY locally. If the link stalls beyond the audio buffer, capture stops with FAILURE; audio is never silently dropped.
 
@@ -259,7 +259,7 @@ Each phase ends with a gate. The gate must pass before the next phase in that tr
   - Defense in depth: with the user lock removed on purpose, a second simultaneous approval fails on the execution key's primary key instead of executing twice. The database also enforces one open request per user (partial unique index) and one execution per request.
   - Real server (uvicorn, 1 worker, dev database, curl and httpx): a full flow (stream start, approve, cancel refused, status, second approve with a new `call_id` returning the same key, one execution row). Events arrive live, not buffered: `accepted` 0.01 s, `: ping` every 1.5 s (test setting), `slow` at 2.0 s, `result` at 5.0 s with a 5 s fake processor. Plain `\n` line endings, no `\r`.
   - Gate item "demo key in real mode is rejected": built as "a demo (`mock` scope) key can never reach real tools", since the API has no mode field; the key's scope decides. Tested with real tools switched on.
-  - Contract additions, Carlos to confirm: `429 rate_limited` (per key rate limit), and `expired` also covers a request that is cancelled or finished (no separate `cancelled` code).
+  - Contract additions, confirmed by Carlos on 2026-10-13 and written into section 2: `429 rate_limited` (per key rate limit), and `expired` also covers a request that is cancelled or finished (no separate `cancelled` code).
   - Local database: `cd pipeline && docker compose up -d` (Postgres 16, `127.0.0.1:5433` only), then `.venv/bin/python scripts/migrate.py` (and `--test`). Keys: `scripts/create_key.py --client NAME --scope real|mock`.
 
 #### Phase B2: Agent loop with mock tools (PLANNED)
@@ -324,7 +324,7 @@ Each phase ends with a gate. The gate must pass before the next phase in that tr
 
 #### Phase P1: Bluetooth link and audio from the device (PLANNED)
 - **Goal:** receive audio from the device over BLE and transcribe it.
-- **Steps:** implement the BLE service in section 2 with Victor (write the exact JSON field names there); pairing and reconnect handling, resyncing from `hello`; store each Audio chunk, check its CRC and send cumulative acknowledgments on Audio Ack (with `resend_from` for gaps), drop duplicates by identity, reassemble by sequence number, acknowledge the final marker, decode to 16 kHz mono PCM from each chunk's ADPCM state; feed Parakeet once the final marker confirms the segment is complete; map device IDs to API UUIDs and `sid` to revision and proposal hash; until the board arrives, test against the Raspberry Pi fake device in `phone/tools`. (Update 2026-10-13: no Raspberry Pi. Test against Victor's firmware on the Waveshare ESP32-S3 board, which is in hand. Until his F2 build streams audio, the phone side is proven with unit tests and the golden vectors in `phone/tools/audio_reference/`.)
+- **Steps:** implement the BLE service in section 2 with Victor (write the exact JSON field names there); pairing and reconnect handling, resyncing from `hello`; store each Audio chunk, check its CRC and send cumulative acknowledgments on Audio Ack (with `resend_from` for gaps), drop duplicates by identity, reassemble by sequence number, acknowledge the final marker, decode to 16 kHz mono PCM from each chunk's ADPCM state; feed Parakeet once the final marker confirms the segment is complete; map device IDs to API UUIDs and `sid` to revision and proposal hash; test against Victor's firmware on the Waveshare board. Until his F2 build streams audio, the phone side is proven with unit tests and the golden vectors in `phone/tools/audio_reference/`.
 - **Gate:** a spoken command on the real device comes out as correct text on the phone; BLE transfer time measured against the budget.
 - **Results (if DONE):**
   - Progress 2026-10-13 (not DONE, gate needs the real board with Victor's firmware): phone side built in `phone/lib/ble/` (chunk parser with CRC, IMA ADPCM decoder, segment assembler with cumulative acks and `resend_from`, ID and `sid` maps, JSON messages and fragments, BLE link over flutter_blue_plus, device session). **Tested on the Mac only** with a fake transport: 37 of 37 tests, including byte for byte agreement with a Python reference encoder (golden vectors for the firmware) and a real P0 clip through the full audio path with lost chunks. Deliberate breaks (nibble order, duplicate check, final ack) were each caught. Not yet run on the phone against a device. Field names and UUIDs are a draft for Victor in `phone/docs/ble_fields_draft.md`.
@@ -376,7 +376,7 @@ Each phase ends with a gate. The gate must pass before the next phase in that tr
 
 #### Phase F1: Hardware choice and e-ink screen (PLANNED)
 - **Goal:** the final board driving real screens.
-- **Steps:** get the final hardware from the materials inventory (Waveshare ESP32-S3 e-Paper 3.97, a flat 3.7 V LiPo that fits a body of roughly credit card size, side button, vibration motor with driver; see CLAUDE.md Environment); prototype on the temporary e-ink display until the board arrives (update 2026-10-13: the board is in hand); render each state's screen; partial refresh for the status bar, full refresh for final screens; wallpaper stored in flash and shown in WALLPAPER; report the text budget per orientation (800 x 480 panel) to the team.
+- **Steps:** build directly on the Waveshare ESP32-S3 e-Paper 3.97 board (in hand; no prototype stage); add the rest of the final hardware from the materials inventory (a flat 3.7 V LiPo that fits a body of roughly credit card size, side button, vibration motor with driver; see CLAUDE.md Environment); render each state's screen; partial refresh for the status bar, full refresh for final screens; wallpaper stored in flash and shown in WALLPAPER; report the text budget per orientation (800 x 480 panel) to the team.
 - **Gate:** every state's screen renders on the real panel; full and partial refresh times measured; text budget written into section 2.
 - **Results (if DONE):**
 
@@ -411,7 +411,8 @@ Target dates for I1 to I4: _to be set by the team_.
 ## 4. Open Risks
 
 - Text budget numbers wait on the font choice for the 800 x 480 panel (F1). The backend and the phone app keep them as configuration until then.
-- The final badge hardware (Waveshare board, flat LiPo, side buttons, vibration motors) is Planned or in the cart, not confirmed purchased (materials inventory, 2026-10-09). Shipping time comes out of the October 30 deadline: order early, and prototype on the temporary e-ink display until it arrives. (Update 2026-10-13: the Waveshare ESP32-S3 e-Paper 3.97 board is in hand. As far as these docs know, the flat LiPo, side buttons and vibration motors are still Planned or in the cart.)
+- The Waveshare board is in hand, but the flat LiPo, side buttons and vibration motors are still Planned or in the cart (materials inventory, 2026-10-09). Shipping time comes out of the October 30 deadline: order them now. With no prototype stage, nothing else can stand in while they ship.
+- The device firmware is the critical path (as of 2026-10-13, 17 days before the deadline): F0 has not started and the framework is not chosen. The P1 gate, I2, I3 and the demo video all need the board running the firmware. With no prototype stage there is no fallback device, so firmware slips move the whole schedule.
 - Bluetooth throughput for about 70 kbps of audio chunks (64 kbps ADPCM plus headers) plus JSON messages is unmeasured. Victor measures it early in F2; if it falls short, the fallback is record then send.
 - Prompt injection through tool results (a web page or email telling the model to act). Mitigation: tool output treated as data; the confirmation gate stays the backstop for every write.
 - Spoken email addresses transcribe badly. Mitigation: contacts first; dictated addresses always shown in full in REVIEW.
