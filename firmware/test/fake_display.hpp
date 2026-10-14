@@ -10,6 +10,8 @@ class FakeDisplay : public Display {
 public:
     // The badge: 800 x 480, all of it visible, 4 gray levels.
     static FakeDisplay badge() { return FakeDisplay(Caps{800, 480, 480, 4, true}); }
+    // The badge turned 90 degrees, which is a setting the phone sends.
+    static FakeDisplay badge_portrait() { return FakeDisplay(Caps{480, 800, 800, 2, true}); }
     // The development panel: same logical canvas, but only 272 units of it on glass.
     static FakeDisplay crowpanel() { return FakeDisplay(Caps{800, 480, 272, 2, true}); }
 
@@ -18,12 +20,12 @@ public:
     bool init() override { return true; }
     Caps caps() const override { return caps_; }
 
+    // Mirrors the real backends: Spleen 16x32 for screen_lines, 12x24 for the
+    // status bar. Kept in step by hand; the glyph data itself lives in the
+    // backends, below the display boundary.
     TextMetrics metrics(TextStyle style) const override {
-        switch (style) {
-            case TextStyle::Title: return TextMetrics{16, 32};
-            case TextStyle::Status: return TextMetrics{10, 20};
-            default: return TextMetrics{12, 24};
-        }
+        if (style == TextStyle::Status) return TextMetrics{12, 24};
+        return TextMetrics{16, 32};
     }
 
     void clear() override { ++clears; }

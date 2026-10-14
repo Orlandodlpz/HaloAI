@@ -234,3 +234,43 @@ HALO_TEST(present_callback_is_what_starts_the_confirm_guard) {
     CHECK(!sm.confirm_guard_open(900 + cfg.confirm_guard_ms - 1));
     CHECK(sm.confirm_guard_open(900 + cfg.confirm_guard_ms));
 }
+
+// ---------------------------------------------------------------- text budget
+
+// These are the numbers the backend wraps `screen_lines` to and the phone sizes
+// its preview against, published in BRIEFING section 2. They are a contract with
+// two other people, so they are asserted here rather than left to drift when
+// someone changes a margin or a font.
+HALO_TEST(text_budget_is_what_was_published_to_the_team) {
+    struct Case { FakeDisplay d; const char* what; int cols; int lines; };
+    {
+        FakeDisplay d = FakeDisplay::badge();
+        CHECK(chars_that_fit(d, TextStyle::Body, 800 - 2 * 16) == 48);
+    }
+    {
+        FakeDisplay d = FakeDisplay::badge_portrait();
+        CHECK(chars_that_fit(d, TextStyle::Body, 480 - 2 * 16) == 28);
+    }
+    // Lines are measured the way layout measures them: the visible window minus
+    // the status bar above and the hint below.
+    const char* const lines[40] = {};
+    ScreenModel m;
+    m.state = State::Review;
+    m.status_line = "x";
+    m.lines = lines;
+    m.line_count = 40;
+    DisplayList list;
+
+    FakeDisplay badge = FakeDisplay::badge();
+    CHECK(40 - layout_screen(badge, m, list) == 12);
+
+    FakeDisplay portrait = FakeDisplay::badge_portrait();
+    CHECK(40 - layout_screen(portrait, m, list) == 22);
+
+    // The development panel shows the contract minimum for REVIEW: the full
+    // address, the subject and two body lines, with the rest reached by rotating.
+    FakeDisplay crow = FakeDisplay::crowpanel();
+    const int crow_lines = 40 - layout_screen(crow, m, list);
+    CHECK(crow_lines == 5);
+    CHECK(crow_lines >= 4);
+}

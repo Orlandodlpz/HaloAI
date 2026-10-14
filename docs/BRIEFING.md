@@ -174,7 +174,20 @@ Two additions to the draft, both from the device side:
 
 *State ownership.* The backend owns requests, revisions, proposals and execution status. The device enters a decision or outcome state (and starts the 1 s guard in REVIEW) only when the phone sends that screen. The device handles BOOT / RECOVERY, READY, WALLPAPER, PHONE / BLUETOOTH CHECK, PHONE DISCONNECTED, RECORDING, RECORD ADDITION, FINALIZE AUDIO and CRITICAL BATTERY locally. If the link stalls beyond the audio buffer, capture stops with FAILURE; audio is never silently dropped.
 
-*Screen text.* Fixed-width font on the device. The backend sends pre-wrapped `screen_lines`, so what it checks is exactly what is shown. Panel: 800 x 480, 4 gray levels (Waveshare ESP32-S3 e-Paper 3.97). Budget per orientation (characters per line, lines per screen): _pending font choice (Victor, F1)_. The REVIEW screen must fit at least the full email address, the subject and 2 body lines; rotating scrolls the rest.
+*Screen text.* Fixed-width font on the device. The backend sends pre-wrapped `screen_lines`, so what it checks is exactly what is shown. Panel: 800 x 480 (Waveshare ESP32-S3 e-Paper 3.97), driven 1 bit black and white, not 4 gray, because 4 gray mode has no partial refresh.
+
+**Text budget, decided 2026-10-13 (Victor, F1).** Font is Spleen (BSD 2-Clause), 16 x 32 px for every `screen_lines` entry and 12 x 24 px for `status_line`. One size for all body text, so the budget is a single number; emphasis is drawn by inverting a line, not by changing size.
+
+| Orientation | Characters per line | Lines per screen | `status_line` |
+| --- | --- | --- | --- |
+| Landscape (800 x 480) | **48** | **12** | 64 characters |
+| Portrait (480 x 800) | **28** | **22** | 38 characters |
+
+Both numbers already account for the 16 px margins, the status bar and a one line hint at the bottom. The REVIEW requirement is met with room: a full address such as `To: victor.munozvera01@utrgv.edu` is 32 of the 48 columns, leaving the subject and up to 10 further lines.
+
+These are **computed from the real font, not measured on the badge**, which is not in hand. They are exact for wrapping purposes, since the font is fixed width and the arithmetic is not in doubt. What is still unverified is whether 16 x 32 is comfortable to read on the badge's panel: see the warning about pixel density in CLAUDE.md. If it turns out too small the replacement is 20 x 40, which would give 38 x 9 landscape, so **do not design any screen that only works at 48 columns.**
+
+On the development board the same screen shows 48 characters by 5 lines, which is exactly the contract minimum (full address, subject, two body lines) with the rest reached by rotating.
 
 **Device state machine** (V1, 9 October 2026, plus team additions)
 

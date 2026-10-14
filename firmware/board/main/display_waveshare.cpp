@@ -6,6 +6,8 @@
 // development panel's size or colour depth.
 #include "display_backends.hpp"
 #include "esp_log.h"
+#include "fonts/font_body.hpp"
+#include "fonts/font_status.hpp"
 #include "esp_timer.h"
 
 namespace halo::board {
@@ -33,13 +35,12 @@ public:
         return c;
     }
 
-    // PROVISIONAL until the font is chosen in F1 and measured on the real panel.
+    // Spleen, the real font now compiled in. screen_lines are all one size so the
+    // budget the backend publishes is a single number, which is what the contract
+    // needs. Emphasis comes from inversion, not from a second size.
     TextMetrics metrics(TextStyle style) const override {
-        switch (style) {
-            case TextStyle::Title: return TextMetrics{16, 32};
-            case TextStyle::Status: return TextMetrics{10, 20};
-            default: return TextMetrics{12, 24};
-        }
+        if (style == TextStyle::Status) return TextMetrics{font::kStatusWidth, font::kStatusHeight};
+        return TextMetrics{font::kBodyWidth, font::kBodyHeight};
     }
 
     void clear() override { ESP_LOGI(kTag, "[stub] clear"); }
