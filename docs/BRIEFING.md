@@ -149,12 +149,45 @@ BLE rules:
 - **`hello`.** Sent by the device on every connect: firmware version, current state, req ID and any pending execution key. The phone uses it to resync after a reconnect.
 - **Screen IDs.** Every Screen write carries a new `sid`. `approve`, `select` and `continue` echo the `sid` of the screen they acted on, and `select` sends the candidate's index on that screen. The phone maps `sid` to revision and proposal hash, and the index to `candidate_id`, so approval binds to exactly what was drawn and no hashes cross BLE.
 - **`activity`.** Sent on knob rotation in a decision state, at most one every 10 s; the phone forwards it as `touch`.
-- **Large JSON.** JSON messages bigger than one packet are split with a sequence number. Exact JSON field names for the BLE messages: Carlos and Victor write them here in P1 and F2.
+- **Large JSON.** JSON messages bigger than one packet are split with a sequence number. Every JSON write on Events, Screen and Settings carries a 2 byte prefix even when it fits in one packet, so there is one code path: byte 0 is a message ID, byte 1 has the last fragment flag in bit 7 and the fragment index in bits 0 to 6. Audio Ack is a single unprefixed write.
+
+*BLE JSON field names and UUIDs.* **Agreed 2026-10-13 (Carlos and Victor).** Carlos's draft in `phone/docs/ble_fields_draft.md` is adopted in full, with the two additions below. That file is now the detailed reference; this is the summary and the record of what changed.
+
+| | |
+| --- | --- |
+| Service | `78450000-6bb6-46e1-be3c-499c2950b6ac`, advertised, with characteristics `...0001` Audio (notify), `...0002` Audio Ack (write without response), `...0003` Events (notify), `...0004` Screen (write), `...0005` Wallpaper (write without response), `...0006` Settings (write) |
+| Codec | Header byte 0 is `1` for IMA ADPCM 16 kHz mono. Low nibble first. Sequence numbers start at 0 per segment; the final marker's `seq` equals the number of audio chunks |
+| Audio Ack | `{"req", "seg", "upto"}`, plus `resend_from` on a gap and `final: true` for the whole segment. `upto` is `-1` before chunk 0 arrives. Every 10 chunks or 200 ms, and at once on a new gap |
+| Final marker | Resent every 300 ms until acknowledged, bounded by the device's delivery deadline, then FAILURE |
+| Events | `hello`, `wake`, `record_start`, `record_end`, `approve`, `select`, `continue`, `cancel`, `dismiss`, `ack`, `status_query`, `activity`, `battery` |
+| `hello` | `fw`, `boot` (random per power up, so the phone can tell a reconnect from a restart), `state`, `req`, `sid`, `pending_key`, `battery`. Sent when the phone turns on Events notifications, not when the link comes up, because a notification sent before anyone is subscribed is lost |
+| Screen | `sid`, `screen` (V1 state name, upper case with underscores), `rev`, `screen_lines`, `status_line`, `candidates`, `expires_in_s`. A `status_line` on its own updates the partial refresh status bar |
+| Settings | `phone_ready`, `orientation`, `time`, `tz`. Absent fields keep their previous value |
+
+Two additions to the draft, both from the device side:
+
+- **`cancel` carries a `reason`:** `user`, `expired`, `transport` or `battery`. The device cancels locally in four situations: a double press, the 60 s expiry, link loss or buffer exhaustion, and entering CRITICAL BATTERY. Without the reason the phone and the backend cannot tell "the user changed their mind" from "the device gave up", which matters for the per-hop logs in I4 and for deciding whether anything should be retried.
+- **A `battery` event outside `hello`,** rate limited and sent on threshold crossings. CRITICAL BATTERY is a real state in the V1 machine, and without this event the phone sees only a device that went quiet.
+
+`phone_ready` in Settings is adopted as drafted and is not optional: PHONE / BLUETOOTH CHECK needs "phone linked **and** capture service ready", and only the link half was carried before. The device goes to RECORDING only when the link is up and the last `phone_ready` was true.
 - **Testing without a stand-in.** There is no prototype or stand-in device (decided 2026-10-13): the phone tests directly against Victor's firmware on the Waveshare ESP32-S3 e-Paper 3.97 board. `phone/tools/audio_reference/` keeps a Python reference encoder and golden test vectors, so the firmware can check its chunks byte for byte against what the phone expects before the two ever connect.
 
 *State ownership.* The backend owns requests, revisions, proposals and execution status. The device enters a decision or outcome state (and starts the 1 s guard in REVIEW) only when the phone sends that screen. The device handles BOOT / RECOVERY, READY, WALLPAPER, PHONE / BLUETOOTH CHECK, PHONE DISCONNECTED, RECORDING, RECORD ADDITION, FINALIZE AUDIO and CRITICAL BATTERY locally. If the link stalls beyond the audio buffer, capture stops with FAILURE; audio is never silently dropped.
 
-*Screen text.* Fixed-width font on the device. The backend sends pre-wrapped `screen_lines`, so what it checks is exactly what is shown. Panel: 800 x 480, 4 gray levels (Waveshare ESP32-S3 e-Paper 3.97). Budget per orientation (characters per line, lines per screen): _pending font choice (Victor, F1)_. The REVIEW screen must fit at least the full email address, the subject and 2 body lines; rotating scrolls the rest.
+*Screen text.* Fixed-width font on the device. The backend sends pre-wrapped `screen_lines`, so what it checks is exactly what is shown. Panel: 800 x 480 (Waveshare ESP32-S3 e-Paper 3.97), driven 1 bit black and white, not 4 gray, because 4 gray mode has no partial refresh.
+
+**Text budget, decided 2026-10-13 (Victor, F1).** Font is Spleen (BSD 2-Clause), 16 x 32 px for every `screen_lines` entry and 12 x 24 px for `status_line`. One size for all body text, so the budget is a single number; emphasis is drawn by inverting a line, not by changing size.
+
+| Orientation | Characters per line | Lines per screen | `status_line` |
+| --- | --- | --- | --- |
+| Landscape (800 x 480) | **48** | **12** | 64 characters |
+| Portrait (480 x 800) | **28** | **22** | 38 characters |
+
+Both numbers already account for the 16 px margins, the status bar and a one line hint at the bottom. The REVIEW requirement is met with room: a full address such as `To: victor.munozvera01@utrgv.edu` is 32 of the 48 columns, leaving the subject and up to 10 further lines.
+
+These are **computed from the real font, not measured on the badge**, which is not in hand. They are exact for wrapping purposes, since the font is fixed width and the arithmetic is not in doubt. What is still unverified is whether 16 x 32 is comfortable to read on the badge's panel: see the warning about pixel density in CLAUDE.md. If it turns out too small the replacement is 20 x 40, which would give 38 x 9 landscape, so **do not design any screen that only works at 48 columns.**
+
+On the development board the same screen shows 48 characters by 5 lines, which is exactly the contract minimum (full address, subject, two body lines) with the rest reached by rotating.
 
 **Device state machine** (V1, 9 October 2026, plus team additions)
 
@@ -362,23 +395,45 @@ Each phase ends with a gate. The gate must pass before the next phase in that tr
 
 ### 3.3 Device (Victor, `firmware/`, branch `Hardware`)
 
-#### Phase F0: Gestures and state machine (PLANNED)
+#### Phase F0: Gestures and state machine (DONE 2026-10-13, on the development board)
 - **Goal:** the V1 state machine in section 2 (with the team additions), implemented and tested.
 - **Steps:** propose Arduino core vs ESP-IDF with tradeoffs and get a decision; hardware-independent gesture detector and state machine (testable on a computer); thin ESP32 layer that reads the button and logs every gesture and transition over serial. No BLE, no screen yet. Timing constants in one config file.
 - **Gate:** tests cover every transition in the V1 table and the team additions, including the 1 s confirm guard in REVIEW, the 60 s expiry in decision states, any-input acknowledgment, WALLPAPER only from READY after more than 1 minute, and CRITICAL BATTERY from every state; serial log on real hardware shows correct single, double, hold and rotate detection.
-- **Results (if DONE):**
+- **Results (if DONE):** **gate met 2026-10-13, on the Elecrow CrowPanel development board, not on the badge.** Every number below is tagged with the board it came from.
+  - **Met, on a computer only (no board involved, no number here is a hardware measurement):** gesture detector and the 21 state V1 machine in `firmware/core/`, with no board header, no vendor library and no framework. 89 of 89 host tests, about 20 ms. Build and run: `cd firmware && cmake -S . -B build && cmake --build build -j8 && ./build/halo_tests`.
+  - Covered: every row of the V1 table and of the team additions table; the 1 s confirm guard; the 60 s expiry in all three decision states and its reset by knob activity; any input acknowledging PHONE DISCONNECTED, SUCCESS and FAILURE; WALLPAPER only from READY and only after more than a minute, with the wake input consumed; CRITICAL BATTERY entered from every state, leaving only above 5%, reconciling a pending execution first.
+  - Two safety properties are tested as sweeps rather than as examples: no combination of the 21 states and 27 event kinds produces an approve while the confirm guard is closed, and the battery override fires from every state. A companion test proves approve is still reachable, so the sweep cannot pass by doing nothing.
+  - The confirm guard starts on the display backend's present completion, not when the screen was queued, so the wait begins when the pixels are on the panel. On e-paper that is hundreds of ms later than the queue time. If the present callback never arrives the guard never opens, so the failure direction is "cannot approve", never "approves by accident".
+  - **On real hardware (CrowPanel, 2026-10-13).** ESP-IDF v5.5.5 app, 209 KB, 93% of the app partition free. Both display backends compile; the swap is one build flag. Serial log of real button presses shows all four gestures detected with the configured timings: a 190 ms press reported as a single press 400 ms after release (the double press window), a second press inside that window reported as a double press on its down edge with the release swallowed, a hold reported at exactly 500 ms after the button went down, and one clean event each for knob up, knob down and knob press. The pin map was confirmed live by a raw pin watcher: MENU IO2, EXIT IO1, knob up IO6, down IO4, press IO5.
+  - **The confirm guard was verified on hardware, not just in tests.** With the REVIEW screen presented at t=2070 ms, a single press at t=2367 ms (297 ms later) was swallowed by the guard, and a press at t=4027 ms approved. WALLPAPER was also seen firing from READY after its idle timeout and waking on a knob press.
+  - **Three bring up bugs that no host test could have caught**, all fixed: `pdMS_TO_TICKS(5)` is zero ticks at the default 100 Hz FreeRTOS tick so the poll loop never yielded and the task watchdog fired; the console VFS ignores `O_NONBLOCK` so `getchar()` blocked forever; and an unwired input with no pull floated and read as pressed, producing a phantom hold 600 ms after boot. Recorded as gotchas in CLAUDE.md.
+  - **Must be re-verified on the badge, and nothing here closes any of it:** the gesture constants (hold 500 ms, double press 400 ms, debounce 20 ms) were exercised with the CrowPanel's onboard MENU button, not the badge's side button, which is a different physical switch with different bounce. The external breadboard side button is wired into the firmware but has not been tested. All of F1 to F4 remains untouched, and the CrowPanel cannot speak to F2 at all because it has no microphone.
+  - **Interpretations made where the V1 table is silent, each needing team confirmation:** a result that arrives while the screen says PROCESSING SLOW routes to its decision state directly, instead of being stranded until a progress event; a release in PHONE / BLUETOOTH CHECK before the phone answers cancels, since nothing was captured or sent; a hold in WALLPAPER wakes and is consumed rather than starting a recording; a short press followed by a hold inside the double press window reads as a double press, so the ambiguous case cancels rather than approving; in PHONE DISCONNECTED a double press cancels while any other input acknowledges, which is the V1 row and the team addition applied together.
 
 #### Phase F1: Hardware choice and e-ink screen (PLANNED)
 - **Goal:** the final board driving real screens.
 - **Steps:** build directly on the Waveshare ESP32-S3 e-Paper 3.97 board (in hand; no prototype stage); add the rest of the final hardware from the materials inventory (a flat 3.7 V LiPo that fits a body of roughly credit card size, side button, vibration motor with driver; see CLAUDE.md Environment); render each state's screen; partial refresh for the status bar, full refresh for final screens; wallpaper stored in flash and shown in WALLPAPER; report the text budget per orientation (800 x 480 panel) to the team.
 - **Gate:** every state's screen renders on the real panel; full and partial refresh times measured; text budget written into section 2.
-- **Results (if DONE):**
+- **Results (if DONE):** **in progress, not DONE.** Done so far, 2026-10-13:
+  - Font and text budget decided and written into section 2 above: Spleen, 48 characters by 12 lines landscape.
+  - SSD1683 driver written for the development panel and **drawing on real glass**: framebuffer, rasteriser, both drivers of the dual chip panel, the 8 dead columns at the seam, and the IO7 power gate. Register sequence taken from Elecrow's factory source rather than reconstructed.
+  - **Refresh measured on the CrowPanel: full 1833 ms, partial 403 ms**, repeatable across runs, including the SPI transfer of all 27200 bytes. Partial therefore fits inside the 1.5 s slot in the latency budget with room; full does not, which is why the policy keeps final screens on partial.
+  - The whole chain runs on hardware: a state transition lays out a screen, rasterises it, pushes it to the panel, and the present callback starts the REVIEW confirm guard.
+  - Screens confirmed by eye on the panel: READY renders its status bar and divider correctly, so layout, the font, the rasteriser, the framebuffer, the dual chip addressing and partial refresh all work end to end on real glass.
+  - **Open bug, fix written but unverified:** a full refresh leaves the glass unchanged unless the previous image RAM (0x26 and 0xA6) is written as well as the new one. Partial refresh is unaffected, which is why most screens looked fine and only the full refresh test patterns came out blank. The driver now keeps a second framebuffer for what is on the glass and writes both RAMs every present. **The board was unplugged before this could be flashed, so it is reasoned from evidence rather than confirmed. First job next session: flash it and push a solid black pattern, which is the test that previously did nothing.**
+  - **Still open:** the badge's own panel and its refresh times, the wallpaper in flash, and whether every one of the 21 state screens renders correctly rather than just the ones walked so far. None of the numbers above transfer to the badge.
 
 #### Phase F2: Microphone and BLE audio (PLANNED)
 - **Goal:** recorded speech reaches the phone as streamed IMA ADPCM.
 - **Steps:** capture 16 kHz mono from the board's onboard microphone (ES8311 audio codec) while the button is held; encode IMA ADPCM; stream raw-byte Audio chunks in the section 2 layout (ADPCM state and CRC in every chunk) from a 2 s ring buffer during the hold and free them on cumulative Audio Ack, resending from `resend_from`; on release send the final marker and wait for its acknowledgment (FINALIZE AUDIO); stop capture with FAILURE if the link stalls beyond the buffer; send `hello` on every connect, `record_start` and `record_end` as JSON Events, and rate-limited `activity` on knob rotation; preferred MTU 256, fail the connection below 179, 2M PHY if supported; write the BLE JSON field names into section 2 with Carlos.
 - **Gate:** Carlos's phone transcribes audio recorded on the device correctly; transfer time measured against the budget.
-- **Results (if DONE):**
+- **Results (if DONE):** **not DONE, and it cannot be on this board: the CrowPanel has no microphone.** What is built and measured, 2026-10-13:
+  - BLE service up with all six characteristics and the agreed UUIDs, advertising, `hello` sent when Events notifications are turned on. The encoder, the 176 byte chunk layout, the cumulative acknowledgments and `resend_from` all work against a stand in central.
+  - **Bluetooth throughput is no longer an open question on the device side.** Streaming the 4.65 s clip embedded in flash: 233 chunks plus the final marker, 41 KB over the air in **2.07 s, about 158 kbit/s, 2.25 times realtime**, zero CRC failures. The budget needs roughly 70 kbit/s to keep up with speech, so there is better than 2x headroom and the "record then send" fallback is not needed.
+  - **Packet loss recovery works and is bit exact.** Dropping every 9th chunk on purpose, 25 losses in total: all 233 chunks recovered, zero CRC failures, still 1.23 times realtime, and the decoded audio is identical to the clean run at 31.2 dB SNR. The cost of go back N is visible: 423 notifications for 233 chunks, so about 81% more traffic for 11% loss. Selective resend would be cheaper if the link ever gets tight.
+  - ADPCM round trip quality: **31.2 dB SNR**, exact sample count.
+  - Negotiated MTU was 256 against macOS CoreBluetooth, above the 179 a chunk needs. **Android has not been tested and is a different stack**, so Carlos still has to confirm the MTU and the throughput on his phone.
+  - **Measured against a stand in central on a Mac (`firmware/tools/phone_sim.py`), not against Carlos's phone, and with a clip from flash rather than a microphone.** Both halves of the gate still need the real thing.
 
 #### Phase F3: Full device flow (PLANNED)
 - **Goal:** the device runs the real flow with the phone.
