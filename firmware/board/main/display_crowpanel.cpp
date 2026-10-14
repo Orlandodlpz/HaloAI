@@ -100,23 +100,37 @@ void panel_init() {
     wait_busy();
 }
 
-// Master driver: X increments, Y decrements from 271.
-void set_ram_master() {
+// Master driver: X increments, Y decrements from 271. Window and address counter
+// are set separately because a second RAM write needs the counter reset without
+// redefining the window.
+void set_ram_master_window() {
     cmd(0x11); dat(0x05);
     cmd(0x44); dat(0x00); dat(0x31);
     cmd(0x45); dat(0x0f); dat(0x01); dat(0x00); dat(0x00);
+}
+void set_ram_master_addr() {
     cmd(0x4e); dat(0x00);
     cmd(0x4f); dat(0x0f); dat(0x01);
 }
 
 // Slave driver: the same registers with bit 7 set, and X decrements, because the
 // second driver sits rotated with respect to the first.
-void set_ram_slave() {
+void set_ram_slave_window() {
     cmd(0x91); dat(0x04);
     cmd(0xc4); dat(0x31); dat(0x00);
     cmd(0xc5); dat(0x0f); dat(0x01); dat(0x00); dat(0x00);
+}
+void set_ram_slave_addr() {
     cmd(0xce); dat(0x31);
     cmd(0xcf); dat(0x0f); dat(0x01);
+}
+
+void update(uint8_t mode);  // defined below
+
+void fill_ram(uint8_t reg, uint8_t value) {
+    cmd(reg);
+    memset(g_scratch, value, kHalfScreen);
+    dat_block(g_scratch, kHalfScreen);
 }
 
 // The panel wants each driver's half column by column, while the framebuffer is
@@ -130,15 +144,43 @@ void transpose_half(int byte_col_start) {
 }
 
 void push_framebuffer() {
-    set_ram_master();
+    set_ram_master_window();
+    set_ram_master_addr();
     cmd(0x24);
     transpose_half(0);
     dat_block(g_scratch, kHalfScreen);
 
-    set_ram_slave();
+    set_ram_slave_window();
+    set_ram_slave_addr();
     cmd(0xa4);
     transpose_half(kHalfBytes);
     dat_block(g_scratch, kHalfScreen);
+}
+
+// Drive every pixel hard between the two extremes a few times.
+//
+// Both RAMs get written, not just the new image one: 0x26 and 0xA6 hold what the
+// controller believes is currently on the glass, and if that is stale (for
+// example the vendor's factory image, still there after we flashed over it) the
+// waveform computes the wrong transition and the old picture shows through. This
+// is the one place that needs it, so ordinary presents stay cheap.
+void clear_panel(int cycles) {
+    for (int i = 0; i < cycles; ++i) {
+        const uint8_t now = (i % 2) ? 0x00 : 0xFF;   // alternate black and white
+        const uint8_t was = static_cast<uint8_t>(~now);
+        set_ram_master_window();
+        set_ram_master_addr();
+        fill_ram(0x24, now);
+        set_ram_master_addr();
+        fill_ram(0x26, was);
+        set_ram_slave_window();
+        set_ram_slave_addr();
+        fill_ram(0xa4, now);
+        set_ram_slave_addr();
+        fill_ram(0xa6, was);
+        update(0xF7);
+    }
+    g_baseline_done = true;
 }
 
 void update(uint8_t mode) {
@@ -214,6 +256,9 @@ void draw_bitmap(const BitmapCmd& b) {
 
 class CrowPanelDisplay : public Display {
 public:
+    // Exposed so a key on the console can redo it when ghosting builds up.
+    void deep_clean(int cycles) { clear_panel(cycles); }
+
     bool init() override {
         // IO7 first and always: without it the panel never answers and every
         // later symptom points somewhere misleading.
@@ -250,6 +295,11 @@ public:
         memset(g_fb, 0xFF, sizeof(g_fb));  // all ones is white
         panel_init();
         g_ready = true;
+        // The board arrives with the vendor's demo on the glass and e-paper keeps
+        // it until something drives the pixels the other way. Clear once at boot.
+        const int64_t t0 = esp_timer_get_time();
+        clear_panel(2);
+        ESP_LOGI(kTag, "panel cleared in %lld ms", (esp_timer_get_time() - t0) / 1000);
         ESP_LOGI(kTag, "CrowPanel 5.79 ready: %dx%d visible, %u byte framebuffer",
                  kVisibleW, kHeight, static_cast<unsigned>(sizeof(g_fb)));
         return true;
@@ -336,5 +386,6 @@ CrowPanelDisplay g_display;
 
 Display& display() { return g_display; }
 const char* panel_name() { return "CrowPanel 5.79 (development board)"; }
+void deep_clean(int cycles) { g_display.deep_clean(cycles); }
 
 }  // namespace halo::board

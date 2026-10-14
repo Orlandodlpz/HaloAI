@@ -58,5 +58,6 @@ WaveshareDisplay g_display;
 
 Display& display() { return g_display; }
 const char* panel_name() { return "Waveshare 3.97 (STUB, board not in hand)"; }
+void deep_clean(int cycles) { ESP_LOGI(kTag, "[stub] deep clean %d cycles", cycles); }
 
 }  // namespace halo::board

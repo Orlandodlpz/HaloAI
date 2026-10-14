@@ -298,6 +298,11 @@ void handle_serial() {
                 ESP_LOGW(kTag, "no phone connected");
             }
             break;
+        case 'C':
+            ESP_LOGI(kTag, "deep cleaning the panel, a few seconds ...");
+            board::deep_clean(4);
+            ESP_LOGI(kTag, "panel cleaned");
+            break;
         case 'T': {
             // Orientation probe. I cannot see the panel, so this draws something
             // whose description settles both questions at once: if line 1 is at
