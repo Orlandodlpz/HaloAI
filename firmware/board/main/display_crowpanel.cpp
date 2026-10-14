@@ -85,7 +85,20 @@ void cmd(uint8_t c) {
 
 void dat(uint8_t d) { spi_send(&d, 1); }
 
-void dat_block(const uint8_t* p, size_t n) { spi_send(p, n); }
+// Send in bounded pieces. A single 13600 byte transaction silently delivered
+// only its first bytes, which showed on the panel as a small block where the
+// stream starts rather than a full screen. Chunking is cheap and removes the
+// dependency on DMA being engaged the way I assumed.
+constexpr size_t kSpiChunk = 64;
+
+void dat_block(const uint8_t* p, size_t n) {
+    while (n > 0) {
+        const size_t take = n < kSpiChunk ? n : kSpiChunk;
+        spi_send(p, take);
+        p += take;
+        n -= take;
+    }
+}
 
 // ---------------------------------------------------------------- init
 
@@ -98,11 +111,30 @@ void hw_reset() {
     wait_busy();
 }
 
+// Elecrow's EPD_FastMode1Init, not their minimal EPD_Init. The temperature load
+// is what pulls the waveform LUT out of OTP; without it an update runs to
+// completion and reports a time, but the pixels never move. That was the bug
+// behind a panel that accepted every byte and stayed blank.
 void panel_init() {
     hw_reset();
     wait_busy();
     cmd(0x12);  // SWRESET
     wait_busy();
+
+    cmd(0x18); dat(0x80);              // use the built in temperature sensor
+    cmd(0x22); dat(0xB1); cmd(0x20);   // load temperature, which loads the LUT
+    wait_busy();
+    cmd(0x1A); dat(0x64); dat(0x00);   // write the temperature register
+    cmd(0x22); dat(0x91); cmd(0x20);   // load it again
+    wait_busy();
+    cmd(0x3C); dat(0x03);              // border waveform
+    wait_busy();
+}
+
+void deep_sleep() {
+    cmd(0x10);
+    dat(0x01);
+    vTaskDelay(pdMS_TO_TICKS(5));
 }
 
 // Master driver: X increments, Y decrements from 271. Window and address counter
@@ -148,29 +180,43 @@ void transpose_half(const uint8_t* src, int byte_col_start) {
             g_scratch[out++] = src[row * kStride + byte_col_start + col];
 }
 
-// Both RAMs, every time. 0x24 and 0xA4 take the new image, 0x26 and 0xA6 take
-// what is currently on the glass. Writing only the new image leaves the
-// controller comparing against whatever happened to be there, which on a full
-// refresh means it decides nothing needs to move.
+// Both RAMs. 0x24 and 0xA4 take the new image; 0x26 and 0xA6 take what is
+// currently on the glass.
+//
+// 0xDC is a differential waveform: it only moves pixels that differ between the
+// two RAMs. A hardware reset leaves the previous image RAM at its power on
+// default, so pushing an all black image moved only the handful of pixels that
+// happened to differ, which showed up as a black box in the corner where the
+// stream begins. Telling the controller the truth about what is on the glass is
+// what makes the whole image appear.
+// Report what we are about to send, so a software bug in the transpose can be
+// told apart from the panel ignoring correct data. No eyes required.
+void log_scratch(const char* half) {
+    size_t zeros = 0, ones = 0;
+    for (size_t i = 0; i < kHalfScreen; ++i) {
+        if (g_scratch[i] == 0x00) ++zeros;
+        else if (g_scratch[i] == 0xFF) ++ones;
+    }
+    ESP_LOGI(kTag, "%s: %u bytes, %u black, %u white, %u other, first %02x %02x, last %02x %02x",
+             half, static_cast<unsigned>(kHalfScreen), static_cast<unsigned>(zeros),
+             static_cast<unsigned>(ones),
+             static_cast<unsigned>(kHalfScreen - zeros - ones), g_scratch[0], g_scratch[1],
+             g_scratch[kHalfScreen - 2], g_scratch[kHalfScreen - 1]);
+}
+
 void push_framebuffer() {
     set_ram_master_window();
     set_ram_master_addr();
     cmd(0x24);
     transpose_half(g_fb, 0);
-    dat_block(g_scratch, kHalfScreen);
-    set_ram_master_addr();
-    cmd(0x26);
-    transpose_half(g_fb_prev, 0);
+    log_scratch("master");
     dat_block(g_scratch, kHalfScreen);
 
     set_ram_slave_window();
     set_ram_slave_addr();
     cmd(0xa4);
     transpose_half(g_fb, kHalfBytes);
-    dat_block(g_scratch, kHalfScreen);
-    set_ram_slave_addr();
-    cmd(0xa6);
-    transpose_half(g_fb_prev, kHalfBytes);
+    log_scratch("slave ");
     dat_block(g_scratch, kHalfScreen);
 
     memcpy(g_fb_prev, g_fb, sizeof(g_fb_prev));
@@ -184,8 +230,15 @@ void push_framebuffer() {
 // waveform computes the wrong transition and the old picture shows through. This
 // is the one place that needs it, so ordinary presents stay cheap.
 void clear_panel(int cycles) {
+    if (cycles < 1) cycles = 1;
+    if (cycles % 2) ++cycles;  // always finish on white
     for (int i = 0; i < cycles; ++i) {
-        const uint8_t now = (i % 2) ? 0x00 : 0xFF;   // alternate black and white
+        // A reset before EVERY cycle, not just before the first. Without it only
+        // the first update took effect and the rest silently did nothing, so the
+        // glass ended white while the driver believed it had left it black. Every
+        // later differential refresh then compared against a lie and drew nothing.
+        hw_reset();
+        const uint8_t now = (i % 2) ? 0xFF : 0x00;   // black, then white, ending white
         const uint8_t was = static_cast<uint8_t>(~now);
         set_ram_master_window();
         set_ram_master_addr();
@@ -371,19 +424,23 @@ public:
         const int64_t t0 = esp_timer_get_time();
         // Partial refresh only works once a baseline has been laid down with a
         // full one, so the first present is always full whatever was asked for.
-        const bool force_full = !g_baseline_done;
+        // Images are always drawn with 0xDC. 0xF7 is a global clear waveform that
+        // displays from both RAMs, so driving it with only the new image RAM
+        // written makes the panel flash and settle on whatever the other RAM
+        // says, which is white. The vendor only ever uses 0xF7 straight after
+        // their clear routine, which writes both. Learned by watching the panel
+        // flash black and go back to white.
+        // Images are always drawn with 0xDC, the differential waveform. 0xF7 is a
+        // global clear that reads both RAMs and cannot render an arbitrary image
+        // on its own, so a clean refresh means clearing first and then drawing.
+        // That is also the only thing that removes the residue a run of partial
+        // refreshes leaves behind.
+        const bool want_clean = (intent == Refresh::Full) || !g_baseline_done;
+        if (want_clean) clear_panel(2);
         push_framebuffer();
-        uint8_t mode = 0xF7;  // full
-        const char* what = "full";
-        if (!force_full && intent == Refresh::Partial) {
-            mode = 0xDC;
-            what = "partial";
-        } else if (!force_full && intent == Refresh::Fast) {
-            mode = 0xC7;
-            what = "fast";
-        }
-        update(mode);
+        update(0xDC);
         g_baseline_done = true;
+        const char* what = want_clean ? "full (clear then draw)" : "partial";
         const int64_t ms = (esp_timer_get_time() - t0) / 1000;
         ESP_LOGI(kTag, "present %s: %lld ms", what, ms);
         if (on_presented)
@@ -408,8 +465,8 @@ public:
         }
         const int64_t t0 = esp_timer_get_time();
         push_framebuffer();
-        update(0xF7);
-        ESP_LOGI(kTag, "pattern %d pushed, full refresh %lld ms", which,
+        update(0xDC);
+        ESP_LOGI(kTag, "pattern %d pushed, %lld ms", which,
                  (esp_timer_get_time() - t0) / 1000);
     }
 
