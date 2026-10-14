@@ -35,14 +35,21 @@ class Settings(BaseSettings):
     # Locked decision: reasoning off by default, on only for multi-step requests.
     reasoning_enabled: bool = False
     llm_timeout_s: float = 20.0
+    # Which processor turns text into results: 'fake' (B1 keyword script) or 'nemotron' (B2 loop).
+    # Stays 'fake' on the server until the B2 eval passes.
+    processor: str = "fake"
+    max_model_turns: int = 4  # loop cap: after this many model calls the request is a failure
+    max_output_tokens: int = 400  # per model turn
 
-    # E-ink text budget (characters per line, lines per screen).
-    # PROVISIONAL: placeholder assuming a 24 x 40 px fixed-width cell on the
-    # 800 x 480 panel. Victor replaces these in F1. Never hardcode elsewhere.
-    screen_landscape_chars: int = 33
+    # E-ink text budget (characters per line, lines per screen), BRIEFING section 2.
+    # Decided 2026-10-13 (Victor, F1): Spleen 16 x 32 on the 800 x 480 badge, margins,
+    # status bar and hint line already subtracted. Computed, not yet checked for
+    # legibility on the badge; the fallback font (20 x 40) would be 38 x 9. Never hardcode elsewhere.
+    screen_landscape_chars: int = 48
     screen_landscape_lines: int = 12
-    screen_portrait_chars: int = 20
-    screen_portrait_lines: int = 20
+    screen_portrait_chars: int = 28
+    screen_portrait_lines: int = 22
+    max_answer_chars: int = 200  # plain text answers: a glance, not a page
 
     # Request lifecycle (BRIEFING section 2). PROVISIONAL values are starting
     # guesses until measured on the real hardware and network.

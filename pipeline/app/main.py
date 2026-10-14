@@ -20,7 +20,7 @@ from app.clock import SystemClock
 from app.config import Settings, get_settings
 from app.db import migrate, open_pool
 from app.lifecycle import ApiError, Lifecycle
-from app.processing import FakeExecutor, FakeProcessor
+from app.processing import FakeExecutor, FakeProcessor, Processor
 from app.streams import Streams
 from app.streams import router as stream_router
 from app.timing import hop, request_id_var
@@ -38,13 +38,24 @@ class Services:
     streams: Streams
 
 
+def make_processor(settings: Settings) -> Processor:
+    """'fake' (B1 keyword script) or 'nemotron' (B2 loop), from the PROCESSOR setting."""
+    if settings.processor == "nemotron":
+        from app.agent import NemotronProcessor
+        from app.llm import get_async_client
+        return NemotronProcessor(get_async_client(), settings)
+    if settings.processor == "fake":
+        return FakeProcessor()
+    raise ValueError(f"unknown PROCESSOR {settings.processor!r}; use 'fake' or 'nemotron'")
+
+
 async def build_services(settings: Settings) -> Services:
     url = settings.database_url.get_secret_value()
     await migrate(url)
     pool = await open_pool(url)
     clock = SystemClock()
-    # B1: fake processor and executors. B2 plugs in the Nemotron loop, B4 the Google tools.
-    lc = Lifecycle(pool, settings, clock, FakeProcessor(),
+    # Executors stay fake until B4 (real Google tools).
+    lc = Lifecycle(pool, settings, clock, make_processor(settings),
                    {"mock": FakeExecutor("mock"), "real": FakeExecutor("real")})
     user_id = await lc.ensure_user("demo")
     # The phone key from .env, so the existing key keeps working. More keys: scripts/create_key.py
