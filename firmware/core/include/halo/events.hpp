@@ -19,6 +19,7 @@ enum class EventKind : uint8_t {
     Release,    // the held button came up: close the voice segment
     RotateUp,
     RotateDown,
+    Wake,        // rotary knob pressed: wakes the screen, never approves
 
     // --- Local, from the device itself ---
     Tick,                   // time passed; drives every timeout

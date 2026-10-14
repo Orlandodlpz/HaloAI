@@ -1,0 +1,11 @@
+# Our own table, not the vendor's. The CrowPanel's factory layout was a 4 MB
+# huge_app scheme on an 8 MB chip, which wasted the upper half.
+#
+# nvs holds the pending execution key that BOOT / RECOVERY reconciles, so it is
+# sized generously and kept away from anything we rewrite often.
+# Name,   Type, SubType, Offset,   Size,    Flags
+nvs,      data, nvs,     0x9000,   0x6000,
+phy_init, data, phy,     0xf000,   0x1000,
+factory,  app,  factory, 0x10000,  0x300000,
+wallpaper,data, spiffs,  0x310000, 0x200000,
+coredump, data, coredump,0x510000, 0x10000,

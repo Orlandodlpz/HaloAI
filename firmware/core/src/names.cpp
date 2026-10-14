@@ -64,6 +64,7 @@ const char* name(EventKind k) {
         case EventKind::Release: return "release";
         case EventKind::RotateUp: return "rotate up";
         case EventKind::RotateDown: return "rotate down";
+        case EventKind::Wake: return "wake";
         case EventKind::Tick: return "tick";
         case EventKind::BatteryLevel: return "battery";
         case EventKind::StartupOk: return "startup ok";

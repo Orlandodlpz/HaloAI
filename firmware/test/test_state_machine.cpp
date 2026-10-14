@@ -77,6 +77,17 @@ HALO_TEST(wallpaper_press_wakes_and_consumes_the_input) {
     CHECK(t.note != nullptr);
 }
 
+HALO_TEST(wallpaper_knob_press_wakes_and_can_never_approve) {
+    // The rotary knob press is a wake input, not one of the five gestures. It has
+    // its own event kind so no code path can confuse it with the single press
+    // that approves. The approve sweep covers it automatically.
+    Rig r;
+    drive_to(r, State::Wallpaper);
+    auto t = r.send(E::Wake);
+    CHECK_STATE(r.sm, State::Ready);
+    CHECK(!t.actions.has(Action::SendApprove));
+}
+
 HALO_TEST(wallpaper_rotate_wakes) {
     Rig r;
     drive_to(r, State::Wallpaper);

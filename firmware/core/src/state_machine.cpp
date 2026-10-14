@@ -12,6 +12,7 @@ bool is_input(EventKind k) {
         case EventKind::Release:
         case EventKind::RotateUp:
         case EventKind::RotateDown:
+        case EventKind::Wake:
             return true;
         default:
             return false;
