@@ -45,6 +45,11 @@ constexpr size_t kHalfScreen = kHalfBytes * kHeight;  // 13600 per driver
 
 // 1 = white, 0 = black, so a cleared screen is all ones.
 uint8_t g_fb[kFbBytes];
+// What the controller believes is on the glass. The full refresh waveform reads
+// it, and a present that writes only the new image RAM does nothing at all: that
+// is why a partial refresh showed a screen and a full one of the same screen did
+// not. Measured on the panel, 2026-10-13.
+uint8_t g_fb_prev[kFbBytes];
 uint8_t g_scratch[kHalfScreen];
 spi_device_handle_t g_spi = nullptr;
 bool g_ready = false;
@@ -136,25 +141,39 @@ void fill_ram(uint8_t reg, uint8_t value) {
 // The panel wants each driver's half column by column, while the framebuffer is
 // row major. Transpose into the scratch buffer so the whole half goes out in one
 // SPI transaction instead of 13600 of them.
-void transpose_half(int byte_col_start) {
+void transpose_half(const uint8_t* src, int byte_col_start) {
     size_t out = 0;
     for (int col = 0; col < kHalfBytes; ++col)
         for (int row = 0; row < kHeight; ++row)
-            g_scratch[out++] = g_fb[row * kStride + byte_col_start + col];
+            g_scratch[out++] = src[row * kStride + byte_col_start + col];
 }
 
+// Both RAMs, every time. 0x24 and 0xA4 take the new image, 0x26 and 0xA6 take
+// what is currently on the glass. Writing only the new image leaves the
+// controller comparing against whatever happened to be there, which on a full
+// refresh means it decides nothing needs to move.
 void push_framebuffer() {
     set_ram_master_window();
     set_ram_master_addr();
     cmd(0x24);
-    transpose_half(0);
+    transpose_half(g_fb, 0);
+    dat_block(g_scratch, kHalfScreen);
+    set_ram_master_addr();
+    cmd(0x26);
+    transpose_half(g_fb_prev, 0);
     dat_block(g_scratch, kHalfScreen);
 
     set_ram_slave_window();
     set_ram_slave_addr();
     cmd(0xa4);
-    transpose_half(kHalfBytes);
+    transpose_half(g_fb, kHalfBytes);
     dat_block(g_scratch, kHalfScreen);
+    set_ram_slave_addr();
+    cmd(0xa6);
+    transpose_half(g_fb_prev, kHalfBytes);
+    dat_block(g_scratch, kHalfScreen);
+
+    memcpy(g_fb_prev, g_fb, sizeof(g_fb_prev));
 }
 
 // Drive every pixel hard between the two extremes a few times.
@@ -179,6 +198,7 @@ void clear_panel(int cycles) {
         set_ram_slave_addr();
         fill_ram(0xa6, was);
         update(0xF7);
+        memset(g_fb_prev, now, sizeof(g_fb_prev));
     }
     g_baseline_done = true;
 }
@@ -293,6 +313,7 @@ public:
         ESP_ERROR_CHECK(spi_bus_add_device(SPI2_HOST, &dev, &g_spi));
 
         memset(g_fb, 0xFF, sizeof(g_fb));  // all ones is white
+        memset(g_fb_prev, 0xFF, sizeof(g_fb_prev));
         panel_init();
         g_ready = true;
         // The board arrives with the vendor's demo on the glass and e-paper keeps
@@ -369,6 +390,29 @@ public:
             on_presented(ctx, static_cast<uint32_t>(esp_timer_get_time() / 1000));
     }
 
+    void fill_pattern(int which) {
+        memset(g_fb, 0xFF, sizeof(g_fb));
+        switch (which) {
+            case 0: memset(g_fb, 0x00, sizeof(g_fb)); break;
+            case 1: break;  // left white
+            case 2: for (int y = 0; y < kHeight; ++y)
+                        for (int x = 0; x < kSeamAt; ++x) set_pixel(x, y, true);
+                    break;
+            case 3: for (int y = 0; y < kHeight; ++y)
+                        for (int x = kSeamAt; x < kVisibleW; ++x) set_pixel(x, y, true);
+                    break;
+            case 4: for (int y = 0; y < kHeight / 2; ++y)
+                        for (int x = 0; x < kVisibleW; ++x) set_pixel(x, y, true);
+                    break;
+            default: fill_rect(0, 0, 120, 120, true); break;
+        }
+        const int64_t t0 = esp_timer_get_time();
+        push_framebuffer();
+        update(0xF7);
+        ESP_LOGI(kTag, "pattern %d pushed, full refresh %lld ms", which,
+                 (esp_timer_get_time() - t0) / 1000);
+    }
+
     void sleep() override {
         cmd(0x10);
         dat(0x01);
@@ -387,5 +431,6 @@ CrowPanelDisplay g_display;
 Display& display() { return g_display; }
 const char* panel_name() { return "CrowPanel 5.79 (development board)"; }
 void deep_clean(int cycles) { g_display.deep_clean(cycles); }
+void debug_pattern(int which) { g_display.fill_pattern(which); }
 
 }  // namespace halo::board

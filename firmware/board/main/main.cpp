@@ -298,6 +298,14 @@ void handle_serial() {
                 ESP_LOGW(kTag, "no phone connected");
             }
             break;
+        // Framebuffer patterns, bypassing the rasteriser. 1 and 2 are taken by
+        // the gesture injection, so these are letters.
+        case 'q': board::debug_pattern(0); break;  // all black
+        case 'w': board::debug_pattern(1); break;  // all white
+        case 'e': board::debug_pattern(2); break;  // left half black
+        case 'd': board::debug_pattern(3); break;  // right half black
+        case 'z': board::debug_pattern(4); break;  // top half black
+        case 'v': board::debug_pattern(5); break;  // square at the origin
         case 'C':
             ESP_LOGI(kTag, "deep cleaning the panel, a few seconds ...");
             board::deep_clean(4);
