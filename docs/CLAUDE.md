@@ -1,7 +1,7 @@
 # CLAUDE.md: HaloAI
 
 Project context and conventions for the whole team. Read this first in every session, whatever part of the project you work on.
-**Last Updated:** 2026-10-13
+**Last Updated:** 2026-10-14
 
 ## Interaction Mode: Always On
 
@@ -35,7 +35,7 @@ Entry: Nebius x NVIDIA Global AI Hackathon, **Personal AI track**. Submission de
 - Nothing irreversible happens without approval on the device: only a single press in REVIEW dispatches sending email or creating, moving or deleting events. Read-only results never execute.
 - Raw audio never leaves the phone. The cloud receives text only.
 - Bluetooth Low Energy only between device and phone. Never Bluetooth Classic: iPhones block it for uncertified accessories, which would rule out iOS later.
-- The repo is public under the MIT license. No secrets in git (API keys, OAuth secrets, tokens, Wi-Fi passwords). Use `.env` files that are gitignored, with `.env.example` listing names only.
+- The repo is private until submission and must be made public (MIT license) before October 30; the hackathon requires a public repo. Write everything as if it were already public: no secrets in git (API keys, OAuth secrets, tokens, Wi-Fi passwords). Use `.env` files that are gitignored, with `.env.example` listing names only.
 
 **Backend**
 - Gmail is never contacted before approval; drafts live on our server only.
@@ -75,6 +75,8 @@ Entry: Nebius x NVIDIA Global AI Hackathon, **Personal AI track**. Submission de
 - Local database: Postgres 16 in Docker (`cd pipeline && docker compose up -d`), bound to `127.0.0.1:5433` only, databases `haloai` and `haloai_test`. Password and URLs in `pipeline/.env` (`HALOAI_DB_PASSWORD`, `DATABASE_URL`, `TEST_DATABASE_URL`). Migrations: `.venv/bin/python scripts/migrate.py` (add `--test` for the test database). Verify: `docker compose exec -T db psql -U haloai -d haloai -c '\dt'`.
 - Run the server with one worker only: `.venv/bin/uvicorn app.main:app --workers 1`. Retries, stream reattach and rate limits live in process memory.
 - API keys: stored as SHA-256 hashes. `scripts/create_key.py --client NAME --scope real|mock` prints a new key once. The `.env` `BACKEND_API_KEY` is registered as the `phone` key (scope `real`) at startup.
+- Server (live since 2026-10-14, B1 mock mode): `https://api.haloai-cov.io` on Oracle Always Free ARM in US Midwest (Chicago), Ubuntu 24.04 aarch64, 4 OCPU, 12 GB, 50 GB disk. Domain `haloai-cov.io` registered at Vercel (DNS there, `api` A record to the server; expires 2027-10-14, auto-renew off). Caddy in front (Let's Encrypt, renewed automatically), systemd unit `haloai` (1 worker on 127.0.0.1:8000), native Postgres 16 on 127.0.0.1 only. Code in `/opt/haloai/app/pipeline`, venv in `/opt/haloai/venv`, secrets in `/opt/haloai/env/haloai.env` (readable only by the `haloai` user; its `NEBIUS_API_KEY` is a placeholder until B2 is deployed, then a separate key from the laptop's). SSH: `ssh -i ~/.ssh/haloai_oracle ubuntu@api.haloai-cov.io` (key on Orlando's Mac only).
+- Deploy: `pipeline/scripts/deploy.sh` deploys **origin/main only** (git archive over SSH, so the server needs no GitHub access while the repo is private), runs migrations, installs `pipeline/deploy/haloai.service` and `pipeline/deploy/Caddyfile`, restarts and checks `/health`. Verify from anywhere: `curl -s -o /dev/null -w '%{http_code}' https://api.haloai-cov.io/health` prints `401` (alive, key required). Logs: `journalctl -u haloai -f` on the server.
 - External services: Google Calendar, Gmail (send), Google People ("other contacts"), Tavily web search. One dedicated demo Google account; the OAuth app stays in Google's testing mode.
 - Credits: $25 Token Factory per member from the hackathon code, plus $25 Token Factory and $25 Tavily from the Nebius Builders Program. Nebius AI Cloud servers are not covered, which is why hosting is on Oracle.
 
@@ -168,7 +170,7 @@ Decided 2026-10-06, revised for V1 and signed off by Orlando, Carlos and Victor 
 
 ## Current Status
 
-**Backend (Orlando):** Phase B0 DONE (2026-10-07). Phase B1 DONE (2026-10-12): V1 API, request lifecycle and streams built and tested against mocks on Postgres, 59 of 59 tests (details in BRIEFING B1). Next: B2 (Nemotron loop with mock tools). Text budget in config is a PROVISIONAL placeholder until Victor's F1 numbers.
+**Backend (Orlando):** Phase B0 DONE (2026-10-07). Phase B1 DONE (2026-10-12): V1 API, request lifecycle and streams built and tested against mocks on Postgres, 59 of 59 tests (details in BRIEFING B1). Server live in mock mode at `https://api.haloai-cov.io` since 2026-10-14, so P2 can start against it. Next: B2 (Nemotron loop with mock tools). Text budget in config is a PROVISIONAL placeholder until Victor's F1 numbers.
 **Phone (Carlos), as of 2026-10-13:** Phase P0 DONE 2026-10-07 (Parakeet v3 offline on the phone, 0.19 to 0.32 s per clip, 12.7% word error rate on 5 clips; details in BRIEFING P0). Phase P1 in progress: phone side built and tested on the Mac with a fake transport and on the phone with a loopback of the P0 clips; not yet run against the board. Test only extra: a hold to talk button on the phone mic for live speech to text testing. Waiting on: Victor's answer on the BLE field names draft (`phone/docs/ble_fields_draft.md`) and his F2 firmware streaming audio, for the P1 gate; text budget numbers (for the wallpaper size and screen preview).
 
 Phone gotchas:
@@ -203,6 +205,10 @@ Phone gotchas:
 - Backend: Postgres `jsonb` reorders object keys, so a replayed answer is equal JSON but not byte identical. Fine for JSON parsers; use `json` if byte identity ever matters.
 - Shell: zsh does not split unquoted variables into words like bash does (`cmd $ARGS` passes one argument). Pass arguments separately or use `${=ARGS}`.
 - Backend: with reasoning on, Nemotron returns its thinking in a `reasoning` field on the message (not `reasoning_content`), and `usage` has no reasoning token breakdown. On a trivial prompt reasoning took 96 output tokens versus 4 with it off.
+- Backend: Oracle Always Free ARM often fails with "Out of capacity" in every availability domain. Retrying at night worked (2026-10-14). Pay As You Go removes the problem.
+- Backend: Oracle may stop Always Free instances it considers idle (low CPU, network and memory over 7 days). Our backend is mostly idle, so check the server before the video and before judging; Pay As You Go accounts are exempt.
+- Backend: Oracle's Ubuntu images reject every incoming port except 22 in iptables, even after the console security list allows it. Insert ACCEPT rules for 80 and 443 before the REJECT rule and save them with `netfilter-persistent save`.
+- Shell: `ssh` reads standard input, so `VAR=$(ssh host cmd) prog <<EOF` lets ssh swallow the heredoc and `prog` gets nothing. Use `ssh -n` inside command substitutions.
 - Device: drive the vibration motor through a transistor, never straight from a GPIO pin, with a flyback diode across the motor. The transistor kit on the materials list is bipolar (TO-92 NPN/PNP), not MOSFET; pick a suitable driver transistor from it.
 - Device: before plugging a LiPo into the board's MX1.25 header, check the connector type and the red/black polarity with the multimeter. 1.25 mm plugs from different vendors look alike but do not share a polarity standard.
 - Device: use data capable USB-C cables. Charge only cables power the board but cannot flash it.
