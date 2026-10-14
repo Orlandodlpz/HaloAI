@@ -4,6 +4,12 @@
 if(NOT DEFINED HALO_PANEL)
     set(HALO_PANEL "crowpanel")
 endif()
+# Bench build: lets serial walk the state machine with no buttons and no radio.
+# Off by default so it can never ship. Turn on with -DHALO_BENCH_INJECT=1
+if(HALO_BENCH_INJECT)
+    add_compile_definitions(HALO_BENCH_INJECT)
+endif()
+
 idf_component_register(
     SRCS "main.cpp" "display_${HALO_PANEL}.cpp"
     INCLUDE_DIRS "."

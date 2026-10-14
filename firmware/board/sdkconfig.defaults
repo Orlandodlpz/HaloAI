@@ -17,3 +17,9 @@ CONFIG_ESP_CONSOLE_UART_BAUDRATE=115200
 
 CONFIG_COMPILER_CXX_EXCEPTIONS=n
 CONFIG_COMPILER_OPTIMIZATION_SIZE=y
+
+# 1 ms tick. At the 100 Hz default, pdMS_TO_TICKS(5) rounds to ZERO ticks, so the
+# poll loop's vTaskDelay became a no-op, the idle task never ran and the task
+# watchdog fired. 1 kHz also gives the gesture timings 1 ms resolution, which
+# matters because F0 has to measure hold and double press on real hardware.
+CONFIG_FREERTOS_HZ=1000

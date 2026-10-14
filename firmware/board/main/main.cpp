@@ -9,6 +9,7 @@
 #include "board_pins.hpp"
 #include "display_backends.hpp"
 #include "driver/gpio.h"
+#include "driver/uart.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -31,12 +32,15 @@ RefreshPolicy g_refresh;
 
 uint32_t now_ms() { return static_cast<uint32_t>(esp_timer_get_time() / 1000); }
 
-// Active low with external 4.7 K pull ups on this board, so no internal pull.
-void configure_input(gpio_num_t pin) {
+// All buttons are active low. The onboard ones have external 4.7 K pull ups on
+// the board, so they need no internal pull. Anything on the breadboard header
+// does: without one the pin floats, reads as pressed at random, and the device
+// starts recording on its own. That is exactly what happened on first boot.
+void configure_input(gpio_num_t pin, bool internal_pullup) {
     gpio_config_t cfg = {};
     cfg.pin_bit_mask = 1ULL << pin;
     cfg.mode = GPIO_MODE_INPUT;
-    cfg.pull_up_en = GPIO_PULLUP_DISABLE;
+    cfg.pull_up_en = internal_pullup ? GPIO_PULLUP_ENABLE : GPIO_PULLUP_DISABLE;
     cfg.pull_down_en = GPIO_PULLDOWN_DISABLE;
     cfg.intr_type = GPIO_INTR_DISABLE;
     ESP_ERROR_CHECK(gpio_config(&cfg));
@@ -87,10 +91,14 @@ void feed(const Event& e) {
 
 // Everything the phone will eventually send, injected by a keystroke so the whole
 // state machine can be walked on the bench with no radio.
+// Read the console through the UART driver rather than getchar(). The default
+// console VFS ignores O_NONBLOCK, so getchar() blocks forever, the poll loop
+// never reaches its vTaskDelay, and the task watchdog kills the idle task. Found
+// on real hardware; it cannot happen in the host tests because there is no loop.
 void handle_serial() {
-    const int ch = getchar();
-    if (ch == EOF) return;
-    switch (ch) {
+    uint8_t byte = 0;
+    if (uart_read_bytes(UART_NUM_0, &byte, 1, 0) != 1) return;
+    switch (byte) {
         case 'p': feed(Event::at(EventKind::PhoneReady, now_ms())); break;
         case 'P': feed(Event::at(EventKind::PhoneAbsent, now_ms())); break;
         case 'a': feed(Event::at(EventKind::AudioComplete, now_ms())); break;
@@ -104,6 +112,18 @@ void handle_serial() {
         case 'x': feed(Event::at(EventKind::TransportFailure, now_ms())); break;
         case 'b': feed(Event::at(EventKind::BatteryLevel, now_ms(), 4)); break;   // critical
         case 'B': feed(Event::at(EventKind::BatteryLevel, now_ms(), 80)); break;  // recovered
+        // Gesture injection, bench only. These bypass the gesture detector, NOT the
+        // state machine: the 1 s confirm guard and every other rule still apply,
+        // because they live in the state machine and nothing here can reach past
+        // it. Compiled out unless HALO_BENCH_INJECT is defined, so it cannot ship.
+#ifdef HALO_BENCH_INJECT
+        case 'h': feed(Event::at(EventKind::HoldStart, now_ms())); break;
+        case 'R': feed(Event::at(EventKind::Release, now_ms())); break;
+        case '1': feed(Event::at(EventKind::SinglePress, now_ms())); break;
+        case '2': feed(Event::at(EventKind::DoublePress, now_ms())); break;
+        case '<': feed(Event::at(EventKind::RotateDown, now_ms(), -1)); break;
+        case '>': feed(Event::at(EventKind::RotateUp, now_ms(), 1)); break;
+#endif
         case '?':
             ESP_LOGI(kTag, "p/P phone ready|absent, a audio acked, r/c/s/o results, "
                            "k/f/u execution, x transport fail, b/B battery");
@@ -124,10 +144,18 @@ extern "C" void app_main() {
     ESP_LOGI(kTag, "HaloAI device, F0 build. Panel: %s", board::panel_name());
     ESP_LOGI(kTag, "hold MENU to record, press to confirm, double press to cancel, knob to scroll");
     ESP_LOGI(kTag, "press ? in the monitor for the keys that inject phone events");
+#ifdef HALO_BENCH_INJECT
+    ESP_LOGW(kTag, "BENCH BUILD: gestures can be injected over serial (h R 1 2 < >). "
+                   "The confirm guard still applies. Do not ship this build.");
+#endif
 
     for (gpio_num_t p : {board::kBtnMenu, board::kBtnExit, board::kKnobUp, board::kKnobDown,
-                         board::kKnobPress, board::kBtnSide})
-        configure_input(p);
+                         board::kKnobPress})
+        configure_input(p, false);          // onboard: external 4.7 K pull ups
+    configure_input(board::kBtnSide, true);  // breadboard: needs the internal one
+
+    // Non blocking console reads, see handle_serial().
+    ESP_ERROR_CHECK(uart_driver_install(UART_NUM_0, 256, 0, 0, nullptr, 0));
 
     board::display().init();
 
@@ -177,6 +205,9 @@ extern "C" void app_main() {
 
         g_machine.tick(t);
         handle_serial();
-        vTaskDelay(pdMS_TO_TICKS(kPollMs));
+        // Never let this round to zero ticks: that starves the idle task and
+        // trips the watchdog. See CONFIG_FREERTOS_HZ in sdkconfig.defaults.
+        constexpr TickType_t kDelay = pdMS_TO_TICKS(kPollMs) > 0 ? pdMS_TO_TICKS(kPollMs) : 1;
+        vTaskDelay(kDelay);
     }
 }
