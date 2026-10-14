@@ -65,7 +65,9 @@ def create_app(services: Services | None = None) -> FastAPI:
         finally:
             await app.state.services.pool.close()
 
-    app = FastAPI(title="HaloAI pipeline", version="0.2.0", lifespan=lifespan)
+    # No built-in docs pages: they answer without an API key, and every API request needs one.
+    app = FastAPI(title="HaloAI pipeline", version="0.2.0", lifespan=lifespan,
+                  docs_url=None, redoc_url=None, openapi_url=None)
     if services is not None:
         app.state.services = services
 
