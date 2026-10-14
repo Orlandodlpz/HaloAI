@@ -61,6 +61,10 @@ void main() {
       expect((e.type, e.sid, e.index), ('select', 7, 1));
       final h = DeviceEvent.parse('{"type":"hello","fw":"0.1","boot":42,"state":"READY","req":3,"sid":null,"pending_key":null,"battery":80}');
       expect((h.boot, h.req, h.pendingKey), (42, 3, null));
+      final b = DeviceEvent.parse('{"type":"battery","battery":9}');
+      expect((b.type, b.battery), ('battery', 9));
+      final c = DeviceEvent.parse('{"type":"cancel","req":3,"sid":null,"reason":"expired"}');
+      expect((c.req, c.reason), (3, 'expired'));
       expect(() => DeviceEvent.parse('{"type":"explode"}'), throwsFormatException);
       expect(() => DeviceEvent.parse('{"sid":1}'), throwsFormatException);
     });

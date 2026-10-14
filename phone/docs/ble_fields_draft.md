@@ -2,6 +2,8 @@
 
 **Status:** DRAFT 2026-10-13 (Carlos). Not a contract yet. After Victor agrees (or changes it), the agreed version is appended to BRIEFING section 2 and this file is marked as moved.
 
+**Update 2026-10-14:** agreed by Carlos and Victor on 2026-10-13 and adopted in full in BRIEFING section 2, with two additions from Victor (see the note under the Events table). BRIEFING section 2 names this file as the detailed reference, so it stays here.
+
 Everything here fills in what section 2 leaves open: UUIDs, the exact JSON for every message, and a few rules the byte layout needs. It does not change anything section 2 already decided.
 
 ## Service and characteristics
@@ -60,6 +62,13 @@ Every event has `"type"`. IDs in events are the same device local counters as in
 | `ack` | `sid` | Any input on PHONE DISCONNECTED, SUCCESS, FAILURE; single press or timeout on READ-ONLY RESULT |
 | `status_query` | `pending_key` | Single press in EXECUTION UNCERTAIN, or after BOOT / RECOVERY |
 | `activity` | `sid` | Knob rotation in a decision state, at most one every 10 s |
+
+**Added 2026-10-13 (Victor, adopted in BRIEFING section 2):**
+
+| type | Fields | When |
+| --- | --- | --- |
+| `cancel` | adds `reason`: `user`, `expired`, `transport` or `battery` | Double press (`user`), the 60 s expiry (`expired`), link loss or buffer exhaustion (`transport`), entering CRITICAL BATTERY (`battery`) |
+| `battery` | `battery` (percent) | Rate limited, on threshold crossings, so CRITICAL BATTERY (10% or less) does not look like a device that went quiet. Field name proposed by Carlos 2026-10-14 to match `hello`; Victor to confirm |
 
 `boot` lets the phone tell a reconnect (same `boot`) from a device restart (new `boot`), because the req and seg counters start over after a restart.
 

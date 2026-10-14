@@ -18,7 +18,8 @@ class HaloUuids {
 
 /// One event from the device. [type] is one of `hello`, `wake`,
 /// `record_start`, `record_end`, `approve`, `select`, `continue`, `cancel`,
-/// `dismiss`, `ack`, `status_query`, `activity`.
+/// `dismiss`, `ack`, `status_query`, `activity`, `battery` (added
+/// 2026-10-13 with `reason` on `cancel`, BRIEFING section 2).
 class DeviceEvent {
   DeviceEvent(this.type, this.fields);
   final String type;
@@ -26,7 +27,7 @@ class DeviceEvent {
 
   static const types = {
     'hello', 'wake', 'record_start', 'record_end', 'approve', 'select', 'continue', //
-    'cancel', 'dismiss', 'ack', 'status_query', 'activity',
+    'cancel', 'dismiss', 'ack', 'status_query', 'activity', 'battery',
   };
 
   static DeviceEvent parse(String json) {
@@ -43,6 +44,12 @@ class DeviceEvent {
   int? get index => fields['index'] as int?;
   int? get boot => fields['boot'] as int?;
   String? get pendingKey => fields['pending_key'] as String?;
+
+  /// Battery percent, on `hello` and `battery` events.
+  int? get battery => fields['battery'] as int?;
+
+  /// Why the device cancelled: `user`, `expired`, `transport` or `battery`.
+  String? get reason => fields['reason'] as String?;
 
   @override
   String toString() => jsonEncode(fields);
