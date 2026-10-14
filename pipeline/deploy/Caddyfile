@@ -1,0 +1,13 @@
+# Caddy in front of the HaloAI backend. Installed by scripts/deploy.sh to /etc/caddy/Caddyfile.
+# Caddy gets and renews the HTTPS certificate for this name by itself (needs ports 80 and 443 open).
+api.haloai-cov.io {
+	# FastAPI's built-in docs answer without an API key; the hard constraint says every
+	# API request needs one. Blocked here, before the request reaches the backend.
+	@docs path /docs /docs/* /redoc /redoc/* /openapi.json
+	respond @docs 404
+
+	reverse_proxy 127.0.0.1:8000 {
+		# Send Server-Sent Events to the phone as they happen, never buffered.
+		flush_interval -1
+	}
+}
