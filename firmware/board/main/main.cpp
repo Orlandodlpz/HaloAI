@@ -135,7 +135,20 @@ void handle_serial() {
 struct Edge {
     gpio_num_t pin;
     bool was_down = false;
+    uint32_t last_change = 0;
 };
+
+// The gesture detector debounces the side button. The knob had no debounce at
+// all, and the first hardware run showed the same press arriving three times
+// about 80 ms apart.
+bool debounced_edge(Edge& e, uint32_t t, uint32_t debounce_ms) {
+    const bool down_now = pressed(e.pin);
+    if (down_now == e.was_down) return false;
+    if (e.last_change != 0 && t - e.last_change < debounce_ms) return false;
+    e.was_down = down_now;
+    e.last_change = t;
+    return down_now;  // true only on the press edge
+}
 
 }  // namespace
 
@@ -187,21 +200,31 @@ extern "C" void app_main() {
         Event gesture;
         while (g_gestures.next(gesture)) feed(gesture);
 
-        // Knob: one event per edge, not per poll.
+        // Knob: one event per debounced press edge, not per poll.
         for (Edge* e : {&up, &down, &knob}) {
-            const bool down_now = pressed(e->pin);
-            if (down_now && !e->was_down) {
-                if (e->pin == board::kKnobUp) feed(Event::at(EventKind::RotateUp, t, 1));
-                else if (e->pin == board::kKnobDown) feed(Event::at(EventKind::RotateDown, t, -1));
-                else feed(Event::at(EventKind::Wake, t));
-            }
-            e->was_down = down_now;
+            if (!debounced_edge(*e, t, g_cfg.debounce_ms)) continue;
+            if (e->pin == board::kKnobUp) feed(Event::at(EventKind::RotateUp, t, 1));
+            else if (e->pin == board::kKnobDown) feed(Event::at(EventKind::RotateDown, t, -1));
+            else feed(Event::at(EventKind::Wake, t));
         }
 
-        const bool exit_now = pressed(exitb.pin);
-        if (exit_now && !exitb.was_down) ESP_LOGI(kTag, "%8lu  EXIT button (unmapped)",
-                                                  static_cast<unsigned long>(t));
-        exitb.was_down = exit_now;
+        if (debounced_edge(exitb, t, g_cfg.debounce_ms))
+            ESP_LOGI(kTag, "%8lu  EXIT button (unmapped)", static_cast<unsigned long>(t));
+
+#ifdef HALO_BENCH_INJECT
+        // Raw pin watch, bench only. Says which physical pin moved, so a button
+        // that does nothing can be told apart from a button on the wrong pin.
+        static uint32_t last_raw = 0xffffffff;
+        const uint32_t raw = (pressed(board::kBtnMenu) ? 1u : 0) | (pressed(board::kBtnExit) ? 2u : 0) |
+                             (pressed(board::kKnobUp) ? 4u : 0) | (pressed(board::kKnobDown) ? 8u : 0) |
+                             (pressed(board::kKnobPress) ? 16u : 0) | (pressed(board::kBtnSide) ? 32u : 0);
+        if (raw != last_raw) {
+            ESP_LOGI(kTag, "%8lu  RAW menu=%d exit=%d up=%d down=%d knob=%d side=%d",
+                     static_cast<unsigned long>(t), (raw & 1) ? 1 : 0, (raw & 2) ? 1 : 0,
+                     (raw & 4) ? 1 : 0, (raw & 8) ? 1 : 0, (raw & 16) ? 1 : 0, (raw & 32) ? 1 : 0);
+            last_raw = raw;
+        }
+#endif
 
         g_machine.tick(t);
         handle_serial();
