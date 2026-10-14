@@ -419,7 +419,13 @@ Each phase ends with a gate. The gate must pass before the next phase in that tr
 - **Goal:** recorded speech reaches the phone as streamed IMA ADPCM.
 - **Steps:** capture 16 kHz mono from the board's onboard microphone (ES8311 audio codec) while the button is held; encode IMA ADPCM; stream raw-byte Audio chunks in the section 2 layout (ADPCM state and CRC in every chunk) from a 2 s ring buffer during the hold and free them on cumulative Audio Ack, resending from `resend_from`; on release send the final marker and wait for its acknowledgment (FINALIZE AUDIO); stop capture with FAILURE if the link stalls beyond the buffer; send `hello` on every connect, `record_start` and `record_end` as JSON Events, and rate-limited `activity` on knob rotation; preferred MTU 256, fail the connection below 179, 2M PHY if supported; write the BLE JSON field names into section 2 with Carlos.
 - **Gate:** Carlos's phone transcribes audio recorded on the device correctly; transfer time measured against the budget.
-- **Results (if DONE):**
+- **Results (if DONE):** **not DONE, and it cannot be on this board: the CrowPanel has no microphone.** What is built and measured, 2026-10-13:
+  - BLE service up with all six characteristics and the agreed UUIDs, advertising, `hello` sent when Events notifications are turned on. The encoder, the 176 byte chunk layout, the cumulative acknowledgments and `resend_from` all work against a stand in central.
+  - **Bluetooth throughput is no longer an open question on the device side.** Streaming the 4.65 s clip embedded in flash: 233 chunks plus the final marker, 41 KB over the air in **2.07 s, about 158 kbit/s, 2.25 times realtime**, zero CRC failures. The budget needs roughly 70 kbit/s to keep up with speech, so there is better than 2x headroom and the "record then send" fallback is not needed.
+  - **Packet loss recovery works and is bit exact.** Dropping every 9th chunk on purpose, 25 losses in total: all 233 chunks recovered, zero CRC failures, still 1.23 times realtime, and the decoded audio is identical to the clean run at 31.2 dB SNR. The cost of go back N is visible: 423 notifications for 233 chunks, so about 81% more traffic for 11% loss. Selective resend would be cheaper if the link ever gets tight.
+  - ADPCM round trip quality: **31.2 dB SNR**, exact sample count.
+  - Negotiated MTU was 256 against macOS CoreBluetooth, above the 179 a chunk needs. **Android has not been tested and is a different stack**, so Carlos still has to confirm the MTU and the throughput on his phone.
+  - **Measured against a stand in central on a Mac (`firmware/tools/phone_sim.py`), not against Carlos's phone, and with a clip from flash rather than a microphone.** Both halves of the gate still need the real thing.
 
 #### Phase F3: Full device flow (PLANNED)
 - **Goal:** the device runs the real flow with the phone.

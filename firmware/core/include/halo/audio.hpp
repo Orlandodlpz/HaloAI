@@ -45,6 +45,13 @@ public:
     AdpcmState state() const {
         return AdpcmState{static_cast<int16_t>(predictor_), static_cast<uint8_t>(index_)};
     }
+    // Resume from a state recorded earlier. Needed to resend a chunk without
+    // replaying the whole segment: each chunk already carries the state at its
+    // own start, so re-encoding from it reproduces identical bytes.
+    void set_state(AdpcmState s) {
+        predictor_ = s.predictor;
+        index_ = static_cast<int8_t>(s.index);
+    }
 
     // Encodes an even number of samples into count/2 bytes, low nibble first.
     void encode(const int16_t* samples, size_t count, uint8_t* out);
