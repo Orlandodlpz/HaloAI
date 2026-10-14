@@ -204,6 +204,20 @@ void log_scratch(const char* half) {
              g_scratch[kHalfScreen - 2], g_scratch[kHalfScreen - 1]);
 }
 
+// Both RAMs, every time, for each driver: the new image into 0x24 / 0xA4 and
+// what is actually on the glass into 0x26 / 0xA6.
+//
+// Writing only the image RAM is what made a present report 461 ms and change
+// nothing. 0xDC drives a pixel only where the two RAMs disagree, and a hardware
+// reset leaves the previous image RAM all zero, which the controller reads as
+// "the glass is entirely black". Against that, every black pixel of the new
+// screen already looks correct and is never driven, while every white pixel is
+// driven white onto a panel that was white already. A perfectly executed
+// refresh of nothing. Measured on the panel 2026-10-14.
+//
+// g_fb_prev is that truth and was already being maintained here; it just never
+// reached the panel. The address counter is reset between the two writes
+// because a second RAM write continues from wherever the first one stopped.
 void push_framebuffer() {
     set_ram_master_window();
     set_ram_master_addr();
@@ -211,12 +225,20 @@ void push_framebuffer() {
     transpose_half(g_fb, 0);
     log_scratch("master");
     dat_block(g_scratch, kHalfScreen);
+    set_ram_master_addr();
+    cmd(0x26);
+    transpose_half(g_fb_prev, 0);
+    dat_block(g_scratch, kHalfScreen);
 
     set_ram_slave_window();
     set_ram_slave_addr();
     cmd(0xa4);
     transpose_half(g_fb, kHalfBytes);
     log_scratch("slave ");
+    dat_block(g_scratch, kHalfScreen);
+    set_ram_slave_addr();
+    cmd(0xa6);
+    transpose_half(g_fb_prev, kHalfBytes);
     dat_block(g_scratch, kHalfScreen);
 
     memcpy(g_fb_prev, g_fb, sizeof(g_fb_prev));
@@ -330,7 +352,11 @@ void draw_bitmap(const BitmapCmd& b) {
 class CrowPanelDisplay : public Display {
 public:
     // Exposed so a key on the console can redo it when ghosting builds up.
-    void deep_clean(int cycles) { clear_panel(cycles); }
+    // Leaves the glass blank on purpose. The next ordinary present paints it.
+    void deep_clean(int cycles) {
+        panel_init();
+        clear_panel(cycles);
+    }
 
     bool init() override {
         // IO7 first and always: without it the panel never answers and every
@@ -422,27 +448,34 @@ public:
     void present(Refresh intent, PresentedFn on_presented, void* ctx) override {
         if (!g_ready) return;
         const int64_t t0 = esp_timer_get_time();
-        // Partial refresh only works once a baseline has been laid down with a
-        // full one, so the first present is always full whatever was asked for.
-        // Images are always drawn with 0xDC. 0xF7 is a global clear waveform that
-        // displays from both RAMs, so driving it with only the new image RAM
-        // written makes the panel flash and settle on whatever the other RAM
-        // says, which is white. The vendor only ever uses 0xF7 straight after
-        // their clear routine, which writes both. Learned by watching the panel
-        // flash black and go back to white.
-        // Images are always drawn with 0xDC, the differential waveform. 0xF7 is a
-        // global clear that reads both RAMs and cannot render an arbitrary image
-        // on its own, so a clean refresh means clearing first and then drawing.
-        // That is also the only thing that removes the residue a run of partial
-        // refreshes leaves behind.
+
+        // Every screen is drawn with 0xDC, the differential waveform, which is
+        // what the vendor uses for all of theirs. 0xF7 is a global clear that
+        // reads both RAMs and cannot render an arbitrary image at all.
+        //
+        // A differential waveform is only as good as what the controller thinks
+        // is already on the glass, and push_framebuffer now tells it the truth
+        // (0x26 / 0xA6), so an ordinary present erases the previous screen's ink
+        // as part of drawing the new one. That is the whole refresh.
+        //
+        // A clear first is therefore no longer needed to make a draw land, only
+        // to flush the physical residue a run of differential refreshes leaves
+        // on the glass. That is what the Full intent is for, and the refresh
+        // policy spends one roughly every ten screens.
+        //
+        // panel_init() before every screen, not just a reset: the temperature
+        // read inside it is what reloads the waveform LUT out of OTP, and
+        // clear_panel's own resets drop it. It has to come after the clear, not
+        // before. Costs about 60 ms on top of the 420 ms refresh.
         const bool want_clean = (intent == Refresh::Full) || !g_baseline_done;
         if (want_clean) clear_panel(2);
+        panel_init();
         push_framebuffer();
         update(0xDC);
         g_baseline_done = true;
-        const char* what = want_clean ? "full (clear then draw)" : "partial";
+
         const int64_t ms = (esp_timer_get_time() - t0) / 1000;
-        ESP_LOGI(kTag, "present %s: %lld ms", what, ms);
+        ESP_LOGI(kTag, "present %s: %lld ms", want_clean ? "full (clear then draw)" : "partial", ms);
         if (on_presented)
             on_presented(ctx, static_cast<uint32_t>(esp_timer_get_time() / 1000));
     }
