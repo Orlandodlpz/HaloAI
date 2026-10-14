@@ -714,9 +714,9 @@ HALO_TEST(critical_battery_blocks_every_other_event) {
 HALO_TEST(critical_battery_is_left_only_above_the_threshold) {
     Rig r;
     drive_to(r, State::CriticalBattery);
-    r.send(E::BatteryLevel, 5);  // still at the threshold
+    r.send(E::BatteryLevel, r.cfg.critical_battery_pct);  // exactly at the threshold
     CHECK_STATE(r.sm, State::CriticalBattery);
-    r.send(E::BatteryLevel, 6);
+    r.send(E::BatteryLevel, r.cfg.critical_battery_pct + 1);
     CHECK_STATE(r.sm, State::Ready);
 }
 

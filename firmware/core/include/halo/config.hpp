@@ -34,7 +34,15 @@ struct Config {
     // READY goes to WALLPAPER after more than one minute of inactivity.
     uint32_t wallpaper_idle_ms = 60000;
     // CRITICAL BATTERY at or below this, left only above it.
-    uint8_t critical_battery_pct = 5;
+    //
+    // The V1 spec says 5%. Raised to 10% on 2026-10-13 (Victor) for two reasons:
+    // the badge's AXP2101 is configured by the vendor to hard power off the board
+    // at 5%, which would kill the device at exactly the moment it is supposed to
+    // reconcile a pending execution, and 10% is reached sooner so the state is
+    // quicker to test. The cost is that the device stops accepting new recordings
+    // with 10% left. Revisit before the demo: the alternative is to lower the PMU
+    // shutdown to 2 or 3% and put this back to 5%.
+    uint8_t critical_battery_pct = 10;
 
     // ---- Deadlines the spec leaves open ----
     // Device side fallback only: the backend also sends its own slow event.

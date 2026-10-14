@@ -25,7 +25,10 @@ public:
         c.logical_w = 800;
         c.logical_h = 480;
         c.visible_h = 480;   // the badge shows the whole canvas
-        c.gray_levels = 4;
+        // 1 bit black and white only (decided 2026-10-13, Victor). The panel can do
+        // 4 gray levels, but 4 gray mode has no partial refresh at all on this
+        // panel, so every grayscale screen would cost a full refresh.
+        c.gray_levels = 2;
         c.supports_partial = true;
         return c;
     }

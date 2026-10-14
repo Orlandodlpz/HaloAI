@@ -149,7 +149,27 @@ BLE rules:
 - **`hello`.** Sent by the device on every connect: firmware version, current state, req ID and any pending execution key. The phone uses it to resync after a reconnect.
 - **Screen IDs.** Every Screen write carries a new `sid`. `approve`, `select` and `continue` echo the `sid` of the screen they acted on, and `select` sends the candidate's index on that screen. The phone maps `sid` to revision and proposal hash, and the index to `candidate_id`, so approval binds to exactly what was drawn and no hashes cross BLE.
 - **`activity`.** Sent on knob rotation in a decision state, at most one every 10 s; the phone forwards it as `touch`.
-- **Large JSON.** JSON messages bigger than one packet are split with a sequence number. Exact JSON field names for the BLE messages: Carlos and Victor write them here in P1 and F2.
+- **Large JSON.** JSON messages bigger than one packet are split with a sequence number. Every JSON write on Events, Screen and Settings carries a 2 byte prefix even when it fits in one packet, so there is one code path: byte 0 is a message ID, byte 1 has the last fragment flag in bit 7 and the fragment index in bits 0 to 6. Audio Ack is a single unprefixed write.
+
+*BLE JSON field names and UUIDs.* **Agreed 2026-10-13 (Carlos and Victor).** Carlos's draft in `phone/docs/ble_fields_draft.md` is adopted in full, with the two additions below. That file is now the detailed reference; this is the summary and the record of what changed.
+
+| | |
+| --- | --- |
+| Service | `78450000-6bb6-46e1-be3c-499c2950b6ac`, advertised, with characteristics `...0001` Audio (notify), `...0002` Audio Ack (write without response), `...0003` Events (notify), `...0004` Screen (write), `...0005` Wallpaper (write without response), `...0006` Settings (write) |
+| Codec | Header byte 0 is `1` for IMA ADPCM 16 kHz mono. Low nibble first. Sequence numbers start at 0 per segment; the final marker's `seq` equals the number of audio chunks |
+| Audio Ack | `{"req", "seg", "upto"}`, plus `resend_from` on a gap and `final: true` for the whole segment. `upto` is `-1` before chunk 0 arrives. Every 10 chunks or 200 ms, and at once on a new gap |
+| Final marker | Resent every 300 ms until acknowledged, bounded by the device's delivery deadline, then FAILURE |
+| Events | `hello`, `wake`, `record_start`, `record_end`, `approve`, `select`, `continue`, `cancel`, `dismiss`, `ack`, `status_query`, `activity`, `battery` |
+| `hello` | `fw`, `boot` (random per power up, so the phone can tell a reconnect from a restart), `state`, `req`, `sid`, `pending_key`, `battery`. Sent when the phone turns on Events notifications, not when the link comes up, because a notification sent before anyone is subscribed is lost |
+| Screen | `sid`, `screen` (V1 state name, upper case with underscores), `rev`, `screen_lines`, `status_line`, `candidates`, `expires_in_s`. A `status_line` on its own updates the partial refresh status bar |
+| Settings | `phone_ready`, `orientation`, `time`, `tz`. Absent fields keep their previous value |
+
+Two additions to the draft, both from the device side:
+
+- **`cancel` carries a `reason`:** `user`, `expired`, `transport` or `battery`. The device cancels locally in four situations: a double press, the 60 s expiry, link loss or buffer exhaustion, and entering CRITICAL BATTERY. Without the reason the phone and the backend cannot tell "the user changed their mind" from "the device gave up", which matters for the per-hop logs in I4 and for deciding whether anything should be retried.
+- **A `battery` event outside `hello`,** rate limited and sent on threshold crossings. CRITICAL BATTERY is a real state in the V1 machine, and without this event the phone sees only a device that went quiet.
+
+`phone_ready` in Settings is adopted as drafted and is not optional: PHONE / BLUETOOTH CHECK needs "phone linked **and** capture service ready", and only the link half was carried before. The device goes to RECORDING only when the link is up and the last `phone_ready` was true.
 - **Testing without a stand-in.** There is no prototype or stand-in device (decided 2026-10-13): the phone tests directly against Victor's firmware on the Waveshare ESP32-S3 e-Paper 3.97 board. `phone/tools/audio_reference/` keeps a Python reference encoder and golden test vectors, so the firmware can check its chunks byte for byte against what the phone expects before the two ever connect.
 
 *State ownership.* The backend owns requests, revisions, proposals and execution status. The device enters a decision or outcome state (and starts the 1 s guard in REVIEW) only when the phone sends that screen. The device handles BOOT / RECOVERY, READY, WALLPAPER, PHONE / BLUETOOTH CHECK, PHONE DISCONNECTED, RECORDING, RECORD ADDITION, FINALIZE AUDIO and CRITICAL BATTERY locally. If the link stalls beyond the audio buffer, capture stops with FAILURE; audio is never silently dropped.
