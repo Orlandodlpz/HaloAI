@@ -298,6 +298,34 @@ void handle_serial() {
                 ESP_LOGW(kTag, "no phone connected");
             }
             break;
+        case 'T': {
+            // Orientation probe. I cannot see the panel, so this draws something
+            // whose description settles both questions at once: if line 1 is at
+            // the bottom the image is flipped vertically, and if the text reads
+            // backwards it is mirrored horizontally.
+            static DisplayList probe;
+            probe.clear();
+            probe.rect(RectCmd{Box{0, 0, 40, 40}, true, 0});
+            static const char* const kLines[] = {
+                "1 TOP-LEFT >>>>>",
+                "2 the quick brown fox",
+                "3 HALOAI 0123456789",
+                "4",
+                "5 BOTTOM-LAST-LINE",
+            };
+            const TextMetrics tm = board::display().metrics(TextStyle::Body);
+            for (int i = 0; i < 5; ++i) {
+                TextCmd t;
+                t.box = Box{48, static_cast<int16_t>(56 + i * tm.line_h), 700, tm.line_h};
+                t.text = kLines[i];
+                probe.text(t);
+            }
+            board::display().draw(probe);
+            board::display().present(Refresh::Full, nullptr, nullptr);
+            ESP_LOGI(kTag, "test pattern drawn: tell me where line 1 is and "
+                           "whether the text reads normally");
+            break;
+        }
         case '?':
             ESP_LOGI(kTag, "p/P phone ready|absent, a audio acked, r/c/s/o results, "
                            "k/f/u execution, x transport fail, b/B battery");

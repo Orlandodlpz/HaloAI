@@ -413,7 +413,12 @@ Each phase ends with a gate. The gate must pass before the next phase in that tr
 - **Goal:** the final board driving real screens.
 - **Steps:** build directly on the Waveshare ESP32-S3 e-Paper 3.97 board (in hand; no prototype stage); add the rest of the final hardware from the materials inventory (a flat 3.7 V LiPo that fits a body of roughly credit card size, side button, vibration motor with driver; see CLAUDE.md Environment); render each state's screen; partial refresh for the status bar, full refresh for final screens; wallpaper stored in flash and shown in WALLPAPER; report the text budget per orientation (800 x 480 panel) to the team.
 - **Gate:** every state's screen renders on the real panel; full and partial refresh times measured; text budget written into section 2.
-- **Results (if DONE):**
+- **Results (if DONE):** **in progress, not DONE.** Done so far, 2026-10-13:
+  - Font and text budget decided and written into section 2 above: Spleen, 48 characters by 12 lines landscape.
+  - SSD1683 driver written for the development panel and **drawing on real glass**: framebuffer, rasteriser, both drivers of the dual chip panel, the 8 dead columns at the seam, and the IO7 power gate. Register sequence taken from Elecrow's factory source rather than reconstructed.
+  - **Refresh measured on the CrowPanel: full 1833 ms, partial 403 ms**, repeatable across runs, including the SPI transfer of all 27200 bytes. Partial therefore fits inside the 1.5 s slot in the latency budget with room; full does not, which is why the policy keeps final screens on partial.
+  - The whole chain runs on hardware: a state transition lays out a screen, rasterises it, pushes it to the panel, and the present callback starts the REVIEW confirm guard.
+  - **Still open:** the badge's own panel and its refresh times, the wallpaper in flash, and whether every one of the 21 state screens renders correctly rather than just the ones walked so far. None of the numbers above transfer to the badge.
 
 #### Phase F2: Microphone and BLE audio (PLANNED)
 - **Goal:** recorded speech reaches the phone as streamed IMA ADPCM.
