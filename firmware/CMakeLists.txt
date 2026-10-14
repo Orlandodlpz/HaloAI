@@ -13,6 +13,7 @@ add_library(halo_core
     core/src/gestures.cpp
     core/src/state_machine.cpp
     core/src/names.cpp
+    core/src/layout.cpp
 )
 target_include_directories(halo_core PUBLIC core/include)
 target_compile_options(halo_core PRIVATE -Wall -Wextra -Wpedantic -Werror)
@@ -22,6 +23,7 @@ add_executable(halo_tests
     test/test_main.cpp
     test/test_gestures.cpp
     test/test_state_machine.cpp
+    test/test_layout.cpp
 )
 target_link_libraries(halo_tests PRIVATE halo_core)
 target_include_directories(halo_tests PRIVATE test)
