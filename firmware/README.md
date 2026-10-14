@@ -4,9 +4,20 @@ The device: hold the side button, speak, read the e-paper screen, confirm with a
 single press. See `docs/BRIEFING.md` section 2 for the V1 state machine and the BLE
 contract, and section 3.3 for the phases.
 
-**State: F0 in progress.** The hardware independent layer is built and tested on a
-computer. There is no board code yet: the framework (Arduino core or ESP-IDF) is not
-chosen, and writing board code before that choice would mean writing it twice.
+**State: F0 done, F1 nearly done, part of F2 built early.** Framework is ESP-IDF
+(v5.5.5). The board app runs on the development board: the state machine drives real
+buttons, the e-paper renders real screens, and BLE streams audio to a phone.
+
+Everything measured here is on the **Elecrow CrowPanel 5.79**, the development board.
+The badge (Waveshare ESP32-S3 e-Paper 3.97) is not in hand, so no number below
+closes a phase gate for the product.
+
+| | Measured |
+| --- | --- |
+| Partial refresh (every ordinary screen) | 495 ms |
+| Full refresh (clear then draw, ghost flush) | 4309 ms |
+| BLE audio throughput | 158 kbit/s, 2.25x realtime |
+| Host tests | 121, about 20 ms |
 
 ## Layout
 
@@ -27,10 +38,23 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
 cmake --build build -j8
 ./build/halo_tests                 # every test
 ./build/halo_tests review          # only tests whose name contains "review"
-ctest --test-dir build --output-on-failure
 ```
 
-Needs only CMake 3.16 and a C++17 compiler. 89 tests, about 20 ms.
+Needs only CMake 3.16 and a C++17 compiler. 121 tests, about 20 ms.
+
+## Build and flash the device
+
+```sh
+source ~/esp/esp-idf/export.sh
+cd firmware/board
+idf.py build                                  # the real build
+idf.py -DHALO_BENCH_INJECT=1 build            # bench build, console keys, never ship it
+idf.py -p /dev/cu.usbserial-210 flash monitor
+```
+
+The serial port number is not stable across replugs: check `ls /dev/cu.usbserial-*`.
+In the bench build, `?` lists the keys that inject phone events and gestures, `T`
+draws a text probe and `C` deep cleans the panel.
 
 ## What the tests pin
 
