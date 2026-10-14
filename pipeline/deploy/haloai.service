@@ -1,0 +1,27 @@
+# systemd unit for the HaloAI backend on the Oracle server.
+# Installed by scripts/deploy.sh to /etc/systemd/system/haloai.service.
+# Logs: journalctl -u haloai -f
+[Unit]
+Description=HaloAI backend (FastAPI, one worker)
+After=network-online.target postgresql.service
+Wants=network-online.target
+Requires=postgresql.service
+
+[Service]
+User=haloai
+Group=haloai
+WorkingDirectory=/opt/haloai/app/pipeline
+# Secrets live outside the code folder, so a deploy never touches them.
+EnvironmentFile=/opt/haloai/env/haloai.env
+# One worker only: retries, stream reattach and rate limits are in process memory.
+# Only reachable from this machine; Caddy is the public front door.
+ExecStart=/opt/haloai/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 1 --proxy-headers --forwarded-allow-ips 127.0.0.1 --no-access-log
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

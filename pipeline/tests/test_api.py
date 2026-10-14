@@ -26,6 +26,11 @@ async def test_health_requires_key(client, keys):
     assert r.status_code == 200 and r.json() == {"status": "ok"}
 
 
+async def test_no_unauthenticated_docs_pages(client):
+    for path in ("/docs", "/redoc", "/openapi.json"):
+        assert (await client.get(path)).status_code == 404, path
+
+
 async def test_error_shape_for_missing_key(client):
     r = await client.post(f"/v1/requests/{uuid.uuid4()}/cancel", json={"call_id": str(uuid.uuid4())})
     assert r.status_code == 401

@@ -1,6 +1,6 @@
 # BRIEFING.md: HaloAI Execution Plan
 
-**Last Updated:** 2026-10-13
+**Last Updated:** 2026-10-14
 **Purpose:** The operational plan for the whole team: what we're building, how the pieces fit, and the phased sequence to get there with minimal rework.
 
 > Relationship to other docs: CLAUDE.md tracks decisions, constraints and state. This document is the **execution plan**. Each person edits only their own phase section (Backend, Phone or Device); shared sections change only after the team agrees.
@@ -318,6 +318,7 @@ Each phase ends with a gate. The gate must pass before the next phase in that tr
 - **Steps:** deploy, HTTPS with a real certificate, Postgres with daily backups copied off the server, secrets in the server environment, per-hop timing summary; tune reasoning and prompt size.
 - **Gate:** backend timings over at least 20 requests on the deployed server compared with the budget table; Phase B2 eval re-run on the deployed config shows no accuracy regression.
 - **Results (if DONE):**
+  - Progress 2026-10-14 (not DONE): early deploy so the phone can start P2. B1 backend in mock mode at `https://api.haloai-cov.io` (Oracle ARM, Chicago), deployed from main with `pipeline/scripts/deploy.sh`. Verified from the internet: Let's Encrypt certificate, 401 without the key, `/docs` and `/openapi.json` blocked (404), HTTP redirects to HTTPS, a full flow (stream start, approve, status) with `/health` in 142 ms from Texas. A reboot brought Postgres, the backend, Caddy and the firewall rules back on their own. Still open for the gate: daily backups copied off the server, 20 request timings, the B2 eval on the server. Not verified yet: live delivery of slow streams through Caddy (the fake processor answers in milliseconds); checked when B2 runs there.
 
 #### Phase B6: Demo site support (PLANNED)
 - **Goal:** judges can try HaloAI without hardware or a Google login.
@@ -469,13 +470,13 @@ Target dates for I1 to I4: _to be set by the team_.
 - Accidental presses in a pocket. Mitigation: 1 s confirm guard in REVIEW; send is never a default.
 - The V1 API, BLE characteristics and audio byte layout were signed off on 2026-10-12. Still open: the exact JSON field names for the BLE messages (Carlos and Victor, P1 and F2) and the ring buffer size, which is provisional until F2 testing.
 - Google OAuth testing mode tokens expire every 7 days. Re-authorize before the video and before judging.
-- Oracle Always Free ARM capacity is sometimes unavailable when creating instances. Create the server early.
+- Oracle may stop the Always Free server if it looks idle for 7 days (server created 2026-10-14). Check it before the video and before judging, or move the account to Pay As You Go.
 - Token Factory credits are finite. Log token usage per request.
 - Spanish and mixed-language quality unknown. Deferred to B7 and P5; demo mixed language only if testing supports it.
 
 ## 5. Submission Checklist (due October 30, 2026, 10:00 AM PDT, 12:00 PM in Edinburg, TX)
 
-- [ ] Public repo with MIT license (done) and a README with setup steps for backend, phone app and firmware
+- [ ] Make the repo public before submitting (it is private until then; MIT license file already in the repo), with a README with setup steps for backend, phone app and firmware
 - [ ] Demo site live in sample data mode
 - [ ] YouTube video under 3 minutes showing the real device, the demo site and one search then act moment (a bilingual moment only if Spanish is ready)
 - [ ] Written description of features, naming Nemotron, Parakeet, Nebius Token Factory and Tavily
