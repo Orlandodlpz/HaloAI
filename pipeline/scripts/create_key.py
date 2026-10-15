@@ -22,9 +22,12 @@ async def main(client: str, scope: str, rate: int) -> None:
     await migrate(url)
     pool = await open_pool(url)
     try:
+        # Phone keys belong to the 'demo' user; demo site keys to the separate 'demo-site' sandbox.
+        name, sandbox = ("demo-site", True) if scope == "mock" else ("demo", False)
         async with pool.connection() as conn:
             cur = await conn.execute(
-                "INSERT INTO users (name) VALUES ('demo') ON CONFLICT (name) DO UPDATE SET name = 'demo' RETURNING id")
+                "INSERT INTO users (name, sandbox) VALUES (%s, %s) ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name"
+                " RETURNING id", (name, sandbox))
             user_id = str((await cur.fetchone())["id"])
         key = await create_key(pool, user_id, client, scope, rate)
     finally:

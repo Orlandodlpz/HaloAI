@@ -65,12 +65,15 @@ class Lifecycle:
             return self.executors["real"]
         return self.executors["mock"]
 
-    async def ensure_user(self, name: str) -> str:
+    async def ensure_user(self, name: str, sandbox: bool = False) -> str:
         async with self.pool.connection() as conn:
             cur = await conn.execute(
-                "INSERT INTO users (name) VALUES (%s) ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name"
-                " RETURNING id", (name,))
-            return str((await cur.fetchone())["id"])
+                "INSERT INTO users (name, sandbox) VALUES (%s, %s) ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name"
+                " RETURNING id, sandbox", (name, sandbox))
+            row = await cur.fetchone()
+            if row["sandbox"] != sandbox:
+                raise ValueError(f"user {name!r} exists with sandbox={row['sandbox']}")
+            return str(row["id"])
 
     async def _lock_user(self, conn, user_id: str) -> None:
         await conn.execute("SELECT id FROM users WHERE id = %s FOR UPDATE", (user_id,))
