@@ -29,8 +29,9 @@ class Settings(BaseSettings):
 
     # Nebius Token Factory. Base URL from docs.tokenfactory.nebius.com/api-reference.
     nebius_base_url: str = "https://api.tokenfactory.nebius.com/v1/"
-    # Verified against GET /v1/models, see docs/CLAUDE.md (Environment, Backend).
-    nemotron_model_id: str = "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B"
+    # Verified against GET /v1/models, see docs/CLAUDE.md (Environment, Backend). Chosen 2026-10-14 by the
+    # B2 eval (Nano 70%, Lightning 84%, Super 85%, Ultra 93.5%; Ultra also the fastest at p90).
+    nemotron_model_id: str = "nvidia/Nemotron-3-Ultra-550b-a55b"
 
     # Locked decision: reasoning off by default, on only for multi-step requests.
     reasoning_enabled: bool = False

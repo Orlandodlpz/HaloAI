@@ -78,7 +78,7 @@ async def test_search_then_act_two_turns_with_status():
     ])
     out = await p.process(ctx("when is the spurs game saturday, block it", statuses=statuses))
     # Saturday 7 PM overlaps "Dinner with Maria" (6 to 8 PM) in the mock calendar: code catches it.
-    assert out.state == "conflict_schedule" and out.screen_lines[0] == "Overlaps: Dinner with Maria"
+    assert out.state == "conflict_schedule" and out.screen_lines[0] == "You already have Dinner with Maria then"
     assert statuses == ["Searching the web"]
     tool_msg = client.requests[1]["messages"][-1]
     assert tool_msg["role"] == "tool" and tool_msg["tool_call_id"] == "c1"
@@ -149,6 +149,12 @@ async def test_read_only_text_is_cleaned_for_e_ink():
     p, _ = proc([reply(content="You have a **Dentist** appointment (Wed\u202fOct\u202f14) at `10:00\u00a0AM`.")])
     out = await p.process(ctx("what do I have tomorrow"))
     assert out.screen_lines == ["You have a Dentist appointment (Wed Oct 14) at 10:00 AM."]
+
+
+async def test_typographic_characters_become_ascii():
+    p, _ = proc([reply(content="Team sync 2:00 pm \u2013 3:00 pm \u2014 it\u2019s \u201cweekly\u201d\u2026")])
+    out = await p.process(ctx("next meeting"))
+    assert out.screen_lines == ["Team sync 2:00 pm - 3:00 pm - it's \"weekly\"..."]
 
 
 async def test_works_inside_the_lifecycle(lc, user, processor):
