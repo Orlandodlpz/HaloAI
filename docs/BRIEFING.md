@@ -19,7 +19,7 @@ A clip-on voice assistant for calendar and email. Hold the button, speak, check 
 Device (Victor)  --BLE audio, button signals-->  Phone app (Carlos)  --HTTPS text, signals-->  Backend (Orlando)
 Device           <--BLE screen text, status----  Phone app           <--HTTPS replies, status--  Backend
 
-Backend --> Nebius Token Factory (Nemotron 3 Nano, Zero Data Retention on)
+Backend --> Nebius Token Factory (Nemotron 3 Ultra, Zero Data Retention on)
 Backend --> Google Calendar, Gmail send, Google People "other contacts"
 Backend --> Tavily web search
 Backend --> Postgres (memory, pending actions, history)
@@ -254,7 +254,7 @@ Global rules from the spec (they take precedence over ordinary transitions):
 | Audio from device to phone over BLE | Victor | 0.5 | |
 | Parakeet transcription on phone | Carlos | 0.5 | 0.19 to 0.32 (P0, 5 to 9 s clips, model already loaded) |
 | Phone to backend | Carlos | 0.2 | |
-| Nemotron tool loop | Orlando | 1.2 | |
+| Nemotron tool loop | Orlando | 1.2 | 0.80 median, 1.01 p90 (B2 eval, Ultra, 246 commands from a Mac, 2026-10-14) |
 | Google or Tavily call | Orlando | 0.6 | |
 | Backend to phone to device | Carlos, Victor | 0.3 | |
 | Final e-ink refresh | Victor | 1.5 | |
@@ -295,11 +295,29 @@ Each phase ends with a gate. The gate must pass before the next phase in that tr
   - Contract additions, confirmed by Carlos on 2026-10-13 and written into section 2: `429 rate_limited` (per key rate limit), and `expired` also covers a request that is cancelled or finished (no separate `cancelled` code).
   - Local database: `cd pipeline && docker compose up -d` (Postgres 16, `127.0.0.1:5433` only), then `.venv/bin/python scripts/migrate.py` (and `--test`). Keys: `scripts/create_key.py --client NAME --scope real|mock`.
 
-#### Phase B2: Agent loop with mock tools (PLANNED)
+#### Phase B2: Agent loop with mock tools (IN PROGRESS: gate numbers met, server wire-in left)
 - **Goal:** Nemotron reliably picks the right tool with the right arguments, in English, against mock data.
 - **Steps:** tool schemas for all ten tools; realistic mock calendar, inbox and contacts; system prompt with date, time, timezone, language, text budget and relevant memory; iteration cap on the loop; `screen_lines` built and length-checked in code against the configured budget; all-in-one email with recipient resolution and auto subject; several or zero matching contacts return CONFLICT-AMBIGUOUS candidates (an empty list for zero); schedule overlaps return CONFLICT-SCHEDULE; questions that change nothing return READ-ONLY RESULT; an addition reruns the whole request; English eval set of spoken-style commands (relative dates like "tomorrow at 3", ambiguous recipients, search then act, requests that must not trigger a write).
 - **Gate:** eval results per category. **Provisional target: at least 90% correct tool and arguments overall, and 100% on "no write without a pending confirmation".** The 90% is not validated; replace it after the first run. Median model loop latency reported.
-- **Results (if DONE):**
+- **Results (if DONE):** progress 2026-10-14. Tested against **mock tools** (mock calendar, contacts and web), the real model on Token Factory, from a Mac. Not yet on the server.
+  - Built: ten model tools (read tools return data marked untrusted; proposal tools end in REVIEW, a schedule conflict, an ambiguous or unknown recipient, or a question; `send_email` exists only for the executor, so the model can never send); contacts resolved, overlaps detected and the IANA timezone applied in code; calls with guests, a Google Meet link and a description (decided 2026-10-14); a plain tool loop of at most 4 turns; answers cleaned to plain ASCII for e-ink. 104 of 104 tests.
+  - Eval: 82 spoken-style English cases in `pipeline/evals/b2_en.jsonl` across 12 categories, including P0 transcription errors and two prompt injection traps. Runner: `cd pipeline && .venv/bin/python scripts/eval_b2.py --repeat 3 --label NAME` (`--check` validates the cases against the tool code without the model; `--model` tries another model). Every run is saved in `pipeline/evals/results/`.
+  - **The model is not deterministic on Token Factory, even at temperature 0:** the same config run twice flipped 10 of 82 cases. Changes are judged on 3 runs per config.
+  - **Model comparison (same prompt, 82 cases x 3 runs, run side by side):**
+
+  | | Nano | 3.5 Lightning | Super | Ultra |
+  | --- | --- | --- | --- | --- |
+  | Correct | 70% | 84% | 85% | 93.5% |
+  | One model turn | 47% | 70% | 89% | 91% |
+  | Median / p90 latency | 1.57 / 2.79 s | 0.76 / 1.72 s | 1.03 / 1.52 s | 0.82 / 1.30 s |
+  | Unasked proposals (of 246) | 10 | 12 | 3 | 3 |
+  | Cost per 1,000 commands | $0.28 | $0.25 | $0.95 | $2.92 |
+
+  - **Decision 2026-10-14: Nemotron 3 Ultra.** The biggest model is also the fastest at p90, because it finishes 91% of commands in one turn while Nano keeps calling extra tools and asking questions.
+  - **Current result (Ultra, 3 runs): 237 of 246 correct (96.3%), traps 24 of 24, median 0.80 s, p90 1.01 s, no flaky cases, about $0.72 per 3-run eval.** Gate targets met: at least 90% overall, and no write without a pending confirmation (structural: the model cannot send or change anything, and no case emailed the injected address in any run of any model). 11 of 12 categories at 100%.
+  - Three stable failures, left in the eval on purpose: two commands with no time ("add a dentist appointment", "block some time for the gym") get a guessed time instead of a question (still only a REVIEW proposal); and "what's my next meeting" at exactly 3:00 PM names the meeting that ends at 3:00, an edge of the mock calendar.
+  - What did not work: prompt rules alone. On Nano, a longer "when not to act" rule cost 11 points, because the small model copied the example question instead of acting. Questions now always end with "Hold and say your answer" in code, so the how-to-answer part does not depend on the model.
+  - Left for B2: switch the server to `PROCESSOR=nemotron` with its own Nebius key, deploy, and run a few commands through the real server.
 
 #### Phase B3: Memory (PLANNED)
 - **Goal:** persistent contacts, preferences and recent actions that change what the assistant does.
