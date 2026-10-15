@@ -1,6 +1,6 @@
 # BRIEFING.md: HaloAI Execution Plan
 
-**Last Updated:** 2026-10-14
+**Last Updated:** 2026-10-15
 **Purpose:** The operational plan for the whole team: what we're building, how the pieces fit, and the phased sequence to get there with minimal rework.
 
 > Relationship to other docs: CLAUDE.md tracks decisions, constraints and state. This document is the **execution plan**. Each person edits only their own phase section (Backend, Phone or Device); shared sections change only after the team agrees.
@@ -63,6 +63,31 @@ POST /v1/requests/{request_id}/touch           knob activity in a decision state
 
 GET  /v1/executions/{execution_key}            RECONCILE STATUS, and polling after approve
 ```
+
+*Memory (phone app and demo site).* **Signed off by Carlos 2026-10-15.** Everything the assistant remembers can be viewed, edited and deleted (locked decision).
+
+```
+GET    /v1/memory                     list: { "items": [ memory item, ... ] }
+POST   /v1/memory                     { "call_id": "uuid", "kind": "contact | preference | fact", "label": "Victor", "value": "victor@example.com" }
+PATCH  /v1/memory/{memory_id}         { "call_id": "uuid", "label": "...", "value": "..." }   (either field)
+DELETE /v1/memory/{memory_id}         { "call_id": "uuid" }   -> { "deleted": true }
+
+memory item: { "memory_id": "...", "kind": "contact | preference | fact | action", "label": "...", "value": "...",
+               "source": "user | learned | action", "uses": 3, "updated_at": "RFC 3339" }
+```
+
+`action` items are recent approved actions; they can be deleted but not edited. Errors use the usual shape.
+
+*Google account (B4).* **PROPOSED 2026-10-15, needs Carlos's sign-off.** Sign in happens on the backend (locked decision).
+
+```
+GET  /v1/google/status                { "connected": true, "email": "demo account address" }
+POST /v1/google/connect               { "call_id": "uuid" } -> { "url": "Google sign in link, valid 10 minutes" }
+GET  /v1/google/callback              called by Google, not by the phone (see below)
+POST /v1/google/disconnect            { "call_id": "uuid" } -> { "connected": false }
+```
+
+The callback is the one endpoint without our API key, because Google calls it directly. It is protected by a signed, single use `state` value tied to the user that expires after 10 minutes (decided 2026-10-15).
 
 Every result (the `result` event, and the JSON response of every other call, including the status endpoint) has one shape:
 
@@ -183,7 +208,7 @@ Two additions to the draft, both from the device side:
 | Landscape (800 x 480) | **48** | **12** | 64 characters |
 | Portrait (480 x 800) | **28** | **22** | 38 characters |
 
-Both numbers already account for the 16 px margins, the status bar and a one line hint at the bottom. The REVIEW requirement is met with room: a full address such as `To: victor.munozvera01@utrgv.edu` is 32 of the 48 columns, leaving the subject and up to 10 further lines.
+Both numbers already account for the 16 px margins, the status bar and a one line hint at the bottom. The REVIEW requirement is met with room: a full address such as `To: victor.morales01@example.com` is 32 of the 48 columns, leaving the subject and up to 10 further lines.
 
 These are **computed from the real font, not measured on the badge**, which is not in hand. They are exact for wrapping purposes, since the font is fixed width and the arithmetic is not in doubt. What is still unverified is whether 16 x 32 is comfortable to read on the badge's panel: see the warning about pixel density in CLAUDE.md. If it turns out too small the replacement is 20 x 40, which would give 38 x 9 landscape, so **do not design any screen that only works at 48 columns.**
 
@@ -322,13 +347,13 @@ Each phase ends with a gate. The gate must pass before the next phase in that tr
 
 #### Phase B3: Memory (PLANNED)
 - **Goal:** persistent contacts, preferences and recent actions that change what the assistant does.
-- **Steps:** Postgres tables; `remember` and `recall`; inject only relevant memory into the prompt; endpoints to view, edit and delete memory for the phone app and demo site.
+- **Steps (planned 2026-10-15):** memory per user in Postgres: contacts, preferences and facts, each with a source (`user` said it, `learned` from approved actions) and a use count; recent actions read from approved executions. **Learning is automatic but only from approved actions** (recipients and guests you approved, how often you contact them, your usual event length), never from content (web pages, email text, event descriptions), so a planted "Victor's email is attacker@..." cannot poison memory. "Remember that..." saves explicitly, only when the user's own words ask for it (checked in code), and shows "Saved: ...". Only relevant memory reaches the prompt: all preferences (up to 10), contacts whose name appears in the request, the last 5 actions. Memory beats the address book; two matches still ask, with the most contacted first. A mock calendar and outbox per user in Postgres that approved actions really change (needed for "that meeting" and for the demo site). The demo site key gets its own user, so it can never see the phone user's memory. Endpoints in section 2 (memory). Memory eval cases, including a memory poisoning trap.
 - **Gate:** "email Victor" resolves from memory; an edited or deleted memory changes the next answer; "move that meeting to 4" finds the right event from history.
 - **Results (if DONE):**
 
 #### Phase B4: Real integrations (PLANNED)
 - **Goal:** the same loop against real Google services and Tavily through the dedicated demo account.
-- **Steps:** OAuth in testing mode with the demo account as test user, tokens stored outside git; real Calendar, Gmail send and People "other contacts" behind the same interface; Tavily; mock or real switch per session.
+- **Steps (planned 2026-10-15):** Google sign in on the backend (section 2, Google account, PROPOSED): the phone gets a sign in link, the user signs in in a browser, Google calls `/v1/google/callback`. The refresh token is stored encrypted in Postgres, the encryption key in the server secrets. Real Calendar (read, create with Google Meet and invitations, move, delete), Gmail send and People contacts and "other contacts" behind the same interface as the mock tools; Tavily for web search. Event IDs come from the execution key, so a retried create cannot double book. **No mailbox read access:** a timed out Gmail send cannot be checked, so it shows EXECUTION UNCERTAIN (wording to confirm with Orlando). **Recipient allowlist** in real mode: emails and invitations only to the addresses in the server secret `ALLOWED_RECIPIENTS` (set 2026-10-15, never in git); anything else gets a friendly refusal before REVIEW. Real or mock is decided by the key's scope, `REAL_TOOLS_ENABLED` and whether Google is connected; the demo site stays mock. Tests check the exact Google and Tavily requests without calling them; the gate runs live on the demo account.
 - **Gate:** on the demo account, create an event, send an email to a team member, and one search then act request. Logs show Gmail was not called before confirmation, and declined or expired drafts left nothing in Gmail.
 - **Results (if DONE):**
 
