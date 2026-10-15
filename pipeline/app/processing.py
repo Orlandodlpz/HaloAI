@@ -31,6 +31,7 @@ class ProcessContext:
     orientation: str
     scope: str
     on_status: Callable[[str], Awaitable[None]]
+    user_id: str = ""  # whose mock calendar and memory to use (empty in evals: frozen sample world)
 
 
 @dataclass
@@ -58,7 +59,7 @@ class Processor:
 class Executor:
     name = "base"
 
-    async def execute(self, draft: dict, execution_key: str) -> ExecutionOutcome:
+    async def execute(self, draft: dict, execution_key: str, user_id: str = "") -> ExecutionOutcome:
         raise NotImplementedError
 
 
@@ -122,7 +123,7 @@ class FakeExecutor(Executor):
         self.hang = hang
         self.calls: list[str] = []
 
-    async def execute(self, draft: dict, execution_key: str) -> ExecutionOutcome:
+    async def execute(self, draft: dict, execution_key: str, user_id: str = "") -> ExecutionOutcome:
         self.calls.append(execution_key)
         if self.hang:
             await asyncio.Event().wait()

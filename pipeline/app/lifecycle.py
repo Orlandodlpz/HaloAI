@@ -235,7 +235,7 @@ class Lifecycle:
             segs = [Segment(s["revision"], s["kind"], s["text"], s["candidate_id"], s["sent_at"])
                     for s in await cur.fetchall()]
         ctx = ProcessContext(str(request_id), revision, segs, req["timezone"], req["language"],
-                             req["orientation"], req["scope"], on_status)
+                             req["orientation"], req["scope"], on_status, user_id=str(req["user_id"]))
         failure_reason = None
         try:
             output = await asyncio.wait_for(self.processor.process(ctx), self.settings.processing_deadline_s)
@@ -333,7 +333,8 @@ class Lifecycle:
     async def _run_execution(self, user_id: str, request_id: str, key: str, draft: dict, executor: Executor):
         screen_lines, detail = None, {"executor": executor.name}
         try:
-            outcome = await asyncio.wait_for(executor.execute(draft, key), self.settings.execution_deadline_s)
+            outcome = await asyncio.wait_for(executor.execute(draft, key, str(user_id)),
+                                             self.settings.execution_deadline_s)
             status, screen_lines = ("applied" if outcome.applied else "not_applied"), outcome.screen_lines
             detail.update(outcome.detail)
         except Exception as exc:  # timeout or error: we cannot know if it happened

@@ -24,7 +24,7 @@ CONTACTS = [
 ]
 
 # (id, days from today, start hh:mm, end hh:mm, title, notes)
-_EVENTS = [
+SEED_EVENTS = [
     ("e1", 0, "09:00", "09:30", "Standup", ""),
     ("e2", 0, "14:00", "15:00", "Team sync", ""),
     ("e3", 1, "10:00", "11:00", "Dentist", "Dr. Patel Dental"),
@@ -74,7 +74,7 @@ class MockWorld:
 def build_world(now: datetime, tz: ZoneInfo) -> MockWorld:
     today = now.astimezone(tz).date()
     events = []
-    for event_id, days, start, end, title, notes in _EVENTS:
+    for event_id, days, start, end, title, notes in SEED_EVENTS:
         d = today + timedelta(days=days)
         events.append({
             "event_id": event_id, "title": title, "notes": notes,

@@ -20,6 +20,7 @@ from app.clock import SystemClock
 from app.config import Settings, get_settings
 from app.db import migrate, open_pool
 from app.lifecycle import ApiError, Lifecycle
+from app.mockstore import MockExecutor, MockStore
 from app.processing import FakeExecutor, FakeProcessor, Processor
 from app.streams import Streams
 from app.streams import router as stream_router
@@ -38,12 +39,15 @@ class Services:
     streams: Streams
 
 
-def make_processor(settings: Settings) -> Processor:
-    """'fake' (B1 keyword script) or 'nemotron' (B2 loop), from the PROCESSOR setting."""
+def make_processor(settings: Settings, store: MockStore) -> Processor:
+    """'fake' (B1 keyword script) or 'nemotron' (the real loop), from the PROCESSOR setting."""
     if settings.processor == "nemotron":
         from app.agent import NemotronProcessor
         from app.llm import get_async_client
-        return NemotronProcessor(get_async_client(), settings)
+
+        async def user_world(ctx, now, tz):
+            return await store.world(ctx.user_id, now, tz)  # each user's stored mock calendar
+        return NemotronProcessor(get_async_client(), settings, world_factory=user_world)
     if settings.processor == "fake":
         return FakeProcessor()
     raise ValueError(f"unknown PROCESSOR {settings.processor!r}; use 'fake' or 'nemotron'")
@@ -55,8 +59,12 @@ async def build_services(settings: Settings) -> Services:
     pool = await open_pool(url)
     clock = SystemClock()
     # Executors stay fake until B4 (real Google tools).
-    lc = Lifecycle(pool, settings, clock, make_processor(settings),
-                   {"mock": FakeExecutor("mock"), "real": FakeExecutor("real")})
+    store = MockStore(pool, clock)
+    # Approved actions change the user's mock world. The B1 fake processor's drafts are not real
+    # drafts, so it keeps the fake executor. Real tools come in B4.
+    mock_exec = MockExecutor(store) if settings.processor == "nemotron" else FakeExecutor("mock")
+    lc = Lifecycle(pool, settings, clock, make_processor(settings, store),
+                   {"mock": mock_exec, "real": FakeExecutor("real")})
     user_id = await lc.ensure_user("demo")
     # The phone key from .env, so the existing key keeps working. More keys: scripts/create_key.py
     await create_key(pool, user_id, "phone", "real", key=settings.backend_api_key.get_secret_value())
