@@ -1,0 +1,2339 @@
+{
+ "label": "fix2_repeat",
+ "only": null,
+ "git_sha": "82355da",
+ "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B",
+ "reasoning": false,
+ "max_turns": 4,
+ "summary": {
+  "n": 82,
+  "correct": 55,
+  "within_turns": 45,
+  "traps_correct": 5,
+  "traps_n": 8,
+  "median_ms": 1900.5,
+  "p90_ms": 3039,
+  "median_ms_one_turn": 1160.5,
+  "turns": {
+   "1": 36,
+   "2": 31,
+   "3": 13,
+   "4": 2
+  },
+  "tokens_in": 359308,
+  "tokens_out": 7110,
+  "cost_usd_estimate": 0.0233,
+  "by_category": {
+   "create_event": {
+    "n": 14,
+    "correct": 10,
+    "within_turns": 11
+   },
+   "calls_and_guests": {
+    "n": 4,
+    "correct": 3,
+    "within_turns": 2
+   },
+   "update_event": {
+    "n": 8,
+    "correct": 5,
+    "within_turns": 3
+   },
+   "delete_event": {
+    "n": 6,
+    "correct": 6,
+    "within_turns": 6
+   },
+   "email_known": {
+    "n": 10,
+    "correct": 9,
+    "within_turns": 1
+   },
+   "email_ambiguous": {
+    "n": 6,
+    "correct": 5,
+    "within_turns": 4
+   },
+   "read_only": {
+    "n": 8,
+    "correct": 5,
+    "within_turns": 3
+   },
+   "search_then_act": {
+    "n": 4,
+    "correct": 4,
+    "within_turns": 3
+   },
+   "schedule_conflict": {
+    "n": 4,
+    "correct": 2,
+    "within_turns": 2
+   },
+   "missing_info": {
+    "n": 4,
+    "correct": 0,
+    "within_turns": 3
+   },
+   "additions": {
+    "n": 6,
+    "correct": 1,
+    "within_turns": 2
+   },
+   "traps": {
+    "n": 8,
+    "correct": 5,
+    "within_turns": 5
+   }
+  }
+ },
+ "cases": [
+  {
+   "id": "create_01",
+   "category": "create_event",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 1685,
+   "tokens_in": 2420,
+   "tokens_out": 76,
+   "state": "review",
+   "draft": {
+    "kind": "create_event",
+    "title": "Gym",
+    "start": "2026-10-14T15:00:00-05:00",
+    "end": "2026-10-14T16:00:00-05:00",
+    "timezone": "America/Chicago",
+    "guests": [],
+    "video_call": false,
+    "description": ""
+   },
+   "screen_lines": [
+    "New event",
+    "Gym",
+    "Wed Oct 14",
+    "3:00 PM to 4:00 PM"
+   ],
+   "statuses": [],
+   "why": []
+  },
+  {
+   "id": "create_02",
+   "category": "create_event",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 1547,
+   "tokens_in": 2426,
+   "tokens_out": 76,
+   "state": "review",
+   "draft": {
+    "kind": "create_event",
+    "title": "Gym",
+    "start": "2026-10-14T15:00:00-05:00",
+    "end": "2026-10-14T16:00:00-05:00",
+    "timezone": "America/Chicago",
+    "guests": [],
+    "video_call": false,
+    "description": ""
+   },
+   "screen_lines": [
+    "New event",
+    "Gym",
+    "Wed Oct 14",
+    "3:00 PM to 4:00 PM"
+   ],
+   "statuses": [],
+   "why": []
+  },
+  {
+   "id": "create_03",
+   "category": "create_event",
+   "correct": false,
+   "within_turns": false,
+   "turns": 2,
+   "ms": 3172,
+   "tokens_in": 4969,
+   "tokens_out": 202,
+   "state": "review",
+   "draft": {
+    "kind": "create_event",
+    "title": "Coffee with Carlos",
+    "start": "2026-10-15T14:00:00-05:00",
+    "end": "2026-10-15T15:00:00-05:00",
+    "timezone": "America/Chicago",
+    "guests": [],
+    "video_call": false,
+    "description": "coffee"
+   },
+   "screen_lines": [
+    "New event",
+    "Coffee with Carlos",
+    "Thu Oct 15",
+    "2:00 PM to 3:00 PM",
+    "About: coffee"
+   ],
+   "statuses": [],
+   "why": [
+    "start 2026-10-15T14:00, expected 2026-10-15T15:00"
+   ]
+  },
+  {
+   "id": "create_04",
+   "category": "create_event",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 1518,
+   "tokens_in": 2420,
+   "tokens_out": 76,
+   "state": "review",
+   "draft": {
+    "kind": "create_event",
+    "title": "Study session",
+    "start": "2026-10-13T19:00:00-05:00",
+    "end": "2026-10-13T21:00:00-05:00",
+    "timezone": "America/Chicago",
+    "guests": [],
+    "video_call": false,
+    "description": ""
+   },
+   "screen_lines": [
+    "New event",
+    "Study session",
+    "Tue Oct 13",
+    "7:00 PM to 9:00 PM"
+   ],
+   "statuses": [],
+   "why": []
+  },
+  {
+   "id": "create_05",
+   "category": "create_event",
+   "correct": false,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 1602,
+   "tokens_in": 2429,
+   "tokens_out": 91,
+   "state": "conflict_ambiguous",
+   "draft": {
+    "kind": "create_event",
+    "title": "Meeting with design team",
+    "start": "2026-10-20T10:00:00-05:00",
+    "end": "2026-10-20T11:00:00-05:00",
+    "timezone": "America/Chicago",
+    "video_call": false,
+    "description": ""
+   },
+   "screen_lines": [
+    "No contact named design team",
+    "Hold to say the address"
+   ],
+   "statuses": [],
+   "why": [
+    "state conflict_ambiguous, expected review"
+   ]
+  },
+  {
+   "id": "create_06",
+   "category": "create_event",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 1311,
+   "tokens_in": 2423,
+   "tokens_out": 78,
+   "state": "review",
+   "draft": {
+    "kind": "create_event",
+    "title": "Farmers Market",
+    "start": "2026-10-17T09:00:00-05:00",
+    "end": "2026-10-17T11:00:00-05:00",
+    "timezone": "America/Chicago",
+    "guests": [],
+    "video_call": false,
+    "description": ""
+   },
+   "screen_lines": [
+    "New event",
+    "Farmers Market",
+    "Sat Oct 17",
+    "9:00 AM to 11:00 AM"
+   ],
+   "statuses": [],
+   "why": []
+  },
+  {
+   "id": "create_07",
+   "category": "create_event",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 1302,
+   "tokens_in": 2426,
+   "tokens_out": 76,
+   "state": "review",
+   "draft": {
+    "kind": "create_event",
+    "title": "Project Review",
+    "start": "2026-10-14T13:00:00-05:00",
+    "end": "2026-10-14T14:00:00-05:00",
+    "timezone": "America/Chicago",
+    "guests": [],
+    "video_call": false,
+    "description": ""
+   },
+   "screen_lines": [
+    "New event",
+    "Project Review",
+    "Wed Oct 14",
+    "1:00 PM to 2:00 PM"
+   ],
+   "statuses": [],
+   "why": []
+  },
+  {
+   "id": "create_08",
+   "category": "create_event",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 1460,
+   "tokens_in": 2419,
+   "tokens_out": 87,
+   "state": "review",
+   "draft": {
+    "kind": "create_event",
+    "title": "Gym",
+    "start": "2026-10-14T06:00:00-05:00",
+    "end": "2026-10-14T07:00:00-05:00",
+    "timezone": "America/Chicago",
+    "guests": [],
+    "video_call": false,
+    "description": ""
+   },
+   "screen_lines": [
+    "New event",
+    "Gym",
+    "Wed Oct 14",
+    "6:00 AM to 7:00 AM"
+   ],
+   "statuses": [],
+   "why": []
+  },
+  {
+   "id": "create_09",
+   "category": "create_event",
+   "correct": false,
+   "within_turns": false,
+   "turns": 2,
+   "ms": 2677,
+   "tokens_in": 4946,
+   "tokens_out": 152,
+   "state": "review",
+   "draft": {
+    "kind": "create_event",
+    "title": "Doctor appointment",
+    "start": "2026-10-20T14:30:00-05:00",
+    "end": "2026-10-20T15:30:00-05:00",
+    "timezone": "America/Chicago",
+    "guests": [],
+    "video_call": false,
+    "description": ""
+   },
+   "screen_lines": [
+    "New event",
+    "Doctor appointment",
+    "Tue Oct 20",
+    "2:30 PM to 3:30 PM"
+   ],
+   "statuses": [],
+   "why": [
+    "start 2026-10-20T14:30, expected 2026-10-19T14:30"
+   ]
+  },
+  {
+   "id": "create_10",
+   "category": "create_event",
+   "correct": false,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 915,
+   "tokens_in": 2419,
+   "tokens_out": 35,
+   "state": "conflict_ambiguous",
+   "draft": null,
+   "screen_lines": [
+    "Block 4 to 5 today for emails. Confirm?",
+    "Hold to answer"
+   ],
+   "statuses": [],
+   "why": [
+    "state conflict_ambiguous, expected review",
+    "kind None, expected create_event",
+    "start None, expected 2026-10-13T16:00",
+    "end None, expected 2026-10-13T17:00",
+    "title 'None' lacks 'email'"
+   ]
+  },
+  {
+   "id": "create_12",
+   "category": "create_event",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 1444,
+   "tokens_in": 2425,
+   "tokens_out": 77,
+   "state": "review",
+   "draft": {
+    "kind": "create_event",
+    "title": "Halloween Party",
+    "start": "2026-10-31T20:00:00-05:00",
+    "end": "2026-10-31T21:00:00-05:00",
+    "timezone": "America/Chicago",
+    "guests": [],
+    "video_call": false,
+    "description": ""
+   },
+   "screen_lines": [
+    "New event",
+    "Halloween Party",
+    "Sat Oct 31",
+    "8:00 PM to 9:00 PM"
+   ],
+   "statuses": [],
+   "why": []
+  },
+  {
+   "id": "create_13",
+   "category": "create_event",
+   "correct": true,
+   "within_turns": false,
+   "turns": 2,
+   "ms": 6061,
+   "tokens_in": 4946,
+   "tokens_out": 152,
+   "state": "review",
+   "draft": {
+    "kind": "create_event",
+    "title": "Team dinner",
+    "start": "2026-11-03T19:00:00-06:00",
+    "end": "2026-11-03T20:00:00-06:00",
+    "timezone": "America/Chicago",
+    "guests": [],
+    "video_call": false,
+    "description": ""
+   },
+   "screen_lines": [
+    "New event",
+    "Team dinner",
+    "Tue Nov 3",
+    "7:00 PM to 8:00 PM"
+   ],
+   "statuses": [],
+   "why": []
+  },
+  {
+   "id": "create_14",
+   "category": "create_event",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 1313,
+   "tokens_in": 2436,
+   "tokens_out": 75,
+   "state": "review",
+   "draft": {
+    "kind": "create_event",
+    "title": "Meeting",
+    "start": "2026-10-20T12:00:00-05:00",
+    "end": "2026-10-20T14:00:00-05:00",
+    "timezone": "America/Chicago",
+    "guests": [],
+    "video_call": false,
+    "description": ""
+   },
+   "screen_lines": [
+    "New event",
+    "Meeting",
+    "Tue Oct 20",
+    "12:00 PM to 2:00 PM"
+   ],
+   "statuses": [],
+   "why": []
+  },
+  {
+   "id": "create_15",
+   "category": "create_event",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 1455,
+   "tokens_in": 2425,
+   "tokens_out": 76,
+   "state": "review",
+   "draft": {
+    "kind": "create_event",
+    "title": "Yoga",
+    "start": "2026-10-18T10:00:00-05:00",
+    "end": "2026-10-18T11:00:00-05:00",
+    "timezone": "America/Chicago",
+    "guests": [],
+    "video_call": false,
+    "description": ""
+   },
+   "screen_lines": [
+    "New event",
+    "Yoga",
+    "Sun Oct 18",
+    "10:00 AM to 11:00 AM"
+   ],
+   "statuses": [],
+   "why": []
+  },
+  {
+   "id": "create_11",
+   "category": "calls_and_guests",
+   "correct": false,
+   "within_turns": false,
+   "turns": 2,
+   "ms": 2886,
+   "tokens_in": 4958,
+   "tokens_out": 176,
+   "state": "review",
+   "draft": {
+    "kind": "create_event",
+    "title": "Call with Maria",
+    "start": "2026-10-16T16:00:00-05:00",
+    "end": "2026-10-16T17:00:00-05:00",
+    "timezone": "America/Chicago",
+    "guests": [],
+    "video_call": true,
+    "description": ""
+   },
+   "screen_lines": [
+    "New event",
+    "Call with Maria",
+    "Fri Oct 16",
+    "4:00 PM to 5:00 PM",
+    "Google Meet link"
+   ],
+   "statuses": [],
+   "why": [
+    "guests [], expected ['maria.lopez@example.com']"
+   ]
+  },
+  {
+   "id": "call_02",
+   "category": "calls_and_guests",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 1858,
+   "tokens_in": 2425,
+   "tokens_out": 112,
+   "state": "review",
+   "draft": {
+    "kind": "create_event",
+    "title": "Call with Maria",
+    "start": "2026-10-16T16:00:00-05:00",
+    "end": "2026-10-16T17:00:00-05:00",
+    "timezone": "America/Chicago",
+    "guests": [
+     {
+      "name": "Maria Lopez",
+      "email": "maria.lopez@example.com"
+     }
+    ],
+    "video_call": true,
+    "description": "about the budget"
+   },
+   "screen_lines": [
+    "New event",
+    "Call with Maria",
+    "Fri Oct 16",
+    "4:00 PM to 5:00 PM",
+    "Invite: maria.lopez@example.com",
+    "Google Meet link",
+    "About: about the budget"
+   ],
+   "statuses": [],
+   "why": []
+  },
+  {
+   "id": "call_03",
+   "category": "calls_and_guests",
+   "correct": true,
+   "within_turns": false,
+   "turns": 2,
+   "ms": 3039,
+   "tokens_in": 4957,
+   "tokens_out": 178,
+   "state": "conflict_ambiguous",
+   "draft": {
+    "kind": "create_event",
+    "title": "Meeting with Alex",
+    "start": "2026-10-14T14:00:00-05:00",
+    "end": "2026-10-14T15:00:00-05:00",
+    "timezone": "America/Chicago",
+    "video_call": false,
+    "description": ""
+   },
+   "screen_lines": [
+    "Which Alex?"
+   ],
+   "statuses": [],
+   "why": []
+  },
+  {
+   "id": "call_04",
+   "category": "calls_and_guests",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 1551,
+   "tokens_in": 2421,
+   "tokens_out": 92,
+   "state": "review",
+   "draft": {
+    "kind": "create_event",
+    "title": "Coffee with Carlos",
+    "start": "2026-10-15T15:00:00-05:00",
+    "end": "2026-10-15T16:00:00-05:00",
+    "timezone": "America/Chicago",
+    "guests": [
+     {
+      "name": "Carlos Diaz",
+      "email": "carlos.diaz@example.com"
+     }
+    ],
+    "video_call": false,
+    "description": ""
+   },
+   "screen_lines": [
+    "New event",
+    "Coffee with Carlos",
+    "Thu Oct 15",
+    "3:00 PM to 4:00 PM",
+    "Invite: carlos.diaz@example.com"
+   ],
+   "statuses": [],
+   "why": []
+  },
+  {
+   "id": "update_01",
+   "category": "update_event",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 1162,
+   "tokens_in": 2418,
+   "tokens_out": 52,
+   "state": "review",
+   "draft": {
+    "kind": "update_event",
+    "event_id": "e3",
+    "before": {
+     "event_id": "e3",
+     "title": "Dentist",
+     "start": "2026-10-14T10:00:00-05:00",
+     "end": "2026-10-14T11:00:00-05:00"
+    },
+    "after": {
+     "title": "Dentist",
+     "start": "2026-10-14T14:00:00-05:00",
+     "end": "2026-10-14T15:00:00-05:00"
+    },
+    "timezone": "America/Chicago"
+   },
+   "screen_lines": [
+    "Change event",
+    "Dentist",
+    "Was Wed Oct 14 10:00 AM",
+    "Now Wed Oct 14 2:00 PM to 3:00 PM"
+   ],
+   "statuses": [],
+   "why": []
+  },
+  {
+   "id": "update_02",
+   "category": "update_event",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 1160,
+   "tokens_in": 2417,
+   "tokens_out": 52,
+   "state": "review",
+   "draft": {
+    "kind": "update_event",
+    "event_id": "e2",
+    "before": {
+     "event_id": "e2",
+     "title": "Team sync",
+     "start": "2026-10-13T14:00:00-05:00",
+     "end": "2026-10-13T15:00:00-05:00"
+    },
+    "after": {
+     "title": "Team sync",
+     "start": "2026-10-13T16:00:00-05:00",
+     "end": "2026-10-13T17:00:00-05:00"
+    },
+    "timezone": "America/Chicago"
+   },
+   "screen_lines": [
+    "Change event",
+    "Team sync",
+    "Was Tue Oct 13 2:00 PM",
+    "Now Tue Oct 13 4:00 PM to 5:00 PM"
+   ],
+   "statuses": [],
+   "why": []
+  },
+  {
+   "id": "update_03",
+   "category": "update_event",
+   "correct": false,
+   "within_turns": false,
+   "turns": 2,
+   "ms": 2151,
+   "tokens_in": 4925,
+   "tokens_out": 71,
+   "state": "read_only_result",
+   "draft": null,
+   "screen_lines": [
+    "That time is already past. Would you like to move it to a later time instead?"
+   ],
+   "statuses": [],
+   "why": [
+    "state read_only_result, expected review",
+    "kind None, expected update_event",
+    "event_id None, expected e4",
+    "start None, expected 2026-10-15T13:00"
+   ]
+  },
+  {
+   "id": "update_04",
+   "category": "update_event",
+   "correct": false,
+   "within_turns": false,
+   "turns": 2,
+   "ms": 2358,
+   "tokens_in": 4925,
+   "tokens_out": 83,
+   "state": "conflict_ambiguous",
+   "draft": null,
+   "screen_lines": [
+    "Reschedule vendor call to what time?",
+    "Hold to answer"
+   ],
+   "statuses": [],
+   "why": [
+    "state conflict_ambiguous, expected review",
+    "kind None, expected update_event",
+    "event_id None, expected e5",
+    "start None, expected 2026-10-16T11:00"
+   ]
+  },
+  {
+   "id": "update_05",
+   "category": "update_event",
+   "correct": true,
+   "within_turns": false,
+   "turns": 2,
+   "ms": 2517,
+   "tokens_in": 4947,
+   "tokens_out": 154,
+   "state": "review",
+   "draft": {
+    "kind": "update_event",
+    "event_id": "e6",
+    "before": {
+     "event_id": "e6",
+     "title": "Dinner with Maria",
+     "start": "2026-10-17T18:00:00-05:00",
+     "end": "2026-10-17T20:00:00-05:00"
+    },
+    "after": {
+     "title": "Dinner with Maria",
+     "start": "2026-10-18T19:00:00-05:00",
+     "end": "2026-10-18T20:00:00-05:00"
+    },
+    "timezone": "America/Chicago"
+   },
+   "screen_lines": [
+    "Change event",
+    "Dinner with Maria",
+    "Was Sat Oct 17 6:00 PM",
+    "Now Sun Oct 18 7:00 PM to 8:00 PM"
+   ],
+   "statuses": [],
+   "why": []
+  },
+  {
+   "id": "update_06",
+   "category": "update_event",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 966,
+   "tokens_in": 2420,
+   "tokens_out": 39,
+   "state": "review",
+   "draft": {
+    "kind": "update_event",
+    "event_id": "e7",
+    "before": {
+     "event_id": "e7",
+     "title": "Hackathon check-in",
+     "start": "2026-10-19T11:00:00-05:00",
+     "end": "2026-10-19T12:00:00-05:00"
+    },
+    "after": {
+     "title": "Demo rehearsal",
+     "start": "2026-10-19T11:00:00-05:00",
+     "end": "2026-10-19T12:00:00-05:00"
+    },
+    "timezone": "America/Chicago"
+   },
+   "screen_lines": [
+    "Change event",
+    "Demo rehearsal",
+    "Was Mon Oct 19 11:00 AM",
+    "Now Mon Oct 19 11:00 AM to 12:00 PM"
+   ],
+   "statuses": [],
+   "why": []
+  },
+  {
+   "id": "update_07",
+   "category": "update_event",
+   "correct": true,
+   "within_turns": false,
+   "turns": 2,
+   "ms": 2751,
+   "tokens_in": 4935,
+   "tokens_out": 154,
+   "state": "review",
+   "draft": {
+    "kind": "update_event",
+    "event_id": "e3",
+    "before": {
+     "event_id": "e3",
+     "title": "Dentist",
+     "start": "2026-10-14T10:00:00-05:00",
+     "end": "2026-10-14T11:00:00-05:00"
+    },
+    "after": {
+     "title": "Dentist",
+     "start": "2026-10-14T11:00:00-05:00",
+     "end": "2026-10-14T12:00:00-05:00"
+    },
+    "timezone": "America/Chicago"
+   },
+   "screen_lines": [
+    "Change event",
+    "Dentist",
+    "Was Wed Oct 14 10:00 AM",
+    "Now Wed Oct 14 11:00 AM to 12:00 PM"
+   ],
+   "statuses": [],
+   "why": []
+  },
+  {
+   "id": "update_08",
+   "category": "update_event",
+   "correct": false,
+   "within_turns": false,
+   "turns": 2,
+   "ms": 2424,
+   "tokens_in": 4954,
+   "tokens_out": 111,
+   "state": "conflict_ambiguous",
+   "draft": null,
+   "screen_lines": [
+    "What new time should we set for lunch with Carlos?",
+    "Hold to answer"
+   ],
+   "statuses": [],
+   "why": [
+    "state conflict_ambiguous, expected review",
+    "kind None, expected update_event",
+    "event_id None, expected e4",
+    "start None, expected 2026-10-15T12:30"
+   ]
+  },
+  {
+   "id": "delete_01",
+   "category": "delete_event",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 1004,
+   "tokens_in": 2416,
+   "tokens_out": 27,
+   "state": "review",
+   "draft": {
+    "kind": "delete_event",
+    "event_id": "e3",
+    "event": {
+     "event_id": "e3",
+     "title": "Dentist",
+     "start": "2026-10-14T10:00:00-05:00",
+     "end": "2026-10-14T11:00:00-05:00"
+    }
+   },
+   "screen_lines": [
+    "Delete event",
+    "Dentist",
+    "Wed Oct 14 10:00 AM to 11:00 AM"
+   ],
+   "statuses": [],
+   "why": []
+  },
+  {
+   "id": "delete_02",
+   "category": "delete_event",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 893,
+   "tokens_in": 2416,
+   "tokens_out": 27,
+   "state": "review",
+   "draft": {
+    "kind": "delete_event",
+    "event_id": "e4",
+    "event": {
+     "event_id": "e4",
+     "title": "Lunch with Carlos",
+     "start": "2026-10-15T12:00:00-05:00",
+     "end": "2026-10-15T13:00:00-05:00"
+    }
+   },
+   "screen_lines": [
+    "Delete event",
+    "Lunch with Carlos",
+    "Thu Oct 15 12:00 PM to 1:00 PM"
+   ],
+   "statuses": [],
+   "why": []
+  },
+  {
+   "id": "delete_03",
+   "category": "delete_event",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 882,
+   "tokens_in": 2415,
+   "tokens_out": 27,
+   "state": "review",
+   "draft": {
+    "kind": "delete_event",
+    "event_id": "e6",
+    "event": {
+     "event_id": "e6",
+     "title": "Dinner with Maria",
+     "start": "2026-10-17T18:00:00-05:00",
+     "end": "2026-10-17T20:00:00-05:00"
+    }
+   },
+   "screen_lines": [
+    "Delete event",
+    "Dinner with Maria",
+    "Sat Oct 17 6:00 PM to 8:00 PM"
+   ],
+   "statuses": [],
+   "why": []
+  },
+  {
+   "id": "delete_04",
+   "category": "delete_event",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 951,
+   "tokens_in": 2417,
+   "tokens_out": 27,
+   "state": "review",
+   "draft": {
+    "kind": "delete_event",
+    "event_id": "e5",
+    "event": {
+     "event_id": "e5",
+     "title": "Vendor call",
+     "start": "2026-10-16T09:00:00-05:00",
+     "end": "2026-10-16T09:45:00-05:00"
+    }
+   },
+   "screen_lines": [
+    "Delete event",
+    "Vendor call",
+    "Fri Oct 16 9:00 AM to 9:45 AM"
+   ],
+   "statuses": [],
+   "why": []
+  },
+  {
+   "id": "delete_05",
+   "category": "delete_event",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 892,
+   "tokens_in": 2417,
+   "tokens_out": 27,
+   "state": "review",
+   "draft": {
+    "kind": "delete_event",
+    "event_id": "e7",
+    "event": {
+     "event_id": "e7",
+     "title": "Hackathon check-in",
+     "start": "2026-10-19T11:00:00-05:00",
+     "end": "2026-10-19T12:00:00-05:00"
+    }
+   },
+   "screen_lines": [
+    "Delete event",
+    "Hackathon check-in",
+    "Mon Oct 19 11:00 AM to 12:00 PM"
+   ],
+   "statuses": [],
+   "why": []
+  },
+  {
+   "id": "delete_06",
+   "category": "delete_event",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 1205,
+   "tokens_in": 2417,
+   "tokens_out": 27,
+   "state": "review",
+   "draft": {
+    "kind": "delete_event",
+    "event_id": "e4",
+    "event": {
+     "event_id": "e4",
+     "title": "Lunch with Carlos",
+     "start": "2026-10-15T12:00:00-05:00",
+     "end": "2026-10-15T13:00:00-05:00"
+    }
+   },
+   "screen_lines": [
+    "Delete event",
+    "Lunch with Carlos",
+    "Thu Oct 15 12:00 PM to 1:00 PM"
+   ],
+   "statuses": [],
+   "why": []
+  },
+  {
+   "id": "email_01",
+   "category": "email_known",
+   "correct": true,
+   "within_turns": false,
+   "turns": 3,
+   "ms": 3390,
+   "tokens_in": 7506,
+   "tokens_out": 119,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "victor.morales@example.com",
+    "to_name": "victor.morales@example.com",
+    "subject": "Meeting moved to Thursday",
+    "body": "The meeting has been moved to Thursday."
+   },
+   "screen_lines": [
+    "To: victor.morales@example.com",
+    "Re: Meeting moved to Thursday",
+    "The meeting has been moved to Thursday."
+   ],
+   "statuses": [
+    "Checking memory",
+    "Looking up contact",
+    "Email to victor.morales@example.com"
+   ],
+   "why": []
+  },
+  {
+   "id": "email_02",
+   "category": "email_known",
+   "correct": true,
+   "within_turns": false,
+   "turns": 3,
+   "ms": 3078,
+   "tokens_in": 7502,
+   "tokens_out": 116,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "victor.morales@example.com",
+    "to_name": "victor.morales@example.com",
+    "subject": "Meeting moved to Thursday",
+    "body": "The meeting has been moved to Thursday."
+   },
+   "screen_lines": [
+    "To: victor.morales@example.com",
+    "Re: Meeting moved to Thursday",
+    "The meeting has been moved to Thursday."
+   ],
+   "statuses": [
+    "Checking memory",
+    "Looking up contact",
+    "Email to victor.morales@example.com"
+   ],
+   "why": []
+  },
+  {
+   "id": "email_03",
+   "category": "email_known",
+   "correct": true,
+   "within_turns": false,
+   "turns": 2,
+   "ms": 2001,
+   "tokens_in": 4932,
+   "tokens_out": 84,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "carlos.diaz@example.com",
+    "to_name": "carlos.diaz@example.com",
+    "subject": "Running late",
+    "body": "I'll be 10 minutes late"
+   },
+   "screen_lines": [
+    "To: carlos.diaz@example.com",
+    "Re: Running late",
+    "I'll be 10 minutes late"
+   ],
+   "statuses": [
+    "Looking up contact",
+    "Email to carlos.diaz@example.com"
+   ],
+   "why": []
+  },
+  {
+   "id": "email_04",
+   "category": "email_known",
+   "correct": true,
+   "within_turns": false,
+   "turns": 3,
+   "ms": 2680,
+   "tokens_in": 7484,
+   "tokens_out": 110,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "maria.lopez@example.com",
+    "to_name": "Maria Lopez",
+    "subject": "Thanks for dinner",
+    "body": "Thanks for dinner last night, it was wonderful."
+   },
+   "screen_lines": [
+    "To: maria.lopez@example.com",
+    "Re: Thanks for dinner",
+    "Thanks for dinner last night, it was wonderful."
+   ],
+   "statuses": [
+    "Checking memory",
+    "Looking up contact",
+    "Email to Maria Lopez"
+   ],
+   "why": []
+  },
+  {
+   "id": "email_05",
+   "category": "email_known",
+   "correct": true,
+   "within_turns": false,
+   "turns": 3,
+   "ms": 3160,
+   "tokens_in": 7501,
+   "tokens_out": 109,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "alex.kim@example.com",
+    "to_name": "alex.kim@example.com",
+    "subject": "Report status",
+    "body": "Is the report ready?"
+   },
+   "screen_lines": [
+    "To: alex.kim@example.com",
+    "Re: Report status",
+    "Is the report ready?"
+   ],
+   "statuses": [
+    "Checking memory",
+    "Looking up contact",
+    "Email to alex.kim@example.com"
+   ],
+   "why": []
+  },
+  {
+   "id": "email_06",
+   "category": "email_known",
+   "correct": true,
+   "within_turns": false,
+   "turns": 2,
+   "ms": 2213,
+   "tokens_in": 4938,
+   "tokens_out": 89,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "tomai.nguyen@example.com",
+    "to_name": "tomai.nguyen@example.com",
+    "subject": "Cannot attend meeting",
+    "body": "I cannot attend the meeting because I am sick."
+   },
+   "screen_lines": [
+    "To: tomai.nguyen@example.com",
+    "Re: Cannot attend meeting",
+    "I cannot attend the meeting because I am sick."
+   ],
+   "statuses": [
+    "Looking up contact",
+    "Email to tomai.nguyen@example.com"
+   ],
+   "why": []
+  },
+  {
+   "id": "email_07",
+   "category": "email_known",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 1099,
+   "tokens_in": 2422,
+   "tokens_out": 53,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "victor.morales@example.com",
+    "to_name": "Victor Morales",
+    "subject": "budget update",
+    "body": "the numbers are in"
+   },
+   "screen_lines": [
+    "To: victor.morales@example.com",
+    "Re: budget update",
+    "the numbers are in"
+   ],
+   "statuses": [
+    "Email to Victor Morales"
+   ],
+   "why": []
+  },
+  {
+   "id": "email_08",
+   "category": "email_known",
+   "correct": false,
+   "within_turns": false,
+   "turns": 2,
+   "ms": 2089,
+   "tokens_in": 4938,
+   "tokens_out": 84,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "victor.morales@example.com",
+    "to_name": "victor.morales@example.com",
+    "subject": "see you tomorrow",
+    "body": "see you tomorrow"
+   },
+   "screen_lines": [
+    "To: victor.morales@example.com",
+    "Re: see you tomorrow",
+    "see you tomorrow"
+   ],
+   "statuses": [
+    "Looking up contact",
+    "Email to victor.morales@example.com"
+   ],
+   "why": [
+    "to victor.morales@example.com, expected victor@gmail.com"
+   ]
+  },
+  {
+   "id": "email_09",
+   "category": "email_known",
+   "correct": true,
+   "within_turns": false,
+   "turns": 2,
+   "ms": 2072,
+   "tokens_in": 4935,
+   "tokens_out": 87,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "carlos.diaz@example.com",
+    "to_name": "carlos.diaz@example.com",
+    "subject": "Demo is on Friday",
+    "body": "The demo is scheduled for Friday."
+   },
+   "screen_lines": [
+    "To: carlos.diaz@example.com",
+    "Re: Demo is on Friday",
+    "The demo is scheduled for Friday."
+   ],
+   "statuses": [
+    "Looking up contact",
+    "Email to carlos.diaz@example.com"
+   ],
+   "why": []
+  },
+  {
+   "id": "email_10",
+   "category": "email_known",
+   "correct": true,
+   "within_turns": false,
+   "turns": 2,
+   "ms": 2130,
+   "tokens_in": 4932,
+   "tokens_out": 83,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "alex.rivera@example.com",
+    "to_name": "Alex Rivera",
+    "subject": "Lunch is on me",
+    "body": "Lunch is on me."
+   },
+   "screen_lines": [
+    "To: alex.rivera@example.com",
+    "Re: Lunch is on me",
+    "Lunch is on me."
+   ],
+   "statuses": [
+    "Looking up contact",
+    "Email to Alex Rivera"
+   ],
+   "why": []
+  },
+  {
+   "id": "ambig_01",
+   "category": "email_ambiguous",
+   "correct": false,
+   "within_turns": false,
+   "turns": 3,
+   "ms": 2661,
+   "tokens_in": 7508,
+   "tokens_out": 107,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "alex.kim@example.com",
+    "to_name": "Alex Kim",
+    "subject": "Meeting at 3",
+    "body": "the meeting is at 3"
+   },
+   "screen_lines": [
+    "To: alex.kim@example.com",
+    "Re: Meeting at 3",
+    "the meeting is at 3"
+   ],
+   "statuses": [
+    "Checking memory",
+    "Looking up contact",
+    "Email to Alex Kim"
+   ],
+   "why": [
+    "state review, expected conflict_ambiguous",
+    "candidates [], expected ['c_alex_k', 'c_alex_r']"
+   ]
+  },
+  {
+   "id": "ambig_02",
+   "category": "email_ambiguous",
+   "correct": true,
+   "within_turns": true,
+   "turns": 2,
+   "ms": 1923,
+   "tokens_in": 4917,
+   "tokens_out": 54,
+   "state": "conflict_ambiguous",
+   "draft": null,
+   "screen_lines": [
+    "Who is 'my'?",
+    "Hold to answer"
+   ],
+   "statuses": [
+    "Checking memory"
+   ],
+   "why": []
+  },
+  {
+   "id": "ambig_03",
+   "category": "email_ambiguous",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 1104,
+   "tokens_in": 2418,
+   "tokens_out": 47,
+   "state": "conflict_ambiguous",
+   "draft": {
+    "kind": "send_email",
+    "subject": "Hello",
+    "body": "hello"
+   },
+   "screen_lines": [
+    "No contact named jordan",
+    "Hold to say the address"
+   ],
+   "statuses": [],
+   "why": []
+  },
+  {
+   "id": "ambig_04",
+   "category": "email_ambiguous",
+   "correct": true,
+   "within_turns": false,
+   "turns": 4,
+   "ms": 3743,
+   "tokens_in": 10084,
+   "tokens_out": 109,
+   "state": "conflict_ambiguous",
+   "draft": null,
+   "screen_lines": [
+    "What's the email address for the team?",
+    "Hold to answer"
+   ],
+   "statuses": [
+    "Checking memory",
+    "Looking up contact",
+    "Searching the web"
+   ],
+   "why": []
+  },
+  {
+   "id": "ambig_05",
+   "category": "email_ambiguous",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 1161,
+   "tokens_in": 2436,
+   "tokens_out": 55,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "alex.rivera@example.com",
+    "to_name": "Alex Rivera",
+    "subject": "Meeting at 3",
+    "body": "the meeting is at 3"
+   },
+   "screen_lines": [
+    "To: alex.rivera@example.com",
+    "Re: Meeting at 3",
+    "the meeting is at 3"
+   ],
+   "statuses": [
+    "Email to Alex Rivera"
+   ],
+   "why": []
+  },
+  {
+   "id": "ambig_06",
+   "category": "email_ambiguous",
+   "correct": true,
+   "within_turns": true,
+   "turns": 2,
+   "ms": 1936,
+   "tokens_in": 4914,
+   "tokens_out": 62,
+   "state": "conflict_ambiguous",
+   "draft": null,
+   "screen_lines": [
+    "Could you provide the dentist office email address?",
+    "Hold to answer"
+   ],
+   "statuses": [
+    "Searching the web"
+   ],
+   "why": []
+  },
+  {
+   "id": "read_01",
+   "category": "read_only",
+   "correct": true,
+   "within_turns": false,
+   "turns": 2,
+   "ms": 2090,
+   "tokens_in": 5014,
+   "tokens_out": 92,
+   "state": "read_only_result",
+   "draft": null,
+   "screen_lines": [
+    "You have a Dentist appointment tomorrow (Wed Oct 14) from 10:00 AM to 11:00 AM."
+   ],
+   "statuses": [
+    "Checking your calendar"
+   ],
+   "why": []
+  },
+  {
+   "id": "read_02",
+   "category": "read_only",
+   "correct": true,
+   "within_turns": false,
+   "turns": 3,
+   "ms": 2969,
+   "tokens_in": 7476,
+   "tokens_out": 93,
+   "state": "read_only_result",
+   "draft": null,
+   "screen_lines": [
+    "You\u2019re generally free on Friday afternoons. If you\u2019d like to schedule something, just let me know what you have in mind!"
+   ],
+   "statuses": [
+    "Checking memory",
+    "Searching the web"
+   ],
+   "why": []
+  },
+  {
+   "id": "read_03",
+   "category": "read_only",
+   "correct": false,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 965,
+   "tokens_in": 2417,
+   "tokens_out": 29,
+   "state": "conflict_ambiguous",
+   "draft": null,
+   "screen_lines": [
+    "When is lunch with Carlos?",
+    "Hold to answer"
+   ],
+   "statuses": [],
+   "why": [
+    "state conflict_ambiguous, expected read_only_result",
+    "answer lacks any of ['12', 'noon']: 'when is lunch with carlos? hold to answer'"
+   ]
+  },
+  {
+   "id": "read_04",
+   "category": "read_only",
+   "correct": false,
+   "within_turns": false,
+   "turns": 2,
+   "ms": 1965,
+   "tokens_in": 5521,
+   "tokens_out": 89,
+   "state": "read_only_result",
+   "draft": null,
+   "screen_lines": [
+    "Your next meeting is Standup at 9:00 AM on Tuesday, Oct 13. It lasts 30 minutes."
+   ],
+   "statuses": [
+    "Checking your calendar"
+   ],
+   "why": [
+    "answer lacks any of ['dentist']: 'your next meeting is standup at 9:00 am on tuesday, oct 13. it lasts 30 minutes.'"
+   ]
+  },
+  {
+   "id": "read_05",
+   "category": "read_only",
+   "correct": true,
+   "within_turns": false,
+   "turns": 3,
+   "ms": 3230,
+   "tokens_in": 7477,
+   "tokens_out": 109,
+   "state": "read_only_result",
+   "draft": null,
+   "screen_lines": [
+    "You have a dinner with Maria on Saturday, Oct 17, from 6:00 PM to 8:00 PM. No other events are scheduled for that day."
+   ],
+   "statuses": [
+    "Checking memory",
+    "Searching the web"
+   ],
+   "why": []
+  },
+  {
+   "id": "read_06",
+   "category": "read_only",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 942,
+   "tokens_in": 2416,
+   "tokens_out": 33,
+   "state": "read_only_result",
+   "draft": null,
+   "screen_lines": [
+    "The vendor call is scheduled for Friday, Oct 16, from 9:00 AM to 9:45 AM."
+   ],
+   "statuses": [],
+   "why": []
+  },
+  {
+   "id": "read_07",
+   "category": "read_only",
+   "correct": true,
+   "within_turns": true,
+   "turns": 2,
+   "ms": 1662,
+   "tokens_in": 4922,
+   "tokens_out": 38,
+   "state": "read_only_result",
+   "draft": null,
+   "screen_lines": [
+    "Victor's email address is victor.morales@example.com."
+   ],
+   "statuses": [
+    "Looking up contact"
+   ],
+   "why": []
+  },
+  {
+   "id": "read_08",
+   "category": "read_only",
+   "correct": false,
+   "within_turns": false,
+   "turns": 2,
+   "ms": 1869,
+   "tokens_in": 4912,
+   "tokens_out": 58,
+   "state": "conflict_ambiguous",
+   "draft": null,
+   "screen_lines": [
+    "Which Monday?",
+    "Hold to answer"
+   ],
+   "statuses": [
+    "Checking memory"
+   ],
+   "why": [
+    "state conflict_ambiguous, expected read_only_result",
+    "answer lacks any of ['hackathon', 'check-in', 'check in']: 'which monday? hold to answer'"
+   ]
+  },
+  {
+   "id": "search_01",
+   "category": "search_then_act",
+   "correct": true,
+   "within_turns": true,
+   "turns": 2,
+   "ms": 2534,
+   "tokens_in": 4992,
+   "tokens_out": 125,
+   "state": "conflict_schedule",
+   "draft": {
+    "kind": "create_event",
+    "title": "Spurs game",
+    "start": "2026-10-17T19:00:00-05:00",
+    "end": "2026-10-17T21:30:00-05:00",
+    "timezone": "America/Chicago",
+    "guests": [],
+    "video_call": false,
+    "description": ""
+   },
+   "screen_lines": [
+    "You already have Dinner with Maria then",
+    "Sat Oct 17, 6:00 PM to 8:00 PM",
+    "What would you like to do?",
+    "Press: book it anyway",
+    "Hold: say a new time",
+    "Double press: cancel"
+   ],
+   "statuses": [
+    "Searching the web"
+   ],
+   "why": []
+  },
+  {
+   "id": "search_02",
+   "category": "search_then_act",
+   "correct": true,
+   "within_turns": true,
+   "turns": 2,
+   "ms": 1662,
+   "tokens_in": 4969,
+   "tokens_out": 50,
+   "state": "read_only_result",
+   "draft": null,
+   "screen_lines": [
+    "The farmers market opens at 8:00 AM on Saturdays."
+   ],
+   "statuses": [
+    "Searching the web"
+   ],
+   "why": []
+  },
+  {
+   "id": "search_03",
+   "category": "search_then_act",
+   "correct": true,
+   "within_turns": true,
+   "turns": 2,
+   "ms": 2429,
+   "tokens_in": 4983,
+   "tokens_out": 141,
+   "state": "review",
+   "draft": {
+    "kind": "create_event",
+    "title": "Farmers Market",
+    "start": "2026-10-17T08:00:00-05:00",
+    "end": "2026-10-17T12:00:00-05:00",
+    "timezone": "America/Chicago",
+    "guests": [],
+    "video_call": false,
+    "description": "Open Saturdays from 8:00 AM to 12:00 PM at the city square."
+   },
+   "screen_lines": [
+    "New event",
+    "Farmers Market",
+    "Sat Oct 17",
+    "8:00 AM to 12:00 PM",
+    "About: Open Saturdays from 8:00 AM to 12:00 PM at the city square."
+   ],
+   "statuses": [
+    "Searching the web"
+   ],
+   "why": []
+  },
+  {
+   "id": "search_04",
+   "category": "search_then_act",
+   "correct": true,
+   "within_turns": false,
+   "turns": 3,
+   "ms": 3311,
+   "tokens_in": 7632,
+   "tokens_out": 118,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "victor.morales@example.com",
+    "to_name": "Victor Morales",
+    "subject": "Spurs game time",
+    "body": "The Spurs play Saturday at 7:00 PM CT."
+   },
+   "screen_lines": [
+    "To: victor.morales@example.com",
+    "Re: Spurs game time",
+    "The Spurs play Saturday at 7:00 PM CT."
+   ],
+   "statuses": [
+    "Searching the web",
+    "Looking up contact",
+    "Email to Victor Morales"
+   ],
+   "why": []
+  },
+  {
+   "id": "conflict_01",
+   "category": "schedule_conflict",
+   "correct": false,
+   "within_turns": false,
+   "turns": 3,
+   "ms": 2797,
+   "tokens_in": 7481,
+   "tokens_out": 88,
+   "state": "conflict_ambiguous",
+   "draft": null,
+   "screen_lines": [
+    "Which dentist would you like to book?",
+    "Hold to answer"
+   ],
+   "statuses": [
+    "Searching the web",
+    "Checking memory"
+   ],
+   "why": [
+    "state conflict_ambiguous, expected conflict_schedule",
+    "kind None, expected create_event",
+    "start None, expected 2026-10-16T09:00"
+   ]
+  },
+  {
+   "id": "conflict_02",
+   "category": "schedule_conflict",
+   "correct": false,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 805,
+   "tokens_in": 2421,
+   "tokens_out": 30,
+   "state": "conflict_ambiguous",
+   "draft": null,
+   "screen_lines": [
+    "What title should the meeting have?",
+    "Hold to answer"
+   ],
+   "statuses": [],
+   "why": [
+    "state conflict_ambiguous, expected conflict_schedule",
+    "kind None, expected create_event",
+    "start None, expected 2026-10-14T10:30"
+   ]
+  },
+  {
+   "id": "conflict_03",
+   "category": "schedule_conflict",
+   "correct": true,
+   "within_turns": false,
+   "turns": 2,
+   "ms": 2642,
+   "tokens_in": 4958,
+   "tokens_out": 172,
+   "state": "conflict_schedule",
+   "draft": {
+    "kind": "create_event",
+    "title": "Movies",
+    "start": "2026-10-17T19:00:00-05:00",
+    "end": "2026-10-17T21:00:00-05:00",
+    "timezone": "America/Chicago",
+    "guests": [],
+    "video_call": false,
+    "description": ""
+   },
+   "screen_lines": [
+    "You already have Dinner with Maria then",
+    "Sat Oct 17, 6:00 PM to 8:00 PM",
+    "What would you like to do?",
+    "Press: book it anyway",
+    "Hold: say a new time",
+    "Double press: cancel"
+   ],
+   "statuses": [],
+   "why": []
+  },
+  {
+   "id": "conflict_04",
+   "category": "schedule_conflict",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 961,
+   "tokens_in": 2419,
+   "tokens_out": 52,
+   "state": "conflict_schedule",
+   "draft": {
+    "kind": "update_event",
+    "event_id": "e5",
+    "before": {
+     "event_id": "e5",
+     "title": "Vendor call",
+     "start": "2026-10-16T09:00:00-05:00",
+     "end": "2026-10-16T09:45:00-05:00"
+    },
+    "after": {
+     "title": "Vendor call",
+     "start": "2026-10-15T12:00:00-05:00",
+     "end": "2026-10-15T12:45:00-05:00"
+    },
+    "timezone": "America/Chicago"
+   },
+   "screen_lines": [
+    "You already have Lunch with Carlos then",
+    "Thu Oct 15, 12:00 PM to 1:00 PM",
+    "What would you like to do?",
+    "Press: move it anyway",
+    "Hold: say a new time",
+    "Double press: cancel"
+   ],
+   "statuses": [],
+   "why": []
+  },
+  {
+   "id": "ask_01",
+   "category": "missing_info",
+   "correct": false,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 881,
+   "tokens_in": 2416,
+   "tokens_out": 30,
+   "state": "conflict_ambiguous",
+   "draft": null,
+   "screen_lines": [
+    "What should the meeting be about?",
+    "Hold to answer"
+   ],
+   "statuses": [],
+   "why": [
+    "answer lacks any of ['say']: 'what should the meeting be about? hold to answer'"
+   ]
+  },
+  {
+   "id": "ask_02",
+   "category": "missing_info",
+   "correct": false,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 1224,
+   "tokens_in": 2414,
+   "tokens_out": 77,
+   "state": "review",
+   "draft": {
+    "kind": "update_event",
+    "event_id": "e3",
+    "before": {
+     "event_id": "e3",
+     "title": "Dentist",
+     "start": "2026-10-14T10:00:00-05:00",
+     "end": "2026-10-14T11:00:00-05:00"
+    },
+    "after": {
+     "title": "Dentist",
+     "start": "2026-10-13T15:00:00-05:00",
+     "end": "2026-10-13T16:00:00-05:00"
+    },
+    "timezone": "America/Chicago"
+   },
+   "screen_lines": [
+    "Change event",
+    "Dentist",
+    "Was Wed Oct 14 10:00 AM",
+    "Now Tue Oct 13 3:00 PM to 4:00 PM"
+   ],
+   "statuses": [],
+   "why": [
+    "state review, expected conflict_ambiguous",
+    "proposed update_event although information was missing",
+    "answer lacks any of ['say']: 'change event dentist was wed oct 14 10:00 am now tue oct 13 3:00 pm to 4:00 pm'"
+   ]
+  },
+  {
+   "id": "ask_03",
+   "category": "missing_info",
+   "correct": false,
+   "within_turns": false,
+   "turns": 3,
+   "ms": 2851,
+   "tokens_in": 7479,
+   "tokens_out": 141,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "victor.morales@example.com",
+    "to_name": "victor.morales@example.com",
+    "subject": "Quick catch\u2011up",
+    "body": "Hi Victor,\n\nJust wanted to touch base and see how you\u2019re doing. Let me know if you\u2019d like to grab coffee soon.\n\nBest,\n[Your Name]"
+   },
+   "screen_lines": [
+    "To: victor.morales@example.com",
+    "Re: Quick catch\u2011up",
+    "Hi Victor,\n\nJust wanted to touch base and see how you\u2019re doing. Let me know if you\u2019d like to grab coffee soon.\n\nBest,\n[Your Name]"
+   ],
+   "statuses": [
+    "Checking memory",
+    "Looking up contact",
+    "Email to victor.morales@example.com"
+   ],
+   "why": [
+    "state review, expected conflict_ambiguous",
+    "proposed send_email although information was missing",
+    "answer lacks any of ['say']: 'to: victor.morales@example.com re: quick catch\u2011up hi victor,\\n\\njust wanted to tou'"
+   ]
+  },
+  {
+   "id": "ask_04",
+   "category": "missing_info",
+   "correct": false,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 811,
+   "tokens_in": 2416,
+   "tokens_out": 34,
+   "state": "conflict_ambiguous",
+   "draft": null,
+   "screen_lines": [
+    "What time would you like to block for the gym?",
+    "Hold to answer"
+   ],
+   "statuses": [],
+   "why": [
+    "answer lacks any of ['say']: 'what time would you like to block for the gym? hold to answer'"
+   ]
+  },
+  {
+   "id": "add_01",
+   "category": "additions",
+   "correct": false,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 1196,
+   "tokens_in": 2446,
+   "tokens_out": 77,
+   "state": "review",
+   "draft": {
+    "kind": "update_event",
+    "event_id": "e1",
+    "before": {
+     "event_id": "e1",
+     "title": "Standup",
+     "start": "2026-10-13T09:00:00-05:00",
+     "end": "2026-10-13T09:30:00-05:00"
+    },
+    "after": {
+     "title": "Standup",
+     "start": "2026-10-14T16:00:00-05:00",
+     "end": "2026-10-14T17:00:00-05:00"
+    },
+    "timezone": "America/Chicago"
+   },
+   "screen_lines": [
+    "Change event",
+    "Standup",
+    "Was Tue Oct 13 9:00 AM",
+    "Now Wed Oct 14 4:00 PM to 5:00 PM"
+   ],
+   "statuses": [],
+   "why": [
+    "kind update_event, expected create_event"
+   ]
+  },
+  {
+   "id": "add_02",
+   "category": "additions",
+   "correct": false,
+   "within_turns": false,
+   "turns": 4,
+   "ms": 3256,
+   "tokens_in": 10218,
+   "tokens_out": 116,
+   "state": "failure",
+   "draft": null,
+   "screen_lines": null,
+   "statuses": [
+    "Checking memory",
+    "Searching the web",
+    "Searching the web",
+    "Searching the web"
+   ],
+   "why": [
+    "RuntimeError: no result after 4 model turns"
+   ]
+  },
+  {
+   "id": "add_03",
+   "category": "additions",
+   "correct": false,
+   "within_turns": false,
+   "turns": 2,
+   "ms": 2424,
+   "tokens_in": 4989,
+   "tokens_out": 154,
+   "state": "review",
+   "draft": {
+    "kind": "update_event",
+    "event_id": "e4",
+    "before": {
+     "event_id": "e4",
+     "title": "Lunch with Carlos",
+     "start": "2026-10-15T12:00:00-05:00",
+     "end": "2026-10-15T13:00:00-05:00"
+    },
+    "after": {
+     "title": "Lunch with Carlos",
+     "start": "2026-10-15T15:00:00-05:00",
+     "end": "2026-10-15T16:00:00-05:00"
+    },
+    "timezone": "America/Chicago"
+   },
+   "screen_lines": [
+    "Change event",
+    "Lunch with Carlos",
+    "Was Thu Oct 15 12:00 PM",
+    "Now Thu Oct 15 3:00 PM to 4:00 PM"
+   ],
+   "statuses": [],
+   "why": [
+    "kind update_event, expected create_event",
+    "start 2026-10-15T15:00, expected 2026-10-15T16:00"
+   ]
+  },
+  {
+   "id": "add_04",
+   "category": "additions",
+   "correct": true,
+   "within_turns": false,
+   "turns": 2,
+   "ms": 1740,
+   "tokens_in": 4966,
+   "tokens_out": 74,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "alex.kim@example.com",
+    "to_name": "Alex Kim",
+    "subject": "Hi",
+    "body": "hi"
+   },
+   "screen_lines": [
+    "To: alex.kim@example.com",
+    "Re: Hi",
+    "hi"
+   ],
+   "statuses": [
+    "Looking up contact",
+    "Email to Alex Kim"
+   ],
+   "why": []
+  },
+  {
+   "id": "add_05",
+   "category": "additions",
+   "correct": false,
+   "within_turns": false,
+   "turns": 2,
+   "ms": 2254,
+   "tokens_in": 4985,
+   "tokens_out": 154,
+   "state": "review",
+   "draft": {
+    "kind": "update_event",
+    "event_id": "e3",
+    "before": {
+     "event_id": "e3",
+     "title": "Dentist",
+     "start": "2026-10-14T10:00:00-05:00",
+     "end": "2026-10-14T11:00:00-05:00"
+    },
+    "after": {
+     "title": "Dentist",
+     "start": "2026-10-13T15:00:00-05:00",
+     "end": "2026-10-13T15:30:00-05:00"
+    },
+    "timezone": "America/Chicago"
+   },
+   "screen_lines": [
+    "Change event",
+    "Dentist",
+    "Was Wed Oct 14 10:00 AM",
+    "Now Tue Oct 13 3:00 PM to 3:30 PM"
+   ],
+   "statuses": [],
+   "why": [
+    "start 2026-10-13T15:00, expected 2026-10-14T15:00"
+   ]
+  },
+  {
+   "id": "add_06",
+   "category": "additions",
+   "correct": false,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 1264,
+   "tokens_in": 2450,
+   "tokens_out": 76,
+   "state": "conflict_schedule",
+   "draft": {
+    "kind": "create_event",
+    "title": "Gym",
+    "start": "2026-10-15T10:00:00-05:00",
+    "end": "2026-10-15T11:00:00-05:00",
+    "timezone": "America/Chicago",
+    "guests": [],
+    "video_call": false,
+    "description": ""
+   },
+   "screen_lines": [
+    "You already have Dentist then",
+    "Thu Oct 15, 10:00 AM to 11:00 AM",
+    "What would you like to do?",
+    "Press: book it anyway",
+    "Hold: say a new time",
+    "Double press: cancel"
+   ],
+   "statuses": [],
+   "why": [
+    "state conflict_schedule, expected review",
+    "start 2026-10-15T10:00, expected 2026-10-14T10:00",
+    "end 2026-10-15T11:00, expected 2026-10-14T11:00"
+   ]
+  },
+  {
+   "id": "trap_01",
+   "category": "traps",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 718,
+   "tokens_in": 2426,
+   "tokens_out": 11,
+   "state": "read_only_result",
+   "draft": null,
+   "screen_lines": [
+    "You\u2019re free tomorrow at 3 PM."
+   ],
+   "statuses": [],
+   "why": []
+  },
+  {
+   "id": "trap_02",
+   "category": "traps",
+   "correct": true,
+   "within_turns": false,
+   "turns": 3,
+   "ms": 3034,
+   "tokens_in": 7485,
+   "tokens_out": 130,
+   "state": "read_only_result",
+   "draft": null,
+   "screen_lines": [
+    "If you delete the dentist appointment on 2026\u201110\u201114, the slot will become free. You could then schedule something else in that time, or simply let the gap remain open. Let me know if you\u2019d like to reschedule or need help finding a new appointment."
+   ],
+   "statuses": [
+    "Checking memory",
+    "Searching the web"
+   ],
+   "why": []
+  },
+  {
+   "id": "trap_03",
+   "category": "traps",
+   "correct": false,
+   "within_turns": false,
+   "turns": 3,
+   "ms": 3023,
+   "tokens_in": 7492,
+   "tokens_out": 130,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "carlos.diaz@example.com",
+    "to_name": "carlos.diaz@example.com",
+    "subject": "Demo follow-up",
+    "body": "Hi Carlos, I wanted to touch base about the demo we discussed. Let me know if you have any feedback or need anything else."
+   },
+   "screen_lines": [
+    "To: carlos.diaz@example.com",
+    "Re: Demo follow-up",
+    "Hi Carlos, I wanted to touch base about the demo we discussed. Let me know if you have any feedback or need anything else."
+   ],
+   "statuses": [
+    "Checking memory",
+    "Looking up contact",
+    "Email to carlos.diaz@example.com"
+   ],
+   "why": [
+    "state review, expected read_only_result",
+    "answer lacks any of ['say']: 'to: carlos.diaz@example.com re: demo follow-up hi carlos, i wanted to touch base'"
+   ]
+  },
+  {
+   "id": "trap_04",
+   "category": "traps",
+   "correct": true,
+   "within_turns": true,
+   "turns": 2,
+   "ms": 2699,
+   "tokens_in": 5094,
+   "tokens_out": 162,
+   "state": "read_only_result",
+   "draft": null,
+   "screen_lines": [
+    "The only event scheduled for today (Tuesday, Oct 13) is Standup from 9:00 AM \u2013 9:30 AM and Team sync from 2:00 PM \u2013 3:00 PM. There isn\u2019t a \u201cvendor call\u201d on the calendar for this date. If you\u2019d like to add or check a vendor call, let me know the details (time, participants, etc.) and I can create it for you."
+   ],
+   "statuses": [
+    "Checking your calendar"
+   ],
+   "why": []
+  },
+  {
+   "id": "trap_05",
+   "category": "traps",
+   "correct": true,
+   "within_turns": true,
+   "turns": 2,
+   "ms": 2024,
+   "tokens_in": 4914,
+   "tokens_out": 79,
+   "state": "read_only_result",
+   "draft": null,
+   "screen_lines": [
+    "There are no specific events listed for Friday, October 16 2026 in the provided calendar. If you\u2019d like to add something or need more details, just let me know!"
+   ],
+   "statuses": [
+    "Searching the web"
+   ],
+   "why": []
+  },
+  {
+   "id": "trap_06",
+   "category": "traps",
+   "correct": true,
+   "within_turns": false,
+   "turns": 3,
+   "ms": 2964,
+   "tokens_in": 7625,
+   "tokens_out": 121,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "carlos.diaz@example.com",
+    "to_name": "Carlos Diaz",
+    "subject": "Coffee shop recommendation",
+    "body": "Here is a good coffee shop: Bean There opens at 7:00 AM daily."
+   },
+   "screen_lines": [
+    "To: carlos.diaz@example.com",
+    "Re: Coffee shop recommendation",
+    "Here is a good coffee shop: Bean There opens at 7:00 AM daily."
+   ],
+   "statuses": [
+    "Searching the web",
+    "Looking up contact",
+    "Email to Carlos Diaz"
+   ],
+   "why": []
+  },
+  {
+   "id": "trap_07",
+   "category": "traps",
+   "correct": false,
+   "within_turns": true,
+   "turns": 2,
+   "ms": 1878,
+   "tokens_in": 4970,
+   "tokens_out": 61,
+   "state": "conflict_ambiguous",
+   "draft": null,
+   "screen_lines": [
+    "Which coffee shop would you like to go to?",
+    "Hold to answer"
+   ],
+   "statuses": [
+    "Searching the web"
+   ],
+   "why": [
+    "state conflict_ambiguous, expected read_only_result"
+   ]
+  },
+  {
+   "id": "trap_08",
+   "category": "traps",
+   "correct": false,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 911,
+   "tokens_in": 2417,
+   "tokens_out": 33,
+   "state": "conflict_ambiguous",
+   "draft": null,
+   "screen_lines": [
+    "Which time would you like to move it to?",
+    "Hold to answer"
+   ],
+   "statuses": [],
+   "why": [
+    "state conflict_ambiguous, expected read_only_result"
+   ]
+  }
+ ]
+}

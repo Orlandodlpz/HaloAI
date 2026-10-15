@@ -58,7 +58,9 @@ def test_dst_change_uses_the_right_offset(world):
 def test_overlap_is_a_schedule_conflict(world):
     out = call(world, "create_event", title="Meeting", start="2026-10-14T10:30", end="2026-10-14T11:30")
     assert out.output.state == "conflict_schedule"
-    assert out.output.screen_lines[0] == "Overlaps: Dentist"
+    assert out.output.screen_lines == ["You already have Dentist then", "Wed Oct 14, 10:00 AM to 11:00 AM",
+                                       "What would you like to do?", "Press: book it anyway",
+                                       "Hold: say a new time", "Double press: cancel"]
     assert out.output.review_screen_lines[0] == "New event" and out.output.draft["title"] == "Meeting"
 
 
@@ -71,6 +73,32 @@ def test_overlap_is_a_schedule_conflict(world):
 def test_bad_event_calls_go_back_to_the_model(world, args, msg):
     with pytest.raises(ToolError, match=msg):
         run_tool("create_event", args, world, NOW)
+
+
+def test_call_with_guest_meet_link_and_description(world):
+    out = call(world, "create_event", title="Call with Maria", start="2026-10-16T16:00", guests=["Maria"],
+               video_call=True, description="Budget")
+    assert out.output.state == "review"
+    assert out.output.draft["guests"] == [{"name": "Maria Lopez", "email": "maria.lopez@example.com"}]
+    assert out.output.draft["video_call"] is True and out.output.draft["description"] == "Budget"
+    assert out.output.screen_lines[4:] == ["Invite: maria.lopez@example.com", "Google Meet link", "About: Budget"]
+
+
+def test_ambiguous_guest_is_asked_not_guessed(world):
+    out = call(world, "create_event", title="Meeting", start="2026-10-14T14:00", guests=["Alex"])
+    assert out.output.state == "conflict_ambiguous"
+    assert [c["candidate_id"] for c in out.output.candidates] == ["c_alex_k", "c_alex_r"]
+
+
+def test_unknown_guest_asks_for_address(world):
+    out = call(world, "create_event", title="Meeting", start="2026-10-14T14:00", guests=["Jordan"])
+    assert out.output.state == "conflict_ambiguous" and out.output.candidates == []
+    assert out.output.screen_lines == ["No contact named Jordan", "Hold and say the address"]
+
+
+def test_move_conflict_says_move_it(world):
+    out = call(world, "update_event", event_id="e5", new_start="2026-10-15T12:00")
+    assert out.output.state == "conflict_schedule" and "Press: move it anyway" in out.output.screen_lines
 
 
 def test_move_keeps_length(world):
@@ -121,7 +149,7 @@ def test_unknown_recipient_asks_for_address(world):
     # Parakeet heard "Email Tomai" as "Email to my" (P0): never guess.
     out = call(world, "draft_email", recipient="my", subject="Sick", body="I cannot attend.")
     assert out.output.state == "conflict_ambiguous" and out.output.candidates == []
-    assert out.output.screen_lines[1] == "Hold to say the address"
+    assert out.output.screen_lines[1] == "Hold and say the address"
 
 
 @pytest.mark.parametrize("spoken,expected", [
@@ -168,7 +196,7 @@ def test_injection_text_only_ever_reaches_the_model_as_marked_data(world):
 def test_ask_user_is_a_question_state(world):
     out = call(world, "ask_user", question="What time?")
     assert out.output.state == "conflict_ambiguous" and out.output.candidates == []
-    assert out.output.screen_lines == ["What time?", "Hold to answer"]
+    assert out.output.screen_lines == ["What time?", "Hold and say your answer"]
 
 
 def test_calendar_context_has_next_7_days_without_notes(world):

@@ -48,10 +48,17 @@ TOOL_SPECS = [
         "calendar shown in the instructions.",
         {"start_date": {"type": "string", "description": "YYYY-MM-DD"},
          "end_date": {"type": "string", "description": "YYYY-MM-DD"}}, ["start_date", "end_date"]),
-    _fn("create_event", "Propose a new calendar event. The user reviews it before anything is created.",
-        {"title": {"type": "string", "description": "Short title, e.g. Gym"},
+    _fn("create_event", "Propose a new calendar event. For a call or meeting with people, list them in guests "
+        "(they get an invitation) and set video_call for a call (adds a Google Meet link). The user reviews it "
+        "before anything is created or sent.",
+        {"title": {"type": "string", "description": "Short title, e.g. Gym or Call with Maria"},
          "start": {"type": "string", "description": LOCAL_TIME},
-         "end": {"type": "string", "description": LOCAL_TIME + " Omit to use 60 minutes."}},
+         "end": {"type": "string", "description": LOCAL_TIME + " Omit to use 60 minutes."},
+         "guests": {"type": "array", "items": {"type": "string"},
+                    "description": "People to invite, by name or spoken address, exactly as said. Omit for none."},
+         "video_call": {"type": "boolean", "description": "true for a call or online meeting: adds a Google Meet link"},
+         "description": {"type": "string",
+                         "description": "What it is about, if the user said (e.g. 'about the budget' gives 'Budget')"}},
         ["title", "start"]),
     _fn("update_event", "Propose moving or renaming an existing event (by its event_id). The user reviews it first.",
         {"event_id": {"type": "string"},
@@ -75,8 +82,8 @@ TOOL_SPECS = [
          "value": {"type": "string"}}, ["key", "value"]),
     _fn("recall", "Look up something the user asked you to remember earlier.",
         {"query": {"type": "string"}}, ["query"]),
-    _fn("ask_user", "Ask the user one short question when something needed is missing (for example no time "
-        "was given). The user answers by voice.",
+    _fn("ask_user", "Only when the request has no date or time at all, no recipient, or no email message. "
+        "Never to confirm an action and never about weekdays, titles or end times. The user answers by voice.",
         {"question": {"type": "string", "description": "One short question, under 60 characters."}}, ["question"]),
 ]
 
@@ -169,12 +176,15 @@ def _event_view(e: dict) -> dict:
 
 
 def _event_proposal(world: MockWorld, draft: dict, review_lines: list[str], start: datetime, end: datetime,
-                    skip_id: str | None, timings: dict) -> ProcessorOutput:
+                    skip_id: str | None, timings: dict, verb: str = "book it") -> ProcessorOutput:
     clash = overlaps(world, start, end, skip_id)
     if clash:
         first = clash[0]
-        lines = [f"Overlaps: {first['title']}", f"{fmt_day(first['start'])} {fmt_range(first['start'], first['end'])}",
-                 "Press to keep, hold to change"]
+        # The three choices are exactly what the device does in CONFLICT-SCHEDULE.
+        lines = [f"You already have {first['title']} then",
+                 f"{fmt_day(first['start'])}, {fmt_range(first['start'], first['end'])}",
+                 "What would you like to do?", f"Press: {verb} anyway", "Hold: say a new time",
+                 "Double press: cancel"]
         return ProcessorOutput("conflict_schedule", lines, draft=draft, review_screen_lines=review_lines,
                                timings=timings)
     return ProcessorOutput("review", review_lines, draft=draft, timings=timings)
@@ -213,7 +223,7 @@ def run_tool(name: str, args: dict, world: MockWorld, now: datetime, timings: di
         question = str(args.get("question", "")).strip()
         if not question:
             raise ToolError("question must not be empty")
-        return Final(ProcessorOutput("conflict_ambiguous", [question, "Hold to answer"], candidates=[],
+        return Final(ProcessorOutput("conflict_ambiguous", [question, "Hold and say your answer"], candidates=[],
                                      timings=timings))
 
     if name == "create_event":
@@ -223,9 +233,37 @@ def run_tool(name: str, args: dict, world: MockWorld, now: datetime, timings: di
         start = parse_local(args.get("start", ""), world)
         end = parse_local(args["end"], world) if args.get("end") else start + timedelta(minutes=60)
         _check_span(start, end, now)
+        guests_said = args.get("guests") or []
+        if not isinstance(guests_said, list):
+            raise ToolError("guests must be a list of names")
+        video_call = bool(args.get("video_call"))
+        description = str(args.get("description") or "").strip()
         draft = {"kind": "create_event", "title": title, "start": start.isoformat(), "end": end.isoformat(),
                  "timezone": str(world.tz)}
+        guests = []
+        for said in (str(g).strip() for g in guests_said if str(g).strip()):
+            address = spoken_address(said)
+            if address:
+                guests.append({"name": address, "email": address})
+                continue
+            matches = resolve_contacts(world, said)
+            if len(matches) != 1:  # never guess who gets an invitation
+                pending = {**draft, "video_call": video_call, "description": description}
+                if not matches:
+                    return Final(ProcessorOutput("conflict_ambiguous", [f"No contact named {said}",
+                                                 "Hold and say the address"], draft=pending, candidates=[],
+                                                 timings=timings))
+                candidates = [{"candidate_id": c["contact_id"], "label": f"{c['name']} <{c['email']}>"} for c in matches]
+                return Final(ProcessorOutput("conflict_ambiguous", [f"Which {said}?"], draft=pending,
+                                             candidates=candidates, timings=timings))
+            guests.append({"name": matches[0]["name"], "email": matches[0]["email"]})
+        draft.update({"guests": guests, "video_call": video_call, "description": description})
         review = ["New event", title, fmt_day(start), fmt_range(start, end)]
+        review += [f"Invite: {g['email']}" for g in guests]  # approving sends these invitations
+        if video_call:
+            review.append("Google Meet link")
+        if description:
+            review.append(f"About: {description}")
         return Final(_event_proposal(world, draft, review, start, end, None, timings))
 
     if name == "update_event":
@@ -246,7 +284,7 @@ def run_tool(name: str, args: dict, world: MockWorld, now: datetime, timings: di
                  "after": after, "timezone": str(world.tz)}
         review = ["Change event", title, f"Was {fmt_day(event['start'])} {fmt_time(event['start'])}",
                   f"Now {fmt_day(start)} {fmt_range(start, end)}"]
-        return Final(_event_proposal(world, draft, review, start, end, event["event_id"], timings))
+        return Final(_event_proposal(world, draft, review, start, end, event["event_id"], timings, verb="move it"))
 
     if name == "delete_event":
         event = world.event(str(args.get("event_id", "")))
@@ -273,7 +311,7 @@ def run_tool(name: str, args: dict, world: MockWorld, now: datetime, timings: di
                 draft_base = {"kind": "send_email", "subject": subject, "body": body}
                 if not matches:  # nobody: ask for the address instead of guessing
                     return Final(ProcessorOutput(
-                        "conflict_ambiguous", [f"No contact named {recipient}", "Hold to say the address"],
+                        "conflict_ambiguous", [f"No contact named {recipient}", "Hold and say the address"],
                         draft=draft_base, candidates=[], timings=timings))
                 candidates = [{"candidate_id": c["contact_id"], "label": f"{c['name']} <{c['email']}>"} for c in matches]
                 return Final(ProcessorOutput("conflict_ambiguous", [f"Which {recipient}?"], draft=draft_base,

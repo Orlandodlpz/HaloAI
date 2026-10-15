@@ -92,7 +92,7 @@ class FakeProcessor(Processor):
             draft = {"kind": "email", "to": f"{last.candidate_id}@example.com", "body": voice}
             return ProcessorOutput("review", [f"To: {draft['to']}", "Re: Note"], draft=draft, timings=timings)
         if "nobody" in voice:
-            return ProcessorOutput("conflict_ambiguous", ["Who should get this?", "Hold to say the address"], candidates=[], timings=timings)
+            return ProcessorOutput("conflict_ambiguous", ["Who should get this?", "Hold and say the address"], candidates=[], timings=timings)
         if "ambiguous" in voice:
             candidates = [
                 {"candidate_id": "victor_t", "label": "Victor T."},

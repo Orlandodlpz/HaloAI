@@ -26,6 +26,9 @@ from app.tools import READ_TOOLS, STATUS, TOOL_SPECS, Final, ToolError, run_tool
 def plain_text(text: str) -> str:
     """Model text for an e-ink screen: no Markdown symbols, no special spaces."""
     text = re.sub(r"[\u00a0\u2007\u2009\u202f]", " ", text)  # no-break and thin spaces
+    # The e-ink font is plain ASCII: long dashes, curly quotes and ellipses become their ASCII forms.
+    text = text.translate(str.maketrans({"\u2013": "-", "\u2014": "-", "\u2018": "'", "\u2019": "'",
+                                         "\u201c": '"', "\u201d": '"'})).replace("\u2026", "...")
     text = re.sub(r"(\*\*|__|`)", "", text)                   # bold markers and code ticks
     text = re.sub(r"^\s*#+\s*", "", text, flags=re.MULTILINE)  # heading marks
     text = re.sub(r"^\s*[-*]\s+", "", text, flags=re.MULTILINE)  # bullet marks
