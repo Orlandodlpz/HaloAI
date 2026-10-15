@@ -194,7 +194,11 @@ class DeviceSession {
           _cancelled.add(e.req!);
           _receiver.dropRequest(e.req!);
         }
-        _say('cancel req=${e.req}');
+        _say('cancel req=${e.req} reason=${e.reason}');
+      case 'battery':
+        // CRITICAL BATTERY at 10% or less: the device stops capture on its own.
+        // Telling the backend is P2.
+        _say('battery ${e.battery}%');
       case 'select':
         final s = e.sid == null ? null : ids.screen(e.sid!);
         final cand = e.sid == null || e.index == null ? null : ids.candidateId(e.sid!, e.index!);
