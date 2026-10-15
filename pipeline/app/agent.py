@@ -15,6 +15,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from app.config import Settings
+from app.memory import remember_intent
 from app.mockdata import MockWorld, build_world
 from app.processing import ProcessContext, Processor, ProcessorOutput
 from app.prompt import system_prompt, user_message
@@ -62,10 +63,13 @@ class NemotronProcessor(Processor):
         said = [s.sent_at for s in ctx.segments if s.sent_at is not None]
         now = max(said).astimezone(tz) if said else datetime.now(tz)  # when the user last spoke
         world = await self.world_factory(ctx, now, tz)
+        world.remember_allowed = remember_intent(ctx.segments)  # the user's own words, never a tool result
+        request_text = " ".join(s.text or "" for s in ctx.segments if s.kind == "voice")
         chars, lines = budget(self.settings, ctx.orientation)
         answer_chars = min(self.settings.max_answer_chars, chars * (lines - 1))
         messages = [
-            {"role": "system", "content": system_prompt(now, ctx.timezone, world, answer_chars=answer_chars)},
+            {"role": "system", "content": system_prompt(now, ctx.timezone, world, answer_chars=answer_chars,
+                                                        request_text=request_text)},
             {"role": "user", "content": user_message(ctx.segments, world)},
         ]
         model_ms = tools_ms = 0.0
