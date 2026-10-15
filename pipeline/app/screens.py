@@ -18,6 +18,7 @@ def wrap(lines: list[str], settings: Settings, orientation: str) -> list[str]:
     chars, max_lines = budget(settings, orientation)
     out: list[str] = []
     for line in lines:
+        line = " ".join(line.split())  # line breaks and double spaces from email bodies become single spaces
         out.extend(textwrap.wrap(line, width=chars, break_long_words=True) or [""])
     return out[:max_lines]
 

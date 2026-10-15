@@ -135,6 +135,8 @@ def test_email_single_match_resolves_address(world):
 
 
 def test_email_ambiguous_gives_candidates(world):
+    lower = call(world, "draft_email", recipient="alex", subject="Hi", body="Hello")
+    assert lower.output.screen_lines == ["Which Alex?"]
     out = call(world, "draft_email", recipient="Alex", subject="Hi", body="Hello")
     assert out.output.state == "conflict_ambiguous"
     assert [c["candidate_id"] for c in out.output.candidates] == ["c_alex_k", "c_alex_r"]
@@ -204,6 +206,12 @@ def test_calendar_context_has_next_7_days_without_notes(world):
     assert "e3 | Wed Oct 14 | 10:00 AM to 11:00 AM | Dentist" in ctx
     assert ctx.count("\n") == 6  # 7 events in the next 7 days
     assert "SYSTEM" not in ctx  # notes never go into the prompt
+
+
+def test_email_line_breaks_become_single_spaces_on_screen(world):
+    out = call(world, "draft_email", recipient="Carlos", subject="Coffee", body="Hey Carlos,\n\nI found one.")
+    assert wrap(out.output.screen_lines, get_settings(), "landscape")[2] == "Hey Carlos, I found one."
+    assert out.output.draft["body"] == "Hey Carlos,\n\nI found one."  # the email itself keeps its line breaks
 
 
 def test_screen_lines_fit_budget_after_wrap(world):
