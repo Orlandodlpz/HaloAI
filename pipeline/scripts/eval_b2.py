@@ -54,6 +54,22 @@ def load_cases(only: str | None) -> list[dict]:
     return [c for c in cases if not only or c["id"].startswith(only)]
 
 
+def world_for_case(case: dict, now: datetime):
+    """The frozen sample world plus the case's own memory, extra events and recent actions."""
+    world = build_world(now, TZ)
+    world.memory_items = [{"id": str(i + 1), "kind": m["kind"], "label": m["label"], "value": m["value"],
+                           "uses": m.get("uses", 0), "source": m.get("source", "user")}
+                          for i, m in enumerate(case.get("memory", []))]
+    for e in case.get("events", []):
+        world.events.append({"event_id": e["event_id"], "title": e["title"], "notes": "",
+                             "start": datetime.fromisoformat(e["start"]).replace(tzinfo=TZ),
+                             "end": datetime.fromisoformat(e["end"]).replace(tzinfo=TZ)})
+    world.events.sort(key=lambda e: e["start"])
+    world.actions = [{"key": f"k{i}", "at": NOW, "draft": a["draft"], "detail": a.get("detail", {})}
+                     for i, a in enumerate(case.get("actions", []))]
+    return world
+
+
 def segments_for(case: dict) -> list[Segment]:
     texts = case["say"] if isinstance(case["say"], list) else [case["say"]]
     times = [datetime.fromisoformat(t).replace(tzinfo=TZ) for t in case["at"]] if case.get("at") \
@@ -122,6 +138,11 @@ def score(case: dict, out: ProcessorOutput | None, turns: int) -> tuple[bool, bo
             why.append(f"description '{draft.get('description')}' lacks '{word}'")
     if "candidates" in exp and [c["candidate_id"] for c in (out.candidates or [])] != exp["candidates"]:
         why.append(f"candidates {[c['candidate_id'] for c in (out.candidates or [])]}, expected {exp['candidates']}")
+    if exp.get("no_memory_writes") and out.memory_writes:
+        why.append(f"SAVED TO MEMORY although the user did not ask: {out.memory_writes}")
+    for want in exp.get("memory_writes_has", []):
+        if not any(all(w.get(k) == v for k, v in want.items()) for w in out.memory_writes):
+            why.append(f"memory write {want} missing (got {out.memory_writes})")
     if exp.get("no_draft") and out.draft is not None:
         why.append(f"proposed {draft.get('kind')} although information was missing")
     if "answer_has_any" in exp:
@@ -139,7 +160,7 @@ def check_cases(cases: list[dict]) -> int:
     for case in cases:
         exp, segs = case["expect"], segments_for(case)
         now = max(s.sent_at for s in segs if s.sent_at)
-        world = build_world(now, TZ)
+        world = world_for_case(case, now)
         kind = exp.get("kind")
         args, tool = None, None
         if kind == "create_event":
@@ -197,7 +218,10 @@ class Counting:
 
 async def run_case(case: dict, settings, client) -> dict:
     counting = Counting(client)
-    proc = NemotronProcessor(counting, settings)
+
+    async def case_world(ctx, now, tz):
+        return world_for_case(case, now)
+    proc = NemotronProcessor(counting, settings, world_factory=case_world)
     statuses: list[str] = []
 
     async def on_status(line: str) -> None:
@@ -218,6 +242,7 @@ async def run_case(case: dict, settings, client) -> dict:
         "turns": counting.turns, "ms": ms, "tokens_in": counting.tokens_in, "tokens_out": counting.tokens_out,
         "state": out.state if out else "failure", "draft": out.draft if out else None,
         "screen_lines": out.screen_lines if out else None, "statuses": statuses, "why": why,
+        "memory_writes": out.memory_writes if out else [],
     }
 
 
