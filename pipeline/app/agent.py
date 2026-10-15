@@ -10,7 +10,7 @@ A bad call goes back to the model with the reason. Too many turns is a failure.
 import json
 import re
 import time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -35,12 +35,19 @@ def plain_text(text: str) -> str:
     return re.sub(r"[ \t]+", " ", text).strip()
 
 
+async def frozen_world(ctx: ProcessContext, now: datetime, tz: ZoneInfo) -> MockWorld:
+    """The in-memory sample world, rebuilt for each request (evals and tests)."""
+    return build_world(now, tz)
+
+
 class NemotronProcessor(Processor):
     def __init__(self, client, settings: Settings,
-                 world_factory: Callable[[datetime, ZoneInfo], MockWorld] = build_world):
+                 world_factory: Callable[[ProcessContext, datetime, ZoneInfo], Awaitable[MockWorld]] = frozen_world):
         self.client = client  # AsyncOpenAI-compatible: client.chat.completions.create(...)
         self.settings = settings
-        self.world_factory = world_factory  # B2: mock world. B4: real Google tools behind the same shape.
+        # Where the calendar and contacts come from: the frozen sample world (evals), the user's
+        # stored mock world (server, B3), or real Google tools (B4), all behind the same shape.
+        self.world_factory = world_factory
 
     def _model_kwargs(self) -> dict:
         s = self.settings
@@ -54,7 +61,7 @@ class NemotronProcessor(Processor):
         tz = ZoneInfo(ctx.timezone)
         said = [s.sent_at for s in ctx.segments if s.sent_at is not None]
         now = max(said).astimezone(tz) if said else datetime.now(tz)  # when the user last spoke
-        world = self.world_factory(now, tz)
+        world = await self.world_factory(ctx, now, tz)
         chars, lines = budget(self.settings, ctx.orientation)
         answer_chars = min(self.settings.max_answer_chars, chars * (lines - 1))
         messages = [
