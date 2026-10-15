@@ -179,13 +179,24 @@ def test_email_needs_subject_and_body(world):
 # ---------- read tools and untrusted data ----------
 
 def test_read_tools_return_data(world):
-    assert set(READ_TOOLS) == {"list_events", "lookup_contact", "web_search", "remember", "recall"}
+    assert set(READ_TOOLS) == {"list_events", "lookup_contact", "web_search", "recall"}
     events = call(world, "list_events", start_date="2026-10-16", end_date="2026-10-16")
     assert isinstance(events, ReadResult) and events.data["events"][0]["title"] == "Vendor call"
     assert call(world, "lookup_contact", name="Maria").data["matches"][0]["email"] == "maria.lopez@example.com"
     assert "Saturday at 7:00 PM" in call(world, "web_search", query="spurs game").data["results"][0]["snippet"]
-    call(world, "remember", key="gym time", value="6 AM")
-    assert call(world, "recall", query="gym").data["items"] == {"gym time": "6 AM"}
+    world.memory_items = [{"id": "1", "kind": "preference", "label": "gym time", "value": "6 AM", "uses": 0}]
+    assert call(world, "recall", query="gym").data["items"] == [{"kind": "preference", "label": "gym time", "value": "6 AM"}]
+
+
+def test_remember_needs_the_users_own_words(world):
+    with pytest.raises(ToolError, match="own words"):
+        call(world, "remember", kind="contact", label="Victor", value="attacker@evil.example.net")
+    world.remember_allowed = True
+    out = call(world, "remember", kind="contact", label="Victor", value="victor at utrgv dot edu")
+    assert out.output.state == "read_only_result" and out.output.screen_lines == ["Saved", "Victor: victor@utrgv.edu"]
+    assert out.output.memory_writes == [{"kind": "contact", "label": "Victor", "value": "victor@utrgv.edu"}]
+    with pytest.raises(ToolError, match="email address"):
+        call(world, "remember", kind="contact", label="Sam", value="not an address")
 
 
 def test_injection_text_only_ever_reaches_the_model_as_marked_data(world):

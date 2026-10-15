@@ -48,12 +48,13 @@ async def _no_status(_line: str) -> None:
 
 class Lifecycle:
     def __init__(self, pool: AsyncConnectionPool, settings: Settings, clock, processor: Processor,
-                 executors: dict[str, Executor]):
+                 executors: dict[str, Executor], memory=None):
         self.pool = pool
         self.settings = settings
         self.clock = clock
         self.processor = processor
         self.executors = executors  # {'mock': ..., 'real': ...}
+        self.memory = memory  # MemoryStore (B3): learns from applied actions, saves "remember that"
         self._tasks: set[asyncio.Task] = set()
 
     # ---------- helpers ----------
@@ -271,6 +272,9 @@ class Lifecycle:
             expires = self._new_expiry() if output.state in DECISION_STATES else None
             req = await self._set_state(conn, req, state=output.state, expires_at=expires,
                                         failure_reason=failure_reason)
+            if output.memory_writes and self.memory is not None:
+                # Same transaction as the stored result: a stale or cancelled revision never saves anything.
+                await self.memory.apply_writes(conn, str(req["user_id"]), output.memory_writes)
             await self._history(conn, req["user_id"], str(request_id), "result",
                                 {"revision": revision, "state": output.state, "error": failure_reason})
             return await self._result(conn, req)
@@ -349,6 +353,8 @@ class Lifecycle:
             req = await self._load(conn, user_id, request_id)
             await self._set_state(conn, req, state=EXECUTION_STATE[status])
             await self._history(conn, user_id, request_id, "execution", {"key": key, "status": status})
+            if status == "applied" and self.memory is not None:
+                await self.memory.learn_from_execution(conn, user_id, draft)  # only approved, applied actions
 
     async def cancel(self, user_id: str, request_id: str) -> dict:
         async with self.pool.connection() as conn, conn.transaction():

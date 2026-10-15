@@ -42,6 +42,7 @@ class ProcessorOutput:
     candidates: list[dict] | None = None
     review_screen_lines: list[str] | None = None  # conflict_schedule: shown after continue
     timings: dict = field(default_factory=dict)
+    memory_writes: list[dict] = field(default_factory=list)  # "remember that": saved only if this result is stored
 
 
 @dataclass
