@@ -204,7 +204,7 @@ Decided 2026-10-06, revised for V1 and signed off by Orlando, Carlos and Victor 
 
 ## Current Status
 
-**Backend (Orlando):** Phase B0 DONE (2026-10-07). Phase B1 DONE (2026-10-12). Phase B2 DONE (2026-10-14): Nemotron 3 Ultra chosen by the eval (96.3% correct over 246 runs, traps 24 of 24, median 0.80 s), running on the server at `https://api.haloai-cov.io` with mock tools. Next: B3 (memory). Text budget in config set to Victor's F1 numbers (48 x 12 landscape, 28 x 22 portrait) on 2026-10-14.
+**Backend (Orlando):** Phases B0, B1, B2 and B3 DONE (B3 on 2026-10-15: memory that learns from approved actions, "remember that", the memory endpoints and a separate demo user; eval 97.8%, memory 30 of 30, traps 24 of 24; checked live on the server). Server: `https://api.haloai-cov.io`, Nemotron 3 Ultra, mock tools. Next: B4 (real Google and Tavily); the Google Cloud console setup on `haloai.cov@gmail.com` is in progress. Text budget in config: Victor's F1 numbers (48 x 12 landscape, 28 x 22 portrait).
 **Phone (Carlos), as of 2026-10-13:** Phase P0 DONE 2026-10-07 (Parakeet v3 offline on the phone, 0.19 to 0.32 s per clip, 12.7% word error rate on 5 clips; details in BRIEFING P0). Phase P1 in progress: phone side built and tested on the Mac with a fake transport and on the phone with a loopback of the P0 clips; not yet run against the board. Test only extra: a hold to talk button on the phone mic for live speech to text testing. Waiting on: Victor's answer on the BLE field names draft (`phone/docs/ble_fields_draft.md`) and his F2 firmware streaming audio, for the P1 gate; text budget numbers (for the wallpaper size and screen preview).
 
 Phone gotchas:
@@ -237,6 +237,7 @@ Phone gotchas:
 - Backend: in sse-starlette, the response's `sep` only applies to its pings; each `ServerSentEvent` needs its own `sep="\n"` or events use `\r\n`.
 - Backend: Postgres `jsonb` reorders object keys, so a replayed answer is equal JSON but not byte identical. Fine for JSON parsers; use `json` if byte identity ever matters.
 - Shell: zsh does not split unquoted variables into words like bash does (`cmd $ARGS` passes one argument). Pass arguments separately or use `${=ARGS}`.
+- Shell: zsh treats `$var:r...` as a modifier, so `git push origin $sha:refs/heads/X` sends a mangled refspec (`2c2a87defs/heads/X`) and the push fails. Write `"${sha}:refs/heads/X"` with braces.
 - Backend: with reasoning on, Nemotron returns its thinking in a `reasoning` field on the message (not `reasoning_content`), and `usage` has no reasoning token breakdown. On a trivial prompt reasoning took 96 output tokens versus 4 with it off.
 - Backend: Oracle Always Free ARM often fails with "Out of capacity" in every availability domain. Retrying at night worked (2026-10-14). Pay As You Go removes the problem.
 - Backend: Oracle may stop Always Free instances it considers idle (low CPU, network and memory over 7 days). Our backend is mostly idle, so check the server before the video and before judging; Pay As You Go accounts are exempt.
