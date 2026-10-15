@@ -254,7 +254,7 @@ def run_tool(name: str, args: dict, world: MockWorld, now: datetime, timings: di
                                                  "Hold and say the address"], draft=pending, candidates=[],
                                                  timings=timings))
                 candidates = [{"candidate_id": c["contact_id"], "label": f"{c['name']} <{c['email']}>"} for c in matches]
-                return Final(ProcessorOutput("conflict_ambiguous", [f"Which {said}?"], draft=pending,
+                return Final(ProcessorOutput("conflict_ambiguous", [f"Which {said[:1].upper() + said[1:]}?"], draft=pending,
                                              candidates=candidates, timings=timings))
             guests.append({"name": matches[0]["name"], "email": matches[0]["email"]})
         draft.update({"guests": guests, "video_call": video_call, "description": description})
@@ -314,7 +314,7 @@ def run_tool(name: str, args: dict, world: MockWorld, now: datetime, timings: di
                         "conflict_ambiguous", [f"No contact named {recipient}", "Hold and say the address"],
                         draft=draft_base, candidates=[], timings=timings))
                 candidates = [{"candidate_id": c["contact_id"], "label": f"{c['name']} <{c['email']}>"} for c in matches]
-                return Final(ProcessorOutput("conflict_ambiguous", [f"Which {recipient}?"], draft=draft_base,
+                return Final(ProcessorOutput("conflict_ambiguous", [f"Which {recipient[:1].upper() + recipient[1:]}?"], draft=draft_base,
                                              candidates=candidates, timings=timings))
             address, to_name = matches[0]["email"], matches[0]["name"]
         draft = {"kind": "send_email", "to": address, "to_name": to_name, "subject": subject, "body": body}
