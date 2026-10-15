@@ -21,6 +21,7 @@ from app.config import Settings, get_settings
 from app.db import migrate, open_pool
 from app.lifecycle import ApiError, Lifecycle
 from app.memory import MemoryStore
+from app.memory_api import router as memory_router
 from app.mockstore import MockExecutor, MockStore
 from app.processing import FakeExecutor, FakeProcessor, Processor
 from app.streams import Streams
@@ -114,6 +115,7 @@ def create_app(services: Services | None = None) -> FastAPI:
 
     app.include_router(router)
     app.include_router(stream_router)
+    app.include_router(memory_router)
     return app
 
 

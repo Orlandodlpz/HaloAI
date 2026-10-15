@@ -21,9 +21,16 @@ class Caller:
 
 async def create_key(pool, user_id: str, client: str, scope: str, rate_per_min: int = 60,
                      key: str | None = None) -> str:
-    """Store a key's hash and return the key. The plain key is never stored."""
+    """Store a key's hash and return the key. The plain key is never stored.
+
+    A demo ('mock') key may only belong to a sandbox user and a phone ('real') key never, so the
+    demo site can never reach the phone user's memory or calendar."""
     key = key or secrets.token_urlsafe(32)
     async with pool.connection() as conn:
+        cur = await conn.execute("SELECT sandbox FROM users WHERE id = %s", (user_id,))
+        row = await cur.fetchone()
+        if row is None or row["sandbox"] != (scope == "mock"):
+            raise ValueError("mock keys need a sandbox user and real keys a normal user")
         await conn.execute(
             "INSERT INTO api_keys (user_id, client, scope, key_hash, rate_per_min) VALUES (%s, %s, %s, %s, %s)"
             " ON CONFLICT (key_hash) DO NOTHING",

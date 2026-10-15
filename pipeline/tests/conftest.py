@@ -56,7 +56,8 @@ def executors():
 
 @pytest.fixture
 async def lc(pool, settings, clock, processor, executors):
-    life = Lifecycle(pool, settings, clock, processor, executors)
+    from app.memory import MemoryStore
+    life = Lifecycle(pool, settings, clock, processor, executors, memory=MemoryStore(pool, clock))
     yield life
     await life.drain()
 
@@ -90,11 +91,16 @@ async def services(pool, settings, clock, lc):
 
 
 @pytest.fixture
-async def keys(pool, user):
+async def demo_user(lc):
+    return await lc.ensure_user("demo-site", sandbox=True)
+
+
+@pytest.fixture
+async def keys(pool, user, demo_user):
     from app.auth import create_key
     return {
         "phone": await create_key(pool, user, "phone", "real"),
-        "demo": await create_key(pool, user, "demo-site", "mock"),
+        "demo": await create_key(pool, demo_user, "demo-site", "mock"),
         "slow": await create_key(pool, user, "limited", "real", rate_per_min=3),
     }
 
