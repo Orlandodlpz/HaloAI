@@ -19,7 +19,8 @@ from psycopg_pool import AsyncConnectionPool
 
 from app import ids
 from app.config import Settings
-from app.processing import Executor, ProcessContext, Processor, ProcessorOutput, Segment
+from app.processing import (Executor, ProcessContext, Processor, ProcessorOutput, RefusingExecutor, ScreenError,
+                            Segment, uses_real_tools)
 from app.screens import OUTCOME_LINES, wrap
 
 OPEN_STATES = ("processing", "conflict_ambiguous", "conflict_schedule", "review", "executing")
@@ -59,11 +60,15 @@ class Lifecycle:
 
     # ---------- helpers ----------
 
-    def executor_for(self, scope: str) -> Executor:
-        """Demo keys ('mock') never reach real tools; real tools stay off until B4."""
-        if scope == "real" and self.settings.real_tools_enabled:
+    def executor_for(self, scope: str, draft: dict | None) -> Executor:
+        """The draft records which world it was made from, so a proposal made from the real
+        calendar is never applied to the sample one, or the other way round. Demo keys ('mock')
+        never reach real tools. If the rule changed since the proposal, nothing runs."""
+        if (draft or {}).get("source") != "google":
+            return self.executors["mock"]
+        if uses_real_tools(self.settings, scope):
             return self.executors["real"]
-        return self.executors["mock"]
+        return RefusingExecutor(["Not done", "Real Google actions are switched off"])
 
     async def ensure_user(self, name: str, sandbox: bool = False) -> str:
         async with self.pool.connection() as conn:
@@ -243,6 +248,9 @@ class Lifecycle:
         failure_reason = None
         try:
             output = await asyncio.wait_for(self.processor.process(ctx), self.settings.processing_deadline_s)
+        except ScreenError as exc:  # something the user can fix, e.g. reconnect Google
+            failure_reason = "ScreenError"
+            output = ProcessorOutput("failure", exc.lines)
         except Exception as exc:  # model error or deadline: FAILURE, never a guess
             failure_reason = type(exc).__name__
             output = ProcessorOutput("failure", OUTCOME_LINES["failure"])
@@ -331,7 +339,7 @@ class Lifecycle:
         # Outside the transaction: run the action in the background and wait a bounded time.
         # If the wait runs out, the phone gets 'executing' and polls the status endpoint;
         # the action itself keeps running and records its outcome when done.
-        task = asyncio.create_task(self._run_execution(user_id, request_id, key, draft, self.executor_for(scope)))
+        task = asyncio.create_task(self._run_execution(user_id, request_id, key, draft, self.executor_for(scope, draft)))
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
         await asyncio.wait({task}, timeout=self.settings.approve_wait_s)

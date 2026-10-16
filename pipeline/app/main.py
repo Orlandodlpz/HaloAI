@@ -23,9 +23,10 @@ from app.lifecycle import ApiError, Lifecycle
 from app.memory import MemoryStore
 from app.google_api import router as google_router
 from app.google_auth import GoogleAuth
+from app.google_world import GoogleWorld
 from app.memory_api import router as memory_router
 from app.mockstore import MockExecutor, MockStore
-from app.processing import FakeExecutor, FakeProcessor, Processor
+from app.processing import FakeExecutor, FakeProcessor, Processor, RefusingExecutor, uses_real_tools
 from app.streams import Streams
 from app.streams import router as stream_router
 from app.timing import hop, request_id_var
@@ -44,18 +45,28 @@ class Services:
     google: object = None  # GoogleAuth (B4)
 
 
-def make_processor(settings: Settings, store: MockStore, memory: MemoryStore) -> Processor:
+def world_source(settings: Settings, store: MockStore, memory: MemoryStore, google: GoogleWorld):
+    """Where a request's calendar and contacts come from. Real keys with real tools switched on
+    read the connected Google account; everything else (the demo site, real tools off) reads
+    the user's stored sample world. Same rule as the executor choice (uses_real_tools)."""
+    async def user_world(ctx, now, tz):
+        if uses_real_tools(settings, ctx.scope):
+            world = await google.world(ctx.user_id, now, tz)
+        else:
+            world = await store.world(ctx.user_id, now, tz)  # each user's stored mock calendar
+        snapshot = await memory.load(ctx.user_id)            # and what the assistant remembers
+        world.memory_items, world.actions = snapshot.items, snapshot.actions
+        return world
+    return user_world
+
+
+def make_processor(settings: Settings, store: MockStore, memory: MemoryStore, google: GoogleWorld) -> Processor:
     """'fake' (B1 keyword script) or 'nemotron' (the real loop), from the PROCESSOR setting."""
     if settings.processor == "nemotron":
         from app.agent import NemotronProcessor
         from app.llm import get_async_client
-
-        async def user_world(ctx, now, tz):
-            world = await store.world(ctx.user_id, now, tz)  # each user's stored mock calendar
-            snapshot = await memory.load(ctx.user_id)        # and what the assistant remembers
-            world.memory_items, world.actions = snapshot.items, snapshot.actions
-            return world
-        return NemotronProcessor(get_async_client(), settings, world_factory=user_world)
+        return NemotronProcessor(get_async_client(), settings,
+                                 world_factory=world_source(settings, store, memory, google))
     if settings.processor == "fake":
         return FakeProcessor()
     raise ValueError(f"unknown PROCESSOR {settings.processor!r}; use 'fake' or 'nemotron'")
@@ -66,20 +77,21 @@ async def build_services(settings: Settings) -> Services:
     await migrate(url)
     pool = await open_pool(url)
     clock = SystemClock()
-    # Executors stay fake until B4 (real Google tools).
     store = MockStore(pool, clock)
     memory = MemoryStore(pool, clock)
+    google = GoogleAuth(pool, settings, clock)
     # Approved actions change the user's mock world. The B1 fake processor's drafts are not real
-    # drafts, so it keeps the fake executor. Real tools come in B4.
+    # drafts, so it keeps the fake executor. Drafts made from the real calendar (B4 step 2) are
+    # refused until the real executor exists (step 3).
     mock_exec = MockExecutor(store) if settings.processor == "nemotron" else FakeExecutor("mock")
-    lc = Lifecycle(pool, settings, clock, make_processor(settings, store, memory),
-                   {"mock": mock_exec, "real": FakeExecutor("real")}, memory=memory)
+    real_exec = RefusingExecutor(["Not done", "Real Google actions are not built yet"])
+    lc = Lifecycle(pool, settings, clock, make_processor(settings, store, memory, GoogleWorld(google, settings)),
+                   {"mock": mock_exec, "real": real_exec}, memory=memory)
     user_id = await lc.ensure_user("demo")
     # The phone key from .env, so the existing key keeps working. More keys: scripts/create_key.py
     await create_key(pool, user_id, "phone", "real", key=settings.backend_api_key.get_secret_value())
     await lc.recover_on_startup()
-    return Services(settings, pool, lc, Calls(pool, clock, settings), RateLimiter(), Streams(),
-                    GoogleAuth(pool, settings, clock))
+    return Services(settings, pool, lc, Calls(pool, clock, settings), RateLimiter(), Streams(), google)
 
 
 def create_app(services: Services | None = None) -> FastAPI:

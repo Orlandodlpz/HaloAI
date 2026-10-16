@@ -38,6 +38,10 @@ class GoogleError(Exception):
     """Sign in or token problem; the message is safe to show the user."""
 
 
+class GoogleNotConnected(GoogleError):
+    """This user has no Google account connected."""
+
+
 def _hash(state: str) -> str:
     return hashlib.sha256(state.encode()).hexdigest()
 
@@ -49,6 +53,7 @@ class GoogleAuth:
         self.clock = clock
         self.http = http or httpx.AsyncClient(timeout=15)
         self._access: dict[str, tuple[str, float]] = {}  # user_id -> (access token, expires at, monotonic)
+        self.on_change: list = []  # called with the user_id when an account is connected or removed
 
     # ---------- configuration ----------
 
@@ -116,6 +121,8 @@ class GoogleAuth:
                 " updated_at = EXCLUDED.updated_at",
                 (user_id, email, self._fernet().encrypt(refresh.encode()).decode(), " ".join(sorted(granted)), now, now))
         self._access[user_id] = (tokens["access_token"], time.monotonic() + int(tokens.get("expires_in", 3600)) - 60)
+        for listener in self.on_change:
+            listener(user_id)
         return email
 
     async def status(self, user_id: str) -> dict:
@@ -130,6 +137,8 @@ class GoogleAuth:
                                      (user_id,))
             row = await cur.fetchone()
         self._access.pop(user_id, None)
+        for listener in self.on_change:
+            listener(user_id)
         if row and self.configured():  # best effort: also revoke at Google
             try:
                 token = self._fernet().decrypt(row["refresh_token_enc"].encode()).decode()
@@ -140,6 +149,10 @@ class GoogleAuth:
 
     # ---------- for the Calendar, Gmail and People calls ----------
 
+    def drop_access_token(self, user_id: str) -> None:
+        """Google refused the cached token (revoked or expired early): refresh on the next call."""
+        self._access.pop(user_id, None)
+
     async def access_token(self, user_id: str) -> str:
         cached = self._access.get(user_id)
         if cached and cached[1] > time.monotonic():
@@ -149,7 +162,7 @@ class GoogleAuth:
             cur = await conn.execute("SELECT refresh_token_enc FROM google_accounts WHERE user_id = %s", (user_id,))
             row = await cur.fetchone()
         if row is None:
-            raise GoogleError("No Google account connected")
+            raise GoogleNotConnected("No Google account connected")
         refresh = self._fernet().decrypt(row["refresh_token_enc"].encode()).decode()
         resp = await self.http.post(TOKEN_URL, data={"client_id": client_id, "client_secret": client_secret,
                                                      "refresh_token": refresh, "grant_type": "refresh_token"})

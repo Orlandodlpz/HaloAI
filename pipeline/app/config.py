@@ -62,6 +62,7 @@ class Settings(BaseSettings):
     sse_ping_s: float = 10.0  # keepalive comment interval on streams
     call_retention_h: int = 24  # how long call_id results are kept for retries
     # Off until B4: 'real' scoped keys fall back to mock tools. 'mock' keys always do.
+    # On: 'real' keys read the connected Google account (app/google_world.py).
     real_tools_enabled: bool = False
 
     # B4: Google and Tavily. Secrets only in the server's secrets file (set-secret), never in git.
@@ -73,6 +74,10 @@ class Settings(BaseSettings):
     # Real mode sends email and invitations only to these addresses (comma separated, server secret).
     allowed_recipients: SecretStr | None = None
     oauth_state_minutes: int = 10
+    # The part of the real calendar read for each request: conflicts are only checked inside it.
+    calendar_past_days: int = 7
+    calendar_ahead_days: int = 60
+    contacts_cache_s: int = 600  # contacts change rarely; the calendar is read fresh every request
 
 
 @lru_cache
