@@ -153,6 +153,11 @@ class Lifecycle:
             "candidates": (rev["candidates"] if rev else None) if state == "conflict_ambiguous" else None,
             "proposal_hash": rev["proposal_hash"] if rev and show_proposal else None,
             "execution_key": exe["execution_key"] if exe else None,
+            # Which FAILURE this is (2026-10-16, asked by Carlos and Victor). 'execution': approved and
+            # confirmed not done, so the device may clear its saved key. 'processing': never approved.
+            # A failure can only come from execution once a request is approved, so the executions row
+            # decides it, whatever state the device happens to be in (after a reboot, for example).
+            "failure_stage": ("execution" if exe else "processing") if state == "failure" else None,
             "draft": rev["draft"] if rev and state not in ("processing", "cancelled") else None,
             "expires_at": expires_at.isoformat() if expires_at else None,
             "expires_in_s": max(0, round((expires_at - now).total_seconds())) if expires_at else None,

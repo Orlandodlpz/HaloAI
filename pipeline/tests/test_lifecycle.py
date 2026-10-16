@@ -244,7 +244,24 @@ async def test_read_only_result_never_executes(lc, user, executors):
 
 async def test_processing_error_is_failure(lc, user):
     _, r = await new_review(lc, user, "explode please")
-    assert r["state"] == "failure"
+    assert r["state"] == "failure" and r["failure_stage"] == "processing" and r["execution_key"] is None
+
+
+async def test_failure_stage_tells_the_device_which_failure(lc, user, executors):
+    """'execution': approved and confirmed not done, so the device may clear its saved key. The
+    status query a rebooted device makes with that key says the same."""
+    rid, r = await new_review(lc, user)
+    assert r["failure_stage"] is None  # only set on FAILURE
+    executors["mock"].mode = "fail"
+    done = await lc.approve(user, rid, approve_body(r))
+    assert done["state"] == "failure" and done["failure_stage"] == "execution"
+    status = await lc.execution_status(user, done["execution_key"])
+    assert status["state"] == "failure" and status["failure_stage"] == "execution"
+    for mode, state in (("succeed", "success"), ("error", "execution_uncertain")):
+        executors["mock"].mode = mode
+        rid, r = await new_review(lc, user)
+        out = await lc.approve(user, rid, approve_body(r))
+        assert out["state"] == state and out["failure_stage"] is None
 
 
 # ---------- scope, screens, recovery ----------
