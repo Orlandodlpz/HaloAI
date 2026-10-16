@@ -10,6 +10,7 @@ dependencies = [
     "pydantic-settings>=2.4",
     "psycopg[binary,pool]>=3.2",
     "sse-starlette>=2.1",
+    "cryptography>=43",
 ]
 
 [project.optional-dependencies]

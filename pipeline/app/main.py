@@ -21,6 +21,8 @@ from app.config import Settings, get_settings
 from app.db import migrate, open_pool
 from app.lifecycle import ApiError, Lifecycle
 from app.memory import MemoryStore
+from app.google_api import router as google_router
+from app.google_auth import GoogleAuth
 from app.memory_api import router as memory_router
 from app.mockstore import MockExecutor, MockStore
 from app.processing import FakeExecutor, FakeProcessor, Processor
@@ -39,6 +41,7 @@ class Services:
     calls: Calls
     limiter: RateLimiter
     streams: Streams
+    google: object = None  # GoogleAuth (B4)
 
 
 def make_processor(settings: Settings, store: MockStore, memory: MemoryStore) -> Processor:
@@ -75,7 +78,8 @@ async def build_services(settings: Settings) -> Services:
     # The phone key from .env, so the existing key keeps working. More keys: scripts/create_key.py
     await create_key(pool, user_id, "phone", "real", key=settings.backend_api_key.get_secret_value())
     await lc.recover_on_startup()
-    return Services(settings, pool, lc, Calls(pool, clock, settings), RateLimiter(), Streams())
+    return Services(settings, pool, lc, Calls(pool, clock, settings), RateLimiter(), Streams(),
+                    GoogleAuth(pool, settings, clock))
 
 
 def create_app(services: Services | None = None) -> FastAPI:
@@ -116,6 +120,7 @@ def create_app(services: Services | None = None) -> FastAPI:
     app.include_router(router)
     app.include_router(stream_router)
     app.include_router(memory_router)
+    app.include_router(google_router)
     return app
 
 
