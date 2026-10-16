@@ -64,6 +64,16 @@ class Settings(BaseSettings):
     # Off until B4: 'real' scoped keys fall back to mock tools. 'mock' keys always do.
     real_tools_enabled: bool = False
 
+    # B4: Google and Tavily. Secrets only in the server's secrets file (set-secret), never in git.
+    google_client_id: SecretStr | None = None
+    google_client_secret: SecretStr | None = None
+    google_redirect_uri: str = "https://api.haloai-cov.io/v1/google/callback"
+    token_encryption_key: SecretStr | None = None  # Fernet key for stored Google refresh tokens
+    tavily_api_key: SecretStr | None = None
+    # Real mode sends email and invitations only to these addresses (comma separated, server secret).
+    allowed_recipients: SecretStr | None = None
+    oauth_state_minutes: int = 10
+
 
 @lru_cache
 def get_settings() -> Settings:
