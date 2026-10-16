@@ -104,3 +104,38 @@ HALO_TEST(json_reports_overflow_instead_of_writing_broken_json) {
     CHECK(w.finish() == nullptr);
     CHECK(w.overflowed());
 }
+
+HALO_TEST(json_counts_and_reads_array_elements) {
+    const char* doc = R"({"sid":1,"screen_lines":["a","b","c"],"candidates":[]})";
+    const size_t n = strlen(doc);
+    CHECK(json::array_len(doc, n, "screen_lines") == 3);
+    CHECK(json::array_len(doc, n, "candidates") == 0);
+    CHECK(json::array_len(doc, n, "missing") == 0);
+    CHECK(json::array_len(doc, n, "sid") == 0);  // not an array
+
+    char out[16] = {};
+    CHECK(json::get_str_at(doc, n, "screen_lines", 0, out, sizeof(out)) && !strcmp(out, "a"));
+    CHECK(json::get_str_at(doc, n, "screen_lines", 2, out, sizeof(out)) && !strcmp(out, "c"));
+    CHECK(!json::get_str_at(doc, n, "screen_lines", 3, out, sizeof(out)));
+    CHECK(!json::get_str_at(doc, n, "candidates", 0, out, sizeof(out)));
+    CHECK(!json::get_str_at(doc, n, "missing", 0, out, sizeof(out)));
+}
+
+HALO_TEST(json_refuses_an_array_that_was_never_closed) {
+    // A write truncated in flight must read as nothing, not as the lines that did
+    // arrive: a half delivered REVIEW screen is one the user never saw whole.
+    const char* cut = R"({"sid":1,"screen_lines":["a","b")";
+    CHECK(json::array_len(cut, strlen(cut), "screen_lines") == 0);
+    const char* cut_mid = R"({"sid":1,"screen_lines":["a","unterm)";
+    CHECK(json::array_len(cut_mid, strlen(cut_mid), "screen_lines") == 0);
+    char out[16] = {};
+    CHECK(!json::get_str_at(cut_mid, strlen(cut_mid), "screen_lines", 1, out, sizeof(out)));
+}
+
+HALO_TEST(json_array_whitespace_does_not_change_what_is_read) {
+    const char* doc = "{\"screen_lines\" : [ \"a\" , \"b\" ] }";
+    CHECK(json::array_len(doc, strlen(doc), "screen_lines") == 2);
+    char out[16] = {};
+    CHECK(json::get_str_at(doc, strlen(doc), "screen_lines", 1, out, sizeof(out)));
+    CHECK(!strcmp(out, "b"));
+}

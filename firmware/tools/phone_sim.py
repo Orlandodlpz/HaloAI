@@ -28,6 +28,10 @@ STEP_TABLE = [
 ]
 
 DROP_EVERY = int(sys.argv[1]) if len(sys.argv) > 1 else 0  # 0 = drop nothing
+# Pretend the first N final markers never arrived. The device must resend the
+# marker every 300 ms until it is acknowledged; without that the phone waits for
+# an end it is never told about and the whole run hangs.
+DROP_FINALS = int(sys.argv[2]) if len(sys.argv) > 2 else 0
 
 
 def crc16(data):
@@ -69,6 +73,8 @@ class Rx:
         self.bytes = 0
         self.received = 0
         self.dropped_once = set()  # drop each sequence number once, not forever
+        self.finals_seen = 0
+        self.finals_dropped = 0
 
     def upto(self):
         n = -1
@@ -122,6 +128,12 @@ async def main():
                 rx.dropped += 1
                 return  # pretend this one never arrived, but let the resend through
             if flags & 1:
+                rx.finals_seen += 1
+                if rx.finals_dropped < DROP_FINALS:
+                    rx.finals_dropped += 1
+                    print(f"dropping final marker #{rx.finals_seen} on purpose; "
+                          f"the device should resend it")
+                    return
                 total_chunks, total_samples = struct.unpack("<HI", payload)
                 rx.final = (seq, total_chunks, total_samples)
             else:
@@ -162,8 +174,10 @@ async def main():
                     last = now
 
         task = asyncio.create_task(acker())
-        print(f"triggering the stream (dropping every {DROP_EVERY}th chunk on purpose)"
-              if DROP_EVERY else "triggering the stream")
+        what = []
+        if DROP_EVERY: what.append(f"dropping every {DROP_EVERY}th chunk")
+        if DROP_FINALS: what.append(f"dropping the first {DROP_FINALS} final marker(s)")
+        print("triggering the stream" + (" (" + ", ".join(what) + ") on purpose" if what else ""))
         ser.write(b"A")
         try:
             await asyncio.wait_for(done.wait(), timeout=60)
@@ -179,6 +193,7 @@ async def main():
         print(f"deliberately lost  {rx.dropped}")
         print(f"bad CRC            {rx.bad_crc}")
         print(f"final marker       {rx.final}")
+        print(f"final markers seen {rx.finals_seen} ({rx.finals_dropped} dropped on purpose)")
         if elapsed > 0:
             print(f"wall time          {elapsed:.2f} s")
             print(f"throughput         {rx.bytes * 8 / elapsed / 1000:.0f} kbit/s")

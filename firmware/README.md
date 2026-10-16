@@ -17,15 +17,23 @@ closes a phase gate for the product.
 | Partial refresh (every ordinary screen) | 495 ms |
 | Full refresh (clear then draw, ghost flush) | 4309 ms |
 | BLE audio throughput | 158 kbit/s, 2.25x realtime |
-| Host tests | 121, about 20 ms |
+| Clip delivered, clean link | 233 chunks, 2.21 s, 2.10x realtime, 0 bad CRC |
+| Final marker resend | verified: 2 dropped on purpose, resent, segment completed |
+| Host tests | 148, about 20 ms |
 
 ## Layout
 
 ```
-core/      state machine and gesture detector. No board headers, no vendor library,
-           no framework. Compiles on a laptop and on the ESP32 unchanged.
+core/      state machine, gesture detector, layout, audio codec and the BLE
+           message layer. No board headers, no vendor library, no framework.
+           Compiles on a laptop and on the ESP32 unchanged.
+board/     the ESP-IDF app: pins, tasks, the radio and the panel. Glue only.
 test/      host tests, one tiny harness, no third party dependency.
 ```
+
+Adding a file to `core/src/` means editing **two** CMakeLists: `firmware/CMakeLists.txt`
+for the host build and `firmware/core/CMakeLists.txt` for the ESP-IDF component. The
+host tests pass happily while the device build fails to link.
 
 The split exists so the part that must never be wrong (nothing irreversible without
 a deliberate confirm) can be tested exhaustively without hardware in the loop.
@@ -54,7 +62,23 @@ idf.py -p /dev/cu.usbserial-210 flash monitor
 
 The serial port number is not stable across replugs: check `ls /dev/cu.usbserial-*`.
 In the bench build, `?` lists the keys that inject phone events and gestures, `T`
-draws a text probe and `C` deep cleans the panel.
+draws a text probe and `C` deep cleans the panel. `-DHALO_BENCH_INJECT=1` is a CMake
+cache variable and therefore **sticky**: once passed, later plain builds stay bench
+builds until `idf.py fullclean`. The boot log names the build it is running.
+
+## Check the link against a stand in phone
+
+`tools/phone_sim.py` connects from a Mac as the central, triggers the clip over serial
+and acknowledges it the way the contract says. It needs `bleak` and `pyserial`.
+
+```sh
+tools/phone_sim.py        # clean run
+tools/phone_sim.py 9      # drop every 9th chunk, exercising resend_from
+tools/phone_sim.py 0 2    # drop the first two final markers, exercising the 300 ms resend
+```
+
+It is not a replacement for Carlos's phone: CoreBluetooth is not Android's stack and the
+throughput numbers will differ.
 
 ## What the tests pin
 
@@ -66,6 +90,23 @@ safety properties the hard constraints call for:
   `approve_is_reachable_so_the_sweep_is_not_vacuous` keeps that sweep honest.
 - `critical_battery_is_entered_from_every_state` does the same for the battery
   override, and checks capture is stopped and execution inhibited.
+
+## BLE messages
+
+Every message in the contract is built and read in `core/src/messages.cpp`, not in the
+board glue, so the bytes the phone will receive are pinned by host tests rather than
+checked by eye on a radio. `firmware/docs/ble_fields.md` answers Carlos's questions on
+the draft and records the device side decisions; the agreed contract itself is BRIEFING
+section 2.
+
+Two rules the tests exist to defend:
+
+- A Screen write that cannot be fully understood is dropped whole and the previous
+  screen stays on the glass. Drawing the half that parsed would show a screen nobody
+  designed, and the user confirms what is on the glass.
+- Once `approve` has gone out the device never reports that request as cancelled, in any
+  state, for any reason. EXECUTING onwards is reconciled by execution key. The effect may
+  already exist, and "cancelled" is a claim the device cannot make.
 
 ## The confirm guard
 

@@ -16,6 +16,7 @@ add_library(halo_core
     core/src/layout.cpp
     core/src/audio.cpp
     core/src/json.cpp
+    core/src/messages.cpp
 )
 target_include_directories(halo_core PUBLIC core/include)
 target_compile_options(halo_core PRIVATE -Wall -Wextra -Wpedantic -Werror)
@@ -28,6 +29,7 @@ add_executable(halo_tests
     test/test_layout.cpp
     test/test_audio.cpp
     test/test_json.cpp
+    test/test_messages.cpp
 )
 target_link_libraries(halo_tests PRIVATE halo_core)
 target_include_directories(halo_tests PRIVATE test)
