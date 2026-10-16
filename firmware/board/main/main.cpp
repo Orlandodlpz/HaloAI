@@ -407,6 +407,62 @@ void on_audio_ack(const char* js, size_t len) {
 // record_end is informational: the final marker in the audio stream, not this, is
 // what tells the phone the recording is complete. It carries the chunk count and
 // the hold length so the phone can measure release to complete against the budget.
+// ---------------------------------------------------- pending execution key
+//
+// A dispatched action outlives a reboot. The backend owns the execution and its
+// status; the device keeps the key so BOOT / RECOVERY, and a return from CRITICAL
+// BATTERY, can ask what happened instead of guessing or acting twice.
+//
+// The key is written as the device LEAVES REVIEW, in the same transition that
+// sends approve, so it has to be in hand before the user confirms: it arrives on
+// the REVIEW screen, not later.
+constexpr const char* kNvsNamespace = "halo";
+constexpr const char* kNvsExecutionKey = "exec_key";
+
+void persist_execution_key() {
+    if (g_link.pending_key[0] == '\0') {
+        // Approving with no key means the phone never sent one. The action still
+        // goes out, but nothing could reconcile it after a reboot, so this is
+        // loud rather than silent.
+        ESP_LOGE(kTag, "approving with no execution key: a reboot could not reconcile this");
+        return;
+    }
+    nvs_handle_t h;
+    if (nvs_open(kNvsNamespace, NVS_READWRITE, &h) != ESP_OK) {
+        ESP_LOGE(kTag, "could not open NVS to save the execution key");
+        return;
+    }
+    const esp_err_t rc = nvs_set_str(h, kNvsExecutionKey, g_link.pending_key);
+    if (rc == ESP_OK) nvs_commit(h);
+    nvs_close(h);
+    if (rc == ESP_OK) ESP_LOGI(kTag, "execution key saved: %s", g_link.pending_key);
+    else ESP_LOGE(kTag, "could not save the execution key, rc=%d", rc);
+}
+
+void clear_execution_key() {
+    nvs_handle_t h;
+    if (nvs_open(kNvsNamespace, NVS_READWRITE, &h) != ESP_OK) return;
+    nvs_erase_key(h, kNvsExecutionKey);
+    nvs_commit(h);
+    nvs_close(h);
+    g_link.pending_key[0] = '\0';
+    ESP_LOGI(kTag, "execution key cleared: the outcome is known");
+}
+
+// True when a key was found, which is what sends BOOT / RECOVERY to reconcile.
+bool load_execution_key() {
+    nvs_handle_t h;
+    if (nvs_open(kNvsNamespace, NVS_READONLY, &h) != ESP_OK) return false;
+    size_t len = sizeof(g_link.pending_key);
+    const esp_err_t rc = nvs_get_str(h, kNvsExecutionKey, g_link.pending_key, &len);
+    nvs_close(h);
+    if (rc != ESP_OK) {
+        g_link.pending_key[0] = '\0';
+        return false;
+    }
+    return g_link.pending_key[0] != '\0';
+}
+
 void send_record_end(uint16_t req, uint8_t rev, uint8_t seg, uint16_t chunks, uint32_t ms) {
     msg::Link l = g_link;
     l.req = req;
@@ -441,6 +497,12 @@ void emit_events(const Transition& t, const Event& e) {
                 break;
             case Action::SendContinue:
                 send(msg::continue_(g_tx, sizeof(g_tx), g_link), "continue");
+                break;
+            case Action::PersistExecutionKey:
+                persist_execution_key();
+                break;
+            case Action::ClearExecutionKey:
+                clear_execution_key();
                 break;
             case Action::SendStatusQuery:
                 send(msg::status_query(g_tx, sizeof(g_tx), g_link), "status_query");
@@ -775,7 +837,7 @@ bool debounced_edge(Edge& e, uint32_t t, uint32_t debounce_ms) {
 
 extern "C" void app_main() {
     esp_log_level_set(kTag, ESP_LOG_DEBUG);
-    ESP_LOGI(kTag, "HaloAI device, F0 build. Panel: %s", board::panel_name());
+    ESP_LOGI(kTag, "HaloAI device, %s. Panel: %s", kFirmwareVersion, board::panel_name());
     ESP_LOGI(kTag, "hold MENU to record, press to confirm, double press to cancel, knob to scroll");
     ESP_LOGI(kTag, "press ? in the monitor for the keys that inject phone events");
 #ifdef HALO_BENCH_INJECT
@@ -815,9 +877,15 @@ extern "C" void app_main() {
     h.on_events_subscribed = on_events_subscribed;
     ble::start("HaloAI", h);
 
-    // Startup checks. F3 replaces this with a real read of the pending execution
-    // key from flash, which is what sends BOOT / RECOVERY to RECONCILE STATUS.
-    feed(Event::at(EventKind::StartupOk, now_ms()));
+    // BOOT / RECOVERY. A key in flash means an action was dispatched and its
+    // outcome was never confirmed, so the device reconciles it before anything
+    // else rather than returning to READY as if nothing had happened.
+    if (load_execution_key()) {
+        ESP_LOGW(kTag, "pending execution found in flash: %s", g_link.pending_key);
+        feed(Event::at(EventKind::PendingExecutionFound, now_ms()));
+    } else {
+        feed(Event::at(EventKind::StartupOk, now_ms()));
+    }
 
     Edge menu{board::kBtnMenu};
     Edge side{board::kBtnSide};

@@ -76,7 +76,11 @@ tools/phone_sim.py        # clean run
 tools/phone_sim.py 9      # drop every 9th chunk, exercising resend_from
 tools/phone_sim.py 0 2    # drop the first two final markers, exercising the 300 ms resend
 tools/screen_sim.py       # fragmented Screen and Settings writes, and a broken sequence
+tools/flow_sim.py         # a whole request to an approve, then power cycle and reconcile
 ```
+
+`flow_sim.py` needs the bench build, because it injects gestures over serial. Clear the
+flag afterwards with `idf.py fullclean`.
 
 It is not a replacement for Carlos's phone: CoreBluetooth is not Android's stack and the
 throughput numbers will differ.
@@ -105,6 +109,9 @@ Two rules the tests exist to defend:
 - A Screen write that cannot be fully understood is dropped whole and the previous
   screen stays on the glass. Drawing the half that parsed would show a screen nobody
   designed, and the user confirms what is on the glass.
+- A dispatched action outlives a reboot. The execution key is written to flash as the
+  device leaves REVIEW, so BOOT / RECOVERY comes up in RECONCILE STATUS and asks what
+  happened instead of returning to READY as if nothing had.
 - A fragmented write is reassembled or dropped whole, never partly applied. Each JSON
   write carries a 2 byte prefix and a REVIEW screen takes three of them.
 - Once `approve` has gone out the device never reports that request as cancelled, in any

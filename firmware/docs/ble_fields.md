@@ -55,10 +55,16 @@ backend creates the execution key. No message in the contract carries it from th
 device, so as written the device can only ever send `null`, and BOOT / RECOVERY has nothing to
 reconcile from.
 
-**Proposal: add an optional `pending_key` to the Screen write**, on the EXECUTING screen (and
-on EXECUTION_UNCERTAIN after a reconnect). That is the moment the backend has an execution to
-report on, and the device persists it to flash on `PersistExecutionKey` and clears it on
-`ClearExecutionKey`, which are already actions in the V1 table.
+**Proposal: add an optional `pending_key` to the Screen write.**
+
+**Correction, 2026-10-16: it has to be on the REVIEW screen, not EXECUTING.** I said EXECUTING
+when I first wrote this, and that is one screen too late. `PersistExecutionKey` fires in the
+same transition that sends `approve`, as the device *leaves* REVIEW, so the key has to already
+be in hand when the user confirms. A key that only arrives with the EXECUTING screen is written
+after the action was dispatched, and a reboot in that window is exactly the case the key exists
+for. The device clears it on `ClearExecutionKey`; both are already actions in the V1 table.
+
+Carrying it on EXECUTION_UNCERTAIN as well, after a reconnect, is still worth having.
 
 The firmware reads it already, as an optional field. Until the phone sends one, nothing
 changes: the field is simply never present. If you would rather carry it another way, say so
@@ -268,7 +274,9 @@ You were right that it does not block P1 and needed to be in before P2. It is in
 ## Still open, and not mine to close
 
 - `pending_key` on the Screen write: **agreed with Carlos 2026-10-16**, optional on the Screen
-  write. Still needs the backend to send it, which is Orlando's side.
+  write, and it must be on **REVIEW** (see the correction above). The device side is finished and
+  verified: the key is written to flash as the device leaves REVIEW, survives a power cycle, and
+  brings the device up in RECONCILE STATUS instead of READY. It needs the backend to send one.
 - The FAILURE ambiguity (5d) is with Orlando: the backend decides whether a FAILURE screen can
   follow an approve. Until it is answered the device infers it from its own state.
 - The ring buffer size stays provisional until F2 runs on the badge with a real microphone.
