@@ -48,12 +48,13 @@ async def _no_status(_line: str) -> None:
 
 class Lifecycle:
     def __init__(self, pool: AsyncConnectionPool, settings: Settings, clock, processor: Processor,
-                 executors: dict[str, Executor]):
+                 executors: dict[str, Executor], memory=None):
         self.pool = pool
         self.settings = settings
         self.clock = clock
         self.processor = processor
         self.executors = executors  # {'mock': ..., 'real': ...}
+        self.memory = memory  # MemoryStore (B3): learns from applied actions, saves "remember that"
         self._tasks: set[asyncio.Task] = set()
 
     # ---------- helpers ----------
@@ -64,12 +65,15 @@ class Lifecycle:
             return self.executors["real"]
         return self.executors["mock"]
 
-    async def ensure_user(self, name: str) -> str:
+    async def ensure_user(self, name: str, sandbox: bool = False) -> str:
         async with self.pool.connection() as conn:
             cur = await conn.execute(
-                "INSERT INTO users (name) VALUES (%s) ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name"
-                " RETURNING id", (name,))
-            return str((await cur.fetchone())["id"])
+                "INSERT INTO users (name, sandbox) VALUES (%s, %s) ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name"
+                " RETURNING id, sandbox", (name, sandbox))
+            row = await cur.fetchone()
+            if row["sandbox"] != sandbox:
+                raise ValueError(f"user {name!r} exists with sandbox={row['sandbox']}")
+            return str(row["id"])
 
     async def _lock_user(self, conn, user_id: str) -> None:
         await conn.execute("SELECT id FROM users WHERE id = %s FOR UPDATE", (user_id,))
@@ -235,7 +239,7 @@ class Lifecycle:
             segs = [Segment(s["revision"], s["kind"], s["text"], s["candidate_id"], s["sent_at"])
                     for s in await cur.fetchall()]
         ctx = ProcessContext(str(request_id), revision, segs, req["timezone"], req["language"],
-                             req["orientation"], req["scope"], on_status)
+                             req["orientation"], req["scope"], on_status, user_id=str(req["user_id"]))
         failure_reason = None
         try:
             output = await asyncio.wait_for(self.processor.process(ctx), self.settings.processing_deadline_s)
@@ -271,6 +275,9 @@ class Lifecycle:
             expires = self._new_expiry() if output.state in DECISION_STATES else None
             req = await self._set_state(conn, req, state=output.state, expires_at=expires,
                                         failure_reason=failure_reason)
+            if output.memory_writes and self.memory is not None:
+                # Same transaction as the stored result: a stale or cancelled revision never saves anything.
+                await self.memory.apply_writes(conn, str(req["user_id"]), output.memory_writes)
             await self._history(conn, req["user_id"], str(request_id), "result",
                                 {"revision": revision, "state": output.state, "error": failure_reason})
             return await self._result(conn, req)
@@ -333,7 +340,8 @@ class Lifecycle:
     async def _run_execution(self, user_id: str, request_id: str, key: str, draft: dict, executor: Executor):
         screen_lines, detail = None, {"executor": executor.name}
         try:
-            outcome = await asyncio.wait_for(executor.execute(draft, key), self.settings.execution_deadline_s)
+            outcome = await asyncio.wait_for(executor.execute(draft, key, str(user_id)),
+                                             self.settings.execution_deadline_s)
             status, screen_lines = ("applied" if outcome.applied else "not_applied"), outcome.screen_lines
             detail.update(outcome.detail)
         except Exception as exc:  # timeout or error: we cannot know if it happened
@@ -348,6 +356,8 @@ class Lifecycle:
             req = await self._load(conn, user_id, request_id)
             await self._set_state(conn, req, state=EXECUTION_STATE[status])
             await self._history(conn, user_id, request_id, "execution", {"key": key, "status": status})
+            if status == "applied" and self.memory is not None:
+                await self.memory.learn_from_execution(conn, user_id, draft)  # only approved, applied actions
 
     async def cancel(self, user_id: str, request_id: str) -> dict:
         async with self.pool.connection() as conn, conn.transaction():

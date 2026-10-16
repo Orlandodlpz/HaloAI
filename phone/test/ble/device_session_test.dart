@@ -162,6 +162,16 @@ void main() {
     expect(await logged, contains('candidate c-s'));
   });
 
+  test('battery and cancel reason reach the log', () async {
+    await s.start();
+    final battery = s.log.firstWhere((l) => l.startsWith('battery'));
+    t.event({'type': 'battery', 'battery': 9});
+    expect(await battery, 'battery 9%');
+    final cancel = s.log.firstWhere((l) => l.startsWith('cancel'));
+    t.event({'type': 'cancel', 'req': 2, 'sid': null, 'reason': 'battery'});
+    expect(await cancel, 'cancel req=2 reason=battery');
+  });
+
   test('garbage events are reported, not fatal', () async {
     await s.start();
     final logged = s.log.firstWhere((l) => l.startsWith('event:'));

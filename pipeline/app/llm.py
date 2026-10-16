@@ -2,7 +2,7 @@
 
 from functools import lru_cache
 
-from openai import OpenAI
+from openai import AsyncOpenAI, OpenAI
 
 from app.config import get_settings
 
@@ -11,6 +11,17 @@ from app.config import get_settings
 def get_client() -> OpenAI:
     s = get_settings()
     return OpenAI(
+        base_url=s.nebius_base_url,
+        api_key=s.nebius_api_key.get_secret_value(),
+        timeout=s.llm_timeout_s,
+    )
+
+
+@lru_cache
+def get_async_client() -> AsyncOpenAI:
+    """For the server: waiting on the model never blocks other requests."""
+    s = get_settings()
+    return AsyncOpenAI(
         base_url=s.nebius_base_url,
         api_key=s.nebius_api_key.get_secret_value(),
         timeout=s.llm_timeout_s,

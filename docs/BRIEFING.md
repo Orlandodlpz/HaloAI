@@ -1,6 +1,6 @@
 # BRIEFING.md: HaloAI Execution Plan
 
-**Last Updated:** 2026-10-14
+**Last Updated:** 2026-10-15
 **Purpose:** The operational plan for the whole team: what we're building, how the pieces fit, and the phased sequence to get there with minimal rework.
 
 > Relationship to other docs: CLAUDE.md tracks decisions, constraints and state. This document is the **execution plan**. Each person edits only their own phase section (Backend, Phone or Device); shared sections change only after the team agrees.
@@ -19,7 +19,7 @@ A clip-on voice assistant for calendar and email. Hold the button, speak, check 
 Device (Victor)  --BLE audio, button signals-->  Phone app (Carlos)  --HTTPS text, signals-->  Backend (Orlando)
 Device           <--BLE screen text, status----  Phone app           <--HTTPS replies, status--  Backend
 
-Backend --> Nebius Token Factory (Nemotron 3 Nano, Zero Data Retention on)
+Backend --> Nebius Token Factory (Nemotron 3 Ultra, Zero Data Retention on)
 Backend --> Google Calendar, Gmail send, Google People "other contacts"
 Backend --> Tavily web search
 Backend --> Postgres (memory, pending actions, history)
@@ -63,6 +63,31 @@ POST /v1/requests/{request_id}/touch           knob activity in a decision state
 
 GET  /v1/executions/{execution_key}            RECONCILE STATUS, and polling after approve
 ```
+
+*Memory (phone app and demo site).* **Signed off by Carlos 2026-10-15.** Everything the assistant remembers can be viewed, edited and deleted (locked decision).
+
+```
+GET    /v1/memory                     list: { "items": [ memory item, ... ] }
+POST   /v1/memory                     { "call_id": "uuid", "kind": "contact | preference | fact", "label": "Victor", "value": "victor@example.com" }
+PATCH  /v1/memory/{memory_id}         { "call_id": "uuid", "label": "...", "value": "..." }   (either field)
+DELETE /v1/memory/{memory_id}         { "call_id": "uuid" }   -> { "deleted": true }
+
+memory item: { "memory_id": "...", "kind": "contact | preference | fact | action", "label": "...", "value": "...",
+               "source": "user | learned | action", "uses": 3, "updated_at": "RFC 3339" }
+```
+
+`action` items are recent approved actions; they can be deleted but not edited. Errors use the usual shape.
+
+*Google account (B4).* **PROPOSED 2026-10-15, needs Carlos's sign-off.** Sign in happens on the backend (locked decision).
+
+```
+GET  /v1/google/status                { "connected": true, "email": "demo account address" }
+POST /v1/google/connect               { "call_id": "uuid" } -> { "url": "Google sign in link, valid 10 minutes" }
+GET  /v1/google/callback              called by Google, not by the phone (see below)
+POST /v1/google/disconnect            { "call_id": "uuid" } -> { "connected": false }
+```
+
+The callback is the one endpoint without our API key, because Google calls it directly. It is protected by a signed, single use `state` value tied to the user that expires after 10 minutes (decided 2026-10-15).
 
 Every result (the `result` event, and the JSON response of every other call, including the status endpoint) has one shape:
 
@@ -119,7 +144,7 @@ Errors have one shape. `message` is for logs only, never for the screen; `curren
 | --- | --- | --- | --- |
 | Audio | device to phone (notify) | raw bytes, layout below | 16 kHz mono IMA ADPCM, 20 ms per chunk, streamed from the ring buffer while the button is held |
 | Audio Ack | phone to device (write) | JSON | cumulative: `{"req", "seg", "upto"}` (highest sequence number stored with nothing missing before it) every 10 chunks or 200 ms, plus `resend_from` when a chunk is missing; also acknowledges the final marker. The device frees acknowledged chunks |
-| Events | device to phone (notify) | JSON | `hello`, `wake`, `record_start`, `record_end`, `approve`, `select` (candidate index), `continue`, `cancel`, `dismiss`, `ack`, `status_query`, `activity` |
+| Events | device to phone (notify) | JSON | `hello`, `wake`, `record_start`, `record_end`, `approve`, `select` (candidate index), `continue`, `cancel` (with a `reason`), `dismiss`, `ack`, `status_query`, `activity`, `battery` |
 | Screen | phone to device (write) | JSON | screen ID `sid`, screen type (one of the V1 state names), `screen_lines`, `status_line`, candidates in display order, revision |
 | Wallpaper | phone to device (write) | JSON chunks with offset and checksum, image data base64 | already resized and dithered image |
 | Settings | phone to device (write) | JSON | orientation, current time |
@@ -170,7 +195,7 @@ Two additions to the draft, both from the device side:
 - **A `battery` event outside `hello`,** rate limited and sent on threshold crossings. CRITICAL BATTERY is a real state in the V1 machine, and without this event the phone sees only a device that went quiet.
 
 `phone_ready` in Settings is adopted as drafted and is not optional: PHONE / BLUETOOTH CHECK needs "phone linked **and** capture service ready", and only the link half was carried before. The device goes to RECORDING only when the link is up and the last `phone_ready` was true.
-- **Testing without a stand-in.** There is no prototype or stand-in device (decided 2026-10-13): the phone tests directly against Victor's firmware on the Waveshare ESP32-S3 e-Paper 3.97 board. `phone/tools/audio_reference/` keeps a Python reference encoder and golden test vectors, so the firmware can check its chunks byte for byte against what the phone expects before the two ever connect.
+- **Testing before the badge arrives.** The phone tests against Victor's firmware on the CrowPanel development board (decided 2026-10-14): real BLE, real chunks and acknowledgments, but audio from a clip in flash, since the CrowPanel has no microphone. The same tests move to the Waveshare badge when it arrives. `phone/tools/audio_reference/` keeps a Python reference encoder and golden test vectors, so the firmware can check its chunks byte for byte against what the phone expects before the two ever connect.
 
 *State ownership.* The backend owns requests, revisions, proposals and execution status. The device enters a decision or outcome state (and starts the 1 s guard in REVIEW) only when the phone sends that screen. The device handles BOOT / RECOVERY, READY, WALLPAPER, PHONE / BLUETOOTH CHECK, PHONE DISCONNECTED, RECORDING, RECORD ADDITION, FINALIZE AUDIO and CRITICAL BATTERY locally. If the link stalls beyond the audio buffer, capture stops with FAILURE; audio is never silently dropped.
 
@@ -183,7 +208,7 @@ Two additions to the draft, both from the device side:
 | Landscape (800 x 480) | **48** | **12** | 64 characters |
 | Portrait (480 x 800) | **28** | **22** | 38 characters |
 
-Both numbers already account for the 16 px margins, the status bar and a one line hint at the bottom. The REVIEW requirement is met with room: a full address such as `To: victor.munozvera01@utrgv.edu` is 32 of the 48 columns, leaving the subject and up to 10 further lines.
+Both numbers already account for the 16 px margins, the status bar and a one line hint at the bottom. The REVIEW requirement is met with room: a full address such as `To: victor.morales01@example.com` is 32 of the 48 columns, leaving the subject and up to 10 further lines.
 
 These are **computed from the real font, not measured on the badge**, which is not in hand. They are exact for wrapping purposes, since the font is fixed width and the arithmetic is not in doubt. What is still unverified is whether 16 x 32 is comfortable to read on the badge's panel: see the warning about pixel density in CLAUDE.md. If it turns out too small the replacement is 20 x 40, which would give 38 x 9 landscape, so **do not design any screen that only works at 48 columns.**
 
@@ -191,7 +216,7 @@ On the development board the same screen shows 48 characters by 5 lines, which i
 
 **Device state machine** (V1, 9 October 2026, plus team additions)
 
-Inputs: hold (record while held), release (finish the voice segment), single press (select or approve), double press (cancel or dismiss), rotate up/down (move the highlight or scroll). Single press, double press and hold come from the side button; the rotary switch rotates and wakes. Only two numbers come from the spec: WALLPAPER after more than 1 minute of inactivity in READY, and CRITICAL BATTERY at 5% or less.
+Inputs: hold (record while held), release (finish the voice segment), single press (select or approve), double press (cancel or dismiss), rotate up/down (move the highlight or scroll). Single press, double press and hold come from the side button; the rotary switch rotates and wakes. Only two numbers come from the spec: WALLPAPER after more than 1 minute of inactivity in READY, and CRITICAL BATTERY, which the spec put at 5% or less and the team raised to 10% or less on 2026-10-14 (the badge's power chip shuts down hard at 5%).
 
 Request lifecycle, main path:
 1. READY, hold: PHONE / BLUETOOTH CHECK, then RECORDING (needs Bluetooth and a ready phone service, otherwise PHONE DISCONNECTED).
@@ -200,16 +225,16 @@ Request lifecycle, main path:
 4. A hold in PROCESSING, PROCESSING SLOW, REVIEW or a conflict records an addition: the revision goes up, the old proposal is invalidated, and the whole request reruns.
 5. REVIEW, single press (after the 1 s guard): approve the displayed revision. EXECUTING with a stable execution key, then SUCCESS, FAILURE or EXECUTION UNCERTAIN. An uncertain outcome is resolved by querying the same key (RECONCILE STATUS), never by sending again.
 6. Double press before approval: CANCELLED, nothing sent. 60 s without interaction in REVIEW or a conflict: CANCELLED.
-7. Battery at 5% or less: CRITICAL BATTERY from every state.
+7. Battery at 10% or less: CRITICAL BATTERY from every state.
 
-Every transition, copied from the team's Mermaid source (`ai-badge-state-machine.mmd`). Each "→" is one transition and its text is the trigger or guard. Not repeated per row: battery at or below 5% moves every state to CRITICAL BATTERY.
+Every transition, copied from the team's Mermaid source (`ai-badge-state-machine.mmd`). Each "→" is one transition and its text is the trigger or guard. Not repeated per row: battery at or below 10% moves every state to CRITICAL BATTERY (the Mermaid source says 5%; raised by the team on 2026-10-14).
 
 | State | Kind | Transitions |
 | --- | --- | --- |
 | BOOT / RECOVERY | Operational | Startup checks pass; no pending execution → READY • Recover a persisted pending execution → RECONCILE STATUS |
 | READY | Ready or outcome | Inactivity > 1 minute → WALLPAPER • Hold begins a new request → PHONE / BLUETOOTH CHECK |
 | WALLPAPER | Operational | Press or rotate wakes; consume wake input → READY |
-| CRITICAL BATTERY | Exception | Battery <= 5%: inhibit new capture and execution → CRITICAL BATTERY • Battery > 5% and pending execution exists → RECONCILE STATUS • Battery > 5% and no pending execution → READY |
+| CRITICAL BATTERY | Exception | Battery <= 10%: inhibit new capture and execution → CRITICAL BATTERY • Battery > 10% and pending execution exists → RECONCILE STATUS • Battery > 10% and no pending execution → READY |
 | PHONE / BLUETOOTH CHECK | Operational | Phone linked and capture service ready → RECORDING • Phone absent or service unavailable → PHONE DISCONNECTED • Double press: cancel → CANCELLED |
 | PHONE DISCONNECTED | Exception | Notice acknowledged; retry from READY → READY • Double press: cancel → CANCELLED |
 | RECORDING | Operational | Hold: stream bounded, numbered chunks → RECORDING • Release: close segment; send final marker → FINALIZE AUDIO • Link loss, capture error or buffer exhaustion → FAILURE • Double press: cancel → CANCELLED |
@@ -239,7 +264,7 @@ Team additions (decided 2026-10-09, not in the Mermaid source):
 | BOOT / RECOVERY, CRITICAL BATTERY | The pending execution is saved on the backend and its key in device flash |
 
 Global rules from the spec (they take precedence over ordinary transitions):
-1. Battery first: at 5% or less, stop capture and block new execution; a dispatched action's key stays saved as pending.
+1. Battery first: at 10% or less, stop capture and block new execution; a dispatched action's key stays saved as pending.
 2. One request, many revisions: tag everything with request ID, segment ID and revision; only the latest non-cancelled revision is shown or executed.
 3. Cancellation: a double press in any pre-execution state cancels locally at once, invalidates the request and signals upstream; late responses are ignored; a release after cancelling submits nothing.
 4. Approval: only a single press in REVIEW dispatches a mutating action, bound to the displayed revision and proposal hash, with a stable execution key.
@@ -254,7 +279,7 @@ Global rules from the spec (they take precedence over ordinary transitions):
 | Audio from device to phone over BLE | Victor | 0.5 | |
 | Parakeet transcription on phone | Carlos | 0.5 | 0.19 to 0.32 (P0, 5 to 9 s clips, model already loaded) |
 | Phone to backend | Carlos | 0.2 | |
-| Nemotron tool loop | Orlando | 1.2 | |
+| Nemotron tool loop | Orlando | 1.2 | 0.80 median, 1.01 p90 (B2 eval, Ultra, 246 commands from a Mac, 2026-10-14) |
 | Google or Tavily call | Orlando | 0.6 | |
 | Backend to phone to device | Carlos, Victor | 0.3 | |
 | Final e-ink refresh | Victor | 1.5 | |
@@ -295,21 +320,44 @@ Each phase ends with a gate. The gate must pass before the next phase in that tr
   - Contract additions, confirmed by Carlos on 2026-10-13 and written into section 2: `429 rate_limited` (per key rate limit), and `expired` also covers a request that is cancelled or finished (no separate `cancelled` code).
   - Local database: `cd pipeline && docker compose up -d` (Postgres 16, `127.0.0.1:5433` only), then `.venv/bin/python scripts/migrate.py` (and `--test`). Keys: `scripts/create_key.py --client NAME --scope real|mock`.
 
-#### Phase B2: Agent loop with mock tools (PLANNED)
+#### Phase B2: Agent loop with mock tools (DONE 2026-10-14)
 - **Goal:** Nemotron reliably picks the right tool with the right arguments, in English, against mock data.
 - **Steps:** tool schemas for all ten tools; realistic mock calendar, inbox and contacts; system prompt with date, time, timezone, language, text budget and relevant memory; iteration cap on the loop; `screen_lines` built and length-checked in code against the configured budget; all-in-one email with recipient resolution and auto subject; several or zero matching contacts return CONFLICT-AMBIGUOUS candidates (an empty list for zero); schedule overlaps return CONFLICT-SCHEDULE; questions that change nothing return READ-ONLY RESULT; an addition reruns the whole request; English eval set of spoken-style commands (relative dates like "tomorrow at 3", ambiguous recipients, search then act, requests that must not trigger a write).
 - **Gate:** eval results per category. **Provisional target: at least 90% correct tool and arguments overall, and 100% on "no write without a pending confirmation".** The 90% is not validated; replace it after the first run. Median model loop latency reported.
-- **Results (if DONE):**
+- **Results (if DONE):** gate passed 2026-10-14. Tested against **mock tools** (mock calendar, contacts and web) with the real model on Token Factory, on a Mac and on the server.
+  - Built: ten model tools (read tools return data marked untrusted; proposal tools end in REVIEW, a schedule conflict, an ambiguous or unknown recipient, or a question; `send_email` exists only for the executor, so the model can never send); contacts resolved, overlaps detected and the IANA timezone applied in code; calls with guests, a Google Meet link and a description (decided 2026-10-14); a plain tool loop of at most 4 turns; answers cleaned to plain ASCII for e-ink. 104 of 104 tests.
+  - Eval: 82 spoken-style English cases in `pipeline/evals/b2_en.jsonl` across 12 categories, including P0 transcription errors and two prompt injection traps. Runner: `cd pipeline && .venv/bin/python scripts/eval_b2.py --repeat 3 --label NAME` (`--check` validates the cases against the tool code without the model; `--model` tries another model). Every run is saved in `pipeline/evals/results/`.
+  - **The model is not deterministic on Token Factory, even at temperature 0:** the same config run twice flipped 10 of 82 cases. Changes are judged on 3 runs per config.
+  - **Model comparison (same prompt, 82 cases x 3 runs, run side by side):**
 
-#### Phase B3: Memory (PLANNED)
+  | | Nano | 3.5 Lightning | Super | Ultra |
+  | --- | --- | --- | --- | --- |
+  | Correct | 70% | 84% | 85% | 93.5% |
+  | One model turn | 47% | 70% | 89% | 91% |
+  | Median / p90 latency | 1.57 / 2.79 s | 0.76 / 1.72 s | 1.03 / 1.52 s | 0.82 / 1.30 s |
+  | Unasked proposals (of 246) | 10 | 12 | 3 | 3 |
+  | Cost per 1,000 commands | $0.28 | $0.25 | $0.95 | $2.92 |
+
+  - **Decision 2026-10-14: Nemotron 3 Ultra.** The biggest model is also the fastest at p90, because it finishes 91% of commands in one turn while Nano keeps calling extra tools and asking questions.
+  - **Current result (Ultra, 3 runs): 237 of 246 correct (96.3%), traps 24 of 24, median 0.80 s, p90 1.01 s, no flaky cases, about $0.72 per 3-run eval.** Gate targets met: at least 90% overall, and no write without a pending confirmation (structural: the model cannot send or change anything, and no case emailed the injected address in any run of any model). 11 of 12 categories at 100%.
+  - Three stable failures, left in the eval on purpose: two commands with no time ("add a dentist appointment", "block some time for the gym") get a guessed time instead of a question (still only a REVIEW proposal); and "what's my next meeting" at exactly 3:00 PM names the meeting that ends at 3:00, an edge of the mock calendar.
+  - What did not work: prompt rules alone. On Nano, a longer "when not to act" rule cost 11 points, because the small model copied the example question instead of acting. Questions now always end with "Hold and say your answer" in code, so the how-to-answer part does not depend on the model.
+  - **On the server (2026-10-14):** `PROCESSOR=nemotron` with its own Nebius key, real commands over HTTPS from a Mac: a calendar block approved and executed (fake executor), an email, a question, an ambiguous recipient resolved through `select` (revision 2), a call with an invite, a Meet link and a description, an addition (revision 2) and the coffee injection trap (emailed Carlos, not the attacker). Time from sending to the final result, as the phone sees it: 0.66 to 1.5 s for one-turn commands, 3.4 s for the 4-turn search trap.
+  - Two screen text fixes found on the server: email line breaks became double spaces on screen (now collapsed on screen only; the email keeps them) and "Which alex?" echoed the lowercase name (now capitalized). 105 of 105 tests.
+
+#### Phase B3: Memory (DONE 2026-10-15)
 - **Goal:** persistent contacts, preferences and recent actions that change what the assistant does.
-- **Steps:** Postgres tables; `remember` and `recall`; inject only relevant memory into the prompt; endpoints to view, edit and delete memory for the phone app and demo site.
+- **Steps (planned 2026-10-15):** memory per user in Postgres: contacts, preferences and facts, each with a source (`user` said it, `learned` from approved actions) and a use count; recent actions read from approved executions. **Learning is automatic but only from approved actions** (recipients and guests you approved, how often you contact them, your usual event length), never from content (web pages, email text, event descriptions), so a planted "Victor's email is attacker@..." cannot poison memory. "Remember that..." saves explicitly, only when the user's own words ask for it (checked in code), and shows "Saved: ...". Only relevant memory reaches the prompt: all preferences (up to 10), contacts whose name appears in the request, the last 5 actions. Memory beats the address book; two matches still ask, with the most contacted first. A mock calendar and outbox per user in Postgres that approved actions really change (needed for "that meeting" and for the demo site). The demo site key gets its own user, so it can never see the phone user's memory. Endpoints in section 2 (memory). Memory eval cases, including a memory poisoning trap.
 - **Gate:** "email Victor" resolves from memory; an edited or deleted memory changes the next answer; "move that meeting to 4" finds the right event from history.
-- **Results (if DONE):**
+- **Results (if DONE):** gate passed 2026-10-15, tested against **mock tools** (each user's mock calendar and outbox), with the real model, on a Mac and on the server.
+  - Built: migration 002 (memory table, a mock calendar and outbox per user, a `forgotten` flag on executions) and 003 (sandbox users). Memory learns only from approved, applied actions (recipients and guests with a use count, the usual event length); "remember that" saves only on the user's own words (checked in code), never for a stale or cancelled request; exact remembered names beat the address book, partial names still ask with the most contacted first; the prompt gets only relevant memory and the last 5 actions. Each user's mock calendar is seeded once and changed only by approved actions, retry safe through ids derived from the execution key. Memory endpoints as in section 2. The demo site key belongs to a sandbox user, enforced when keys are created. 140 of 140 tests; every safety rule also checked by breaking it on purpose (11 breaks across the four steps, all caught).
+  - Eval: 10 memory cases added (92 in total), including two memory poisoning traps (a web page saying "remember that Victor's email is attacker@..."). Ultra, 3 runs: **97.8% overall (270 of 276), memory 30 of 30, traps 24 of 24**, nothing saved from the poisoned page in any run, median 0.79 s, p90 1.23 s.
+  - **On the server (2026-10-15):** "remember that Victor's email is victor at utrgv dot edu" saved it (1.05 s); "email Victor" went to that address and, once approved, raised its use count (1.13 s); "block the gym" then "move that to 5" moved the event just created (0.84 s); deleting the memory sent the next "email Victor" back to the address book (0.86 s).
+  - Not covered yet: the demo site's sandbox user on the server (no demo key exists there until B6), and judges sharing one sandbox user (B6 decides whether each visitor gets their own).
 
 #### Phase B4: Real integrations (PLANNED)
 - **Goal:** the same loop against real Google services and Tavily through the dedicated demo account.
-- **Steps:** OAuth in testing mode with the demo account as test user, tokens stored outside git; real Calendar, Gmail send and People "other contacts" behind the same interface; Tavily; mock or real switch per session.
+- **Steps (planned 2026-10-15):** Google sign in on the backend (section 2, Google account, PROPOSED): the phone gets a sign in link, the user signs in in a browser, Google calls `/v1/google/callback`. The refresh token is stored encrypted in Postgres, the encryption key in the server secrets. Real Calendar (read, create with Google Meet and invitations, move, delete), Gmail send and People contacts and "other contacts" behind the same interface as the mock tools; Tavily for web search. Event IDs come from the execution key, so a retried create cannot double book. **No mailbox read access:** a timed out Gmail send cannot be checked, so it shows EXECUTION UNCERTAIN (wording to confirm with Orlando). **Recipient allowlist** in real mode: emails and invitations only to the addresses in the server secret `ALLOWED_RECIPIENTS` (set 2026-10-15, never in git); anything else gets a friendly refusal before REVIEW. Real or mock is decided by the key's scope, `REAL_TOOLS_ENABLED` and whether Google is connected; the demo site stays mock. Tests check the exact Google and Tavily requests without calling them; the gate runs live on the demo account.
 - **Gate:** on the demo account, create an event, send an email to a team member, and one search then act request. Logs show Gmail was not called before confirmation, and declined or expired drafts left nothing in Gmail.
 - **Results (if DONE):**
 
@@ -318,7 +366,7 @@ Each phase ends with a gate. The gate must pass before the next phase in that tr
 - **Steps:** deploy, HTTPS with a real certificate, Postgres with daily backups copied off the server, secrets in the server environment, per-hop timing summary; tune reasoning and prompt size.
 - **Gate:** backend timings over at least 20 requests on the deployed server compared with the budget table; Phase B2 eval re-run on the deployed config shows no accuracy regression.
 - **Results (if DONE):**
-  - Progress 2026-10-14 (not DONE): early deploy so the phone can start P2. B1 backend in mock mode at `https://api.haloai-cov.io` (Oracle ARM, Chicago), deployed from main with `pipeline/scripts/deploy.sh`. Verified from the internet: Let's Encrypt certificate, 401 without the key, `/docs` and `/openapi.json` blocked (404), HTTP redirects to HTTPS, a full flow (stream start, approve, status) with `/health` in 142 ms from Texas. A reboot brought Postgres, the backend, Caddy and the firewall rules back on their own. Still open for the gate: daily backups copied off the server, 20 request timings, the B2 eval on the server. Not verified yet: live delivery of slow streams through Caddy (the fake processor answers in milliseconds); checked when B2 runs there.
+  - Progress 2026-10-14 (not DONE): early deploy so the phone can start P2. B1 backend in mock mode at `https://api.haloai-cov.io` (Oracle ARM, Chicago), deployed from main with `pipeline/scripts/deploy.sh`. Verified from the internet: Let's Encrypt certificate, 401 without the key, `/docs` and `/openapi.json` blocked (404), HTTP redirects to HTTPS, a full flow (stream start, approve, status) with `/health` in 142 ms from Texas. A reboot brought Postgres, the backend, Caddy and the firewall rules back on their own. Still open for the gate: daily backups copied off the server, 20 request timings, the B2 eval on the server. Live delivery through Caddy verified on 2026-10-14 with the real model: on a 4-turn command the `status` events and the `slow` event (3.05 s) arrived as they happened.
 
 #### Phase B6: Demo site support (PLANNED)
 - **Goal:** judges can try HaloAI without hardware or a Google login.
@@ -358,7 +406,7 @@ Each phase ends with a gate. The gate must pass before the next phase in that tr
 
 #### Phase P1: Bluetooth link and audio from the device (PLANNED)
 - **Goal:** receive audio from the device over BLE and transcribe it.
-- **Steps:** implement the BLE service in section 2 with Victor (write the exact JSON field names there); pairing and reconnect handling, resyncing from `hello`; store each Audio chunk, check its CRC and send cumulative acknowledgments on Audio Ack (with `resend_from` for gaps), drop duplicates by identity, reassemble by sequence number, acknowledge the final marker, decode to 16 kHz mono PCM from each chunk's ADPCM state; feed Parakeet once the final marker confirms the segment is complete; map device IDs to API UUIDs and `sid` to revision and proposal hash; test against Victor's firmware on the Waveshare board. Until his F2 build streams audio, the phone side is proven with unit tests and the golden vectors in `phone/tools/audio_reference/`.
+- **Steps:** implement the BLE service in section 2 with Victor (write the exact JSON field names there); pairing and reconnect handling, resyncing from `hello`; store each Audio chunk, check its CRC and send cumulative acknowledgments on Audio Ack (with `resend_from` for gaps), drop duplicates by identity, reassemble by sequence number, acknowledge the final marker, decode to 16 kHz mono PCM from each chunk's ADPCM state; feed Parakeet once the final marker confirms the segment is complete; map device IDs to API UUIDs and `sid` to revision and proposal hash; test against Victor's firmware on the CrowPanel development board now (BLE and audio from a flash clip; it has no microphone), and on the Waveshare badge when it arrives. The golden vectors in `phone/tools/audio_reference/` check the chunks byte for byte.
 - **Gate:** a spoken command on the real device comes out as correct text on the phone; BLE transfer time measured against the budget.
 - **Results (if DONE):**
   - Progress 2026-10-13 (not DONE, gate needs the real board with Victor's firmware): phone side built in `phone/lib/ble/` (chunk parser with CRC, IMA ADPCM decoder, segment assembler with cumulative acks and `resend_from`, ID and `sid` maps, JSON messages and fragments, BLE link over flutter_blue_plus, device session). **Tested on the Mac only** with a fake transport: 37 of 37 tests, including byte for byte agreement with a Python reference encoder (golden vectors for the firmware) and a real P0 clip through the full audio path with lost chunks. Deliberate breaks (nibble order, duplicate check, final ack) were each caught. Not yet run on the phone against a device. Field names and UUIDs are a draft for Victor in `phone/docs/ble_fields_draft.md`.
@@ -401,18 +449,18 @@ Each phase ends with a gate. The gate must pass before the next phase in that tr
 - **Gate:** tests cover every transition in the V1 table and the team additions, including the 1 s confirm guard in REVIEW, the 60 s expiry in decision states, any-input acknowledgment, WALLPAPER only from READY after more than 1 minute, and CRITICAL BATTERY from every state; serial log on real hardware shows correct single, double, hold and rotate detection.
 - **Results (if DONE):** **gate met 2026-10-13, on the Elecrow CrowPanel development board, not on the badge.** Every number below is tagged with the board it came from.
   - **Met, on a computer only (no board involved, no number here is a hardware measurement):** gesture detector and the 21 state V1 machine in `firmware/core/`, with no board header, no vendor library and no framework. 89 of 89 host tests, about 20 ms. Build and run: `cd firmware && cmake -S . -B build && cmake --build build -j8 && ./build/halo_tests`.
-  - Covered: every row of the V1 table and of the team additions table; the 1 s confirm guard; the 60 s expiry in all three decision states and its reset by knob activity; any input acknowledging PHONE DISCONNECTED, SUCCESS and FAILURE; WALLPAPER only from READY and only after more than a minute, with the wake input consumed; CRITICAL BATTERY entered from every state, leaving only above 5%, reconciling a pending execution first.
+  - Covered: every row of the V1 table and of the team additions table; the 1 s confirm guard; the 60 s expiry in all three decision states and its reset by knob activity; any input acknowledging PHONE DISCONNECTED, SUCCESS and FAILURE; WALLPAPER only from READY and only after more than a minute, with the wake input consumed; CRITICAL BATTERY entered from every state, leaving only above 10% (the code's `critical_battery_pct`), reconciling a pending execution first.
   - Two safety properties are tested as sweeps rather than as examples: no combination of the 21 states and 27 event kinds produces an approve while the confirm guard is closed, and the battery override fires from every state. A companion test proves approve is still reachable, so the sweep cannot pass by doing nothing.
   - The confirm guard starts on the display backend's present completion, not when the screen was queued, so the wait begins when the pixels are on the panel. On e-paper that is hundreds of ms later than the queue time. If the present callback never arrives the guard never opens, so the failure direction is "cannot approve", never "approves by accident".
   - **On real hardware (CrowPanel, 2026-10-13).** ESP-IDF v5.5.5 app, 209 KB, 93% of the app partition free. Both display backends compile; the swap is one build flag. Serial log of real button presses shows all four gestures detected with the configured timings: a 190 ms press reported as a single press 400 ms after release (the double press window), a second press inside that window reported as a double press on its down edge with the release swallowed, a hold reported at exactly 500 ms after the button went down, and one clean event each for knob up, knob down and knob press. The pin map was confirmed live by a raw pin watcher: MENU IO2, EXIT IO1, knob up IO6, down IO4, press IO5.
   - **The confirm guard was verified on hardware, not just in tests.** With the REVIEW screen presented at t=2070 ms, a single press at t=2367 ms (297 ms later) was swallowed by the guard, and a press at t=4027 ms approved. WALLPAPER was also seen firing from READY after its idle timeout and waking on a knob press.
   - **Three bring up bugs that no host test could have caught**, all fixed: `pdMS_TO_TICKS(5)` is zero ticks at the default 100 Hz FreeRTOS tick so the poll loop never yielded and the task watchdog fired; the console VFS ignores `O_NONBLOCK` so `getchar()` blocked forever; and an unwired input with no pull floated and read as pressed, producing a phantom hold 600 ms after boot. Recorded as gotchas in CLAUDE.md.
   - **Must be re-verified on the badge, and nothing here closes any of it:** the gesture constants (hold 500 ms, double press 400 ms, debounce 20 ms) were exercised with the CrowPanel's onboard MENU button, not the badge's side button, which is a different physical switch with different bounce. The external breadboard side button is wired into the firmware but has not been tested. All of F1 to F4 remains untouched, and the CrowPanel cannot speak to F2 at all because it has no microphone.
-  - **Interpretations made where the V1 table is silent, each needing team confirmation:** a result that arrives while the screen says PROCESSING SLOW routes to its decision state directly, instead of being stranded until a progress event; a release in PHONE / BLUETOOTH CHECK before the phone answers cancels, since nothing was captured or sent; a hold in WALLPAPER wakes and is consumed rather than starting a recording; a short press followed by a hold inside the double press window reads as a double press, so the ambiguous case cancels rather than approving; in PHONE DISCONNECTED a double press cancels while any other input acknowledges, which is the V1 row and the team addition applied together.
+  - **Interpretations made where the V1 table is silent, confirmed by the team 2026-10-14:** a result that arrives while the screen says PROCESSING SLOW routes to its decision state directly, instead of being stranded until a progress event; a release in PHONE / BLUETOOTH CHECK before the phone answers cancels, since nothing was captured or sent; a hold in WALLPAPER wakes and is consumed rather than starting a recording; a short press followed by a hold inside the double press window reads as a double press, so the ambiguous case cancels rather than approving; in PHONE DISCONNECTED a double press cancels while any other input acknowledges, which is the V1 row and the team addition applied together.
 
 #### Phase F1: Hardware choice and e-ink screen (PLANNED)
 - **Goal:** the final board driving real screens.
-- **Steps:** build directly on the Waveshare ESP32-S3 e-Paper 3.97 board (in hand; no prototype stage); add the rest of the final hardware from the materials inventory (a flat 3.7 V LiPo that fits a body of roughly credit card size, side button, vibration motor with driver; see CLAUDE.md Environment); render each state's screen; partial refresh for the status bar, full refresh for final screens; wallpaper stored in flash and shown in WALLPAPER; report the text budget per orientation (800 x 480 panel) to the team.
+- **Steps:** build on the CrowPanel development board now and reroute to the Waveshare ESP32-S3 e-Paper 3.97 badge when it arrives (decided 2026-10-14); add the rest of the final hardware from the materials inventory (a flat 3.7 V LiPo that fits a body of roughly credit card size, side button, vibration motor with driver; see CLAUDE.md Environment); render each state's screen; partial refresh for the status bar, full refresh for final screens; wallpaper stored in flash and shown in WALLPAPER; report the text budget per orientation (800 x 480 panel) to the team.
 - **Gate:** every state's screen renders on the real panel; full and partial refresh times measured; text budget written into section 2.
 - **Results (if DONE):** **in progress, not DONE.** Done so far, 2026-10-13:
   - Font and text budget decided and written into section 2 above: Spleen, 48 characters by 12 lines landscape.
@@ -461,8 +509,8 @@ Target dates for I1 to I4: _to be set by the team_.
 ## 4. Open Risks
 
 - Text budget numbers wait on the font choice for the 800 x 480 panel (F1). The backend and the phone app keep them as configuration until then.
-- The Waveshare board is in hand, but the flat LiPo, side buttons and vibration motors are still Planned or in the cart (materials inventory, 2026-10-09). Shipping time comes out of the October 30 deadline: order them now. With no prototype stage, nothing else can stand in while they ship.
-- The device firmware is the critical path (as of 2026-10-13, 17 days before the deadline): F0 has not started and the framework is not chosen. The P1 gate, I2, I3 and the demo video all need the board running the firmware. With no prototype stage there is no fallback device, so firmware slips move the whole schedule.
+- The Waveshare badge board is in transit, and the flat LiPo, side buttons and vibration motors are still Planned or in the cart (materials inventory, 2026-10-09). Shipping time comes out of the October 30 deadline: order them now. Until the badge arrives, firmware runs on the CrowPanel development board.
+- The device is still the critical path (as of 2026-10-14), but for a different reason than before: F0 is done and BLE streaming works on the development board, so the risk is now the **badge**. Microphone capture (F2), panel legibility and refresh times, power and battery all need the Waveshare board, which is in transit. If it arrives late, I2, I3 and the demo video slip with it.
 - Bluetooth throughput for about 70 kbps of audio chunks (64 kbps ADPCM plus headers) plus JSON messages is unmeasured. Victor measures it early in F2; if it falls short, the fallback is record then send.
 - Prompt injection through tool results (a web page or email telling the model to act). Mitigation: tool output treated as data; the confirmation gate stays the backstop for every write.
 - Spoken email addresses transcribe badly. Mitigation: contacts first; dictated addresses always shown in full in REVIEW.

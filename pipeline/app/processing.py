@@ -31,6 +31,7 @@ class ProcessContext:
     orientation: str
     scope: str
     on_status: Callable[[str], Awaitable[None]]
+    user_id: str = ""  # whose mock calendar and memory to use (empty in evals: frozen sample world)
 
 
 @dataclass
@@ -41,6 +42,7 @@ class ProcessorOutput:
     candidates: list[dict] | None = None
     review_screen_lines: list[str] | None = None  # conflict_schedule: shown after continue
     timings: dict = field(default_factory=dict)
+    memory_writes: list[dict] = field(default_factory=list)  # "remember that": saved only if this result is stored
 
 
 @dataclass
@@ -58,7 +60,7 @@ class Processor:
 class Executor:
     name = "base"
 
-    async def execute(self, draft: dict, execution_key: str) -> ExecutionOutcome:
+    async def execute(self, draft: dict, execution_key: str, user_id: str = "") -> ExecutionOutcome:
         raise NotImplementedError
 
 
@@ -92,7 +94,7 @@ class FakeProcessor(Processor):
             draft = {"kind": "email", "to": f"{last.candidate_id}@example.com", "body": voice}
             return ProcessorOutput("review", [f"To: {draft['to']}", "Re: Note"], draft=draft, timings=timings)
         if "nobody" in voice:
-            return ProcessorOutput("conflict_ambiguous", ["Who should get this?", "Hold to say the address"], candidates=[], timings=timings)
+            return ProcessorOutput("conflict_ambiguous", ["Who should get this?", "Hold and say the address"], candidates=[], timings=timings)
         if "ambiguous" in voice:
             candidates = [
                 {"candidate_id": "victor_t", "label": "Victor T."},
@@ -122,7 +124,7 @@ class FakeExecutor(Executor):
         self.hang = hang
         self.calls: list[str] = []
 
-    async def execute(self, draft: dict, execution_key: str) -> ExecutionOutcome:
+    async def execute(self, draft: dict, execution_key: str, user_id: str = "") -> ExecutionOutcome:
         self.calls.append(execution_key)
         if self.hang:
             await asyncio.Event().wait()

@@ -53,8 +53,9 @@ async def json_call(request: Request, caller: Caller, name: str, body: BaseModel
         with hop(f"api_{name}", client=caller.client) as f:
             try:
                 result = await handler()
-                result["timings"] = {**result.get("timings", {}),
-                                     "backend_total_ms": round((time.perf_counter() - t0) * 1000)}
+                if "state" in result:  # request results carry timings; memory responses keep their own shape
+                    result["timings"] = {**result.get("timings", {}),
+                                         "backend_total_ms": round((time.perf_counter() - t0) * 1000)}
                 status, payload = 200, result
             except ApiError as err:
                 status, payload = err.http_status, error_payload(err)
