@@ -66,6 +66,8 @@ class MockWorld:
     memory_items: list[dict] = field(default_factory=list)  # the user's memory (B3), see app/memory.py
     actions: list[dict] = field(default_factory=list)       # recent approved actions, newest first
     remember_allowed: bool = False  # set by code: only when the user's own words ask to remember
+    source: str = "mock"  # 'google' for the connected account (app/google_world.py)
+    window: tuple[date, date] | None = None  # real calendar: the days that were read; None = all of it
 
     def event(self, event_id: str) -> dict | None:
         return next((e for e in self.events if e["event_id"] == event_id), None)

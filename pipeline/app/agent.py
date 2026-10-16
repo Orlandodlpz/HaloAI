@@ -118,6 +118,9 @@ class NemotronProcessor(Processor):
                     if isinstance(result, Final):
                         tools_ms += (time.perf_counter() - t1) * 1000
                         result.output.timings = {"model_ms": round(model_ms), "tools_ms": round(tools_ms)}
+                        if result.output.draft is not None and world.source != "mock":
+                            # Which world it was made from: decides which executor may run it.
+                            result.output.draft["source"] = world.source
                         if result.output.draft and result.output.draft.get("kind") == "send_email" \
                                 and result.output.draft.get("to_name"):
                             await ctx.on_status(f"Email to {result.output.draft['to_name']}")
