@@ -19,7 +19,7 @@ closes a phase gate for the product.
 | BLE audio throughput | 158 kbit/s, 2.25x realtime |
 | Clip delivered, clean link | 233 chunks, 2.21 s, 2.10x realtime, 0 bad CRC |
 | Final marker resend | verified: 2 dropped on purpose, resent, segment completed |
-| Host tests | 148, about 20 ms |
+| Host tests | 156, about 20 ms |
 
 ## Layout
 
@@ -75,6 +75,7 @@ and acknowledges it the way the contract says. It needs `bleak` and `pyserial`.
 tools/phone_sim.py        # clean run
 tools/phone_sim.py 9      # drop every 9th chunk, exercising resend_from
 tools/phone_sim.py 0 2    # drop the first two final markers, exercising the 300 ms resend
+tools/screen_sim.py       # fragmented Screen and Settings writes, and a broken sequence
 ```
 
 It is not a replacement for Carlos's phone: CoreBluetooth is not Android's stack and the
@@ -104,6 +105,8 @@ Two rules the tests exist to defend:
 - A Screen write that cannot be fully understood is dropped whole and the previous
   screen stays on the glass. Drawing the half that parsed would show a screen nobody
   designed, and the user confirms what is on the glass.
+- A fragmented write is reassembled or dropped whole, never partly applied. Each JSON
+  write carries a 2 byte prefix and a REVIEW screen takes three of them.
 - Once `approve` has gone out the device never reports that request as cancelled, in any
   state, for any reason. EXECUTING onwards is reconciled by execution key. The effect may
   already exist, and "cancelled" is a claim the device cannot make.

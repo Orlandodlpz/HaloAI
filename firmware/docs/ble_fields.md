@@ -216,9 +216,61 @@ without polling. If you would rather have a different set, they are one edit.
 sticky in the CMake cache, so once it has been passed, later plain builds stay bench builds
 until `idf.py fullclean`. The boot log names the build; trust that over the command line.
 
+## The 2 byte prefix was never removed on the way in, 2026-10-16
+
+Carlos found this by reading the new message layer, and he is right. `notify_event` added the
+prefix on the way out, but `on_screen` and `on_settings` handed the raw write straight to the
+parser, prefix and all, and nothing ever put fragments back together.
+
+It had not shown up because the JSON reader looks for keys anywhere in the buffer, so two junk
+bytes at the front were simply skipped. Everything tested so far fits in one write at MTU 256,
+so everything worked. A full REVIEW screen is 682 bytes and goes out as three writes, and each
+one would have been treated as a separate screen.
+
+**Fixed, with the rules as proposed.** `msg::Reassembler` in `core/src/messages.cpp`, one
+instance per characteristic so Screen and Settings cannot confuse each other's message IDs, and
+both are reset on disconnect so a half assembled write from the old link cannot be completed by
+the new one. Fragment 0 starts a message; every fragment after it must be the previous number
+plus one and carry the same message ID; bit 7 ends it; anything else is dropped whole and
+logged. The ceiling is 1 KB. Only whole messages are handed to the main task.
+
+Eight host tests cover it, including the three fragment REVIEW screen you asked for. Verified on
+the board as well, with a new `tools/screen_sim.py` that writes the way the phone does:
+
+```
+settings, 111 bytes, 1 fragment
+  device: settings: orientation=landscape tz=America/Chicago time=2026-10-16T18:00:00-05:00
+  device: settings: phone_ready=1
+
+REVIEW screen, 682 bytes, 3 fragments        -> accepted
+
+too many lines, 349 bytes, 4 fragments
+  device: screen 43 carried more lines than the text budget allows
+
+broken sequence: fragment 1 skipped
+  device: screen write: fragment number skipped
+  device: screen write dropped, nothing applied
+```
+
+The third case is the one that proves it: that error can only be raised once the last fragment
+has been joined on and the JSON parsed.
+
+Two things worth knowing from that session:
+
+- **A screen that is accepted logs nothing** at the default log level, because the state machine
+  ignoring a REVIEW screen in READY is a debug line. Silence there means "not dropped".
+- `screen_sim.py` is separate from `phone_sim.py` on purpose. Reading the device's serial log
+  right after an audio run turned out not to work reliably, and a test harness that prints
+  nothing when it fails is worse than no harness. `screen_sim.py` says so out loud instead.
+
+You were right that it does not block P1 and needed to be in before P2. It is in now.
+
 ## Still open, and not mine to close
 
-- `pending_key` on the Screen write (5a), and the FAILURE ambiguity (5d). Both need your answer.
+- `pending_key` on the Screen write: **agreed with Carlos 2026-10-16**, optional on the Screen
+  write. Still needs the backend to send it, which is Orlando's side.
+- The FAILURE ambiguity (5d) is with Orlando: the backend decides whether a FAILURE screen can
+  follow an approve. Until it is answered the device infers it from its own state.
 - The ring buffer size stays provisional until F2 runs on the badge with a real microphone.
 - MTU and throughput on Android are still unmeasured. Everything here was exercised against a
   Mac acting as the central; CoreBluetooth is not Android's stack.

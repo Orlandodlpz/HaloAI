@@ -205,6 +205,73 @@ size_t battery(char* out, size_t n, uint8_t percent) {
 
 // ------------------------------------------------------------------ incoming
 
+void Reassembler::reset() {
+    len_ = 0;
+    assembling_ = false;
+    next_fragment_ = 0;
+}
+
+Reassembler::Result Reassembler::feed(const void* data, size_t len) {
+    note_ = "";
+    const uint8_t* p = static_cast<const uint8_t*>(data);
+    if (len < 2) {
+        note_ = "write is shorter than the 2 byte fragment prefix";
+        reset();
+        return Result::Dropped;
+    }
+
+    const uint8_t id = p[0];
+    const bool last = (p[1] & 0x80) != 0;
+    const uint8_t fragment = p[1] & 0x7F;
+    const size_t payload = len - 2;
+
+    if (fragment == 0) {
+        // A new message always wins. If one was half assembled, it is gone, and
+        // that is worth saying: it means a write was lost on the way here.
+        if (assembling_) note_ = "a new message started before the previous one finished";
+        len_ = 0;
+        id_ = id;
+        assembling_ = true;
+        next_fragment_ = 0;
+    } else if (!assembling_) {
+        note_ = "fragment arrived with no message in progress";
+        reset();
+        return Result::Dropped;
+    } else if (id != id_) {
+        note_ = "message ID changed part way through a message";
+        reset();
+        return Result::Dropped;
+    } else if (fragment != next_fragment_) {
+        note_ = "fragment number skipped";
+        reset();
+        return Result::Dropped;
+    }
+
+    if (len_ + payload > kMaxMessageBytes) {
+        note_ = "message is larger than the 1 KB ceiling";
+        reset();
+        return Result::Dropped;
+    }
+    for (size_t i = 0; i < payload; ++i) buf_[len_ + i] = static_cast<char>(p[2 + i]);
+    len_ += payload;
+
+    if (!last) {
+        // 127 fragments is the most the 7 bit field can count, and a message that
+        // long cannot fit the 1 KB ceiling anyway.
+        if (next_fragment_ == 0x7F) {
+            note_ = "fragment number would wrap past 127";
+            reset();
+            return Result::Dropped;
+        }
+        ++next_fragment_;
+        return Result::Incomplete;
+    }
+
+    assembling_ = false;
+    next_fragment_ = 0;
+    return Result::Complete;
+}
+
 bool parse_audio_ack(const char* doc, size_t len, AudioAck* out) {
     AudioAck a;
     if (!json::get_int(doc, len, "upto", &a.upto)) return false;  // the one required field

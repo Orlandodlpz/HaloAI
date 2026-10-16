@@ -76,6 +76,50 @@ size_t battery(char* out, size_t n, uint8_t percent);
 
 // ------------------------------------------------------------ from the phone
 
+// The largest message the phone may send in one piece. A full REVIEW screen is
+// 12 lines of 48 characters, about 700 bytes of JSON, so 1 KB is the agreed
+// ceiling and anything past it is a contract violation rather than a big screen.
+constexpr size_t kMaxMessageBytes = 1024;
+
+// Puts a fragmented JSON write back together.
+//
+// Every JSON write on Events, Screen and Settings carries a 2 byte prefix, in
+// both directions: byte 0 is a message ID and byte 1 has the last-fragment flag
+// in bit 7 and the fragment number in bits 0 to 6 (BRIEFING section 2, "Large
+// JSON"). Audio Ack is the exception and is never prefixed.
+//
+// This matters more than it looks. A write that is silently mis-assembled is not
+// a parse error: it is a screen the user is shown and may approve. So a sequence
+// that does not make sense is dropped whole and said out loud, never patched up.
+class Reassembler {
+public:
+    enum class Result : uint8_t {
+        Incomplete,  // a fragment was stored; more are expected
+        Complete,    // message() and length() hold a whole message
+        Dropped,     // this write made no sense; nothing is being assembled now
+    };
+
+    Result feed(const void* data, size_t len);
+
+    const char* message() const { return buf_; }
+    size_t length() const { return len_; }
+
+    // Why something was thrown away, for the log. Empty when the last feed() was
+    // ordinary. Set on a Dropped write, and also when a partial message was
+    // abandoned because a new one started before it finished.
+    const char* note() const { return note_; }
+
+    void reset();
+
+private:
+    char buf_[kMaxMessageBytes] = {};
+    size_t len_ = 0;
+    uint8_t id_ = 0;
+    uint8_t next_fragment_ = 0;
+    bool assembling_ = false;
+    const char* note_ = "";
+};
+
 struct AudioAck {
     int32_t req = 0;
     int32_t seg = 0;
@@ -116,12 +160,12 @@ struct Screen {
     // Reported rather than hidden: it means the backend and the device disagree
     // about the text budget, which is a contract bug, not a display detail.
     bool truncated = false;
-    // PROPOSED, not in the agreed contract (see firmware/docs/ble_fields.md,
-    // answer 5). The device is asked to report `pending_key` in `hello`,
-    // `dismiss` and `status_query`, but nothing in the contract ever gives it
-    // one. Carried on the EXECUTING screen is the obvious place: that is the
-    // moment the backend has an execution to report on. Absent until Carlos
-    // signs it off, which is harmless: the field is simply never set.
+    // Agreed with Carlos on 2026-10-16 as an optional field on the Screen write.
+    // The device has to report `pending_key` in `hello`, `dismiss` and
+    // `status_query`, and nothing else in the contract ever gives it one. The
+    // EXECUTING screen is where it belongs: that is the moment the backend has
+    // an execution to report on. Still needs the backend to actually send it,
+    // which is Orlando's side.
     bool has_pending_key = false;
     char pending_key[kPendingKeyChars + 1] = {};
 

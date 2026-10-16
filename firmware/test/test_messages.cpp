@@ -6,6 +6,7 @@
 // pass while the device sent something the phone cannot read.
 #include <cstring>
 #include <string>
+#include <vector>
 
 #include "halo/messages.hpp"
 #include "harness.hpp"
@@ -395,4 +396,137 @@ HALO_TEST(messages_a_status_update_does_not_wipe_the_screen_under_it) {
     CHECK(s.line_count == 2);
     CHECK(std::string(s.lines[0]) == "To: victor@example.com");
     CHECK(s.line_ptrs[1] == s.lines[1]);
+}
+
+// ------------------------------------------------- fragment reassembly
+//
+// Every JSON write from the phone carries the 2 byte prefix, even when it fits
+// in one packet. Found by Carlos on 2026-10-16 by reading the message layer: the
+// device was passing the raw write to the parser, prefix and all.
+
+namespace {
+
+// Splits a document the way the phone does: `n` fragments, 2 byte prefix on each.
+std::vector<std::vector<uint8_t>> fragment(const std::string& doc, uint8_t id, size_t pieces) {
+    std::vector<std::vector<uint8_t>> out;
+    const size_t each = (doc.size() + pieces - 1) / pieces;
+    for (size_t i = 0; i < pieces; ++i) {
+        const size_t at = i * each;
+        const size_t take = at + each > doc.size() ? doc.size() - at : each;
+        std::vector<uint8_t> f{id, static_cast<uint8_t>((i + 1 == pieces ? 0x80 : 0) | i)};
+        f.insert(f.end(), doc.begin() + at, doc.begin() + at + take);
+        out.push_back(f);
+    }
+    return out;
+}
+
+}  // namespace
+
+HALO_TEST(reassembly_puts_a_three_fragment_review_screen_back_together) {
+    // The case that breaks in the field: a full REVIEW screen is about 700 bytes
+    // and the phone sends it as three writes at MTU 256. Treated as three screens
+    // it is garbage; treated as one it is what the user reads and approves.
+    std::string doc = R"({"sid":42,"screen":"REVIEW","rev":3,"status_line":"Ready to confirm","screen_lines":[)";
+    for (int i = 0; i < 12; ++i) {
+        if (i) doc += ",";
+        doc += "\"line ";
+        doc += static_cast<char>('A' + i);
+        doc += std::string(40, 'x');
+        doc += "\"";
+    }
+    doc += "]}";
+    CHECK(doc.size() > 600);  // genuinely needs more than one write
+
+    msg::Reassembler r;
+    const auto pieces = fragment(doc, 7, 3);
+    CHECK(r.feed(pieces[0].data(), pieces[0].size()) == msg::Reassembler::Result::Incomplete);
+    CHECK(r.feed(pieces[1].data(), pieces[1].size()) == msg::Reassembler::Result::Incomplete);
+    CHECK(r.feed(pieces[2].data(), pieces[2].size()) == msg::Reassembler::Result::Complete);
+    CHECK(r.length() == doc.size());
+    CHECK(std::string(r.message(), r.length()) == doc);
+
+    msg::Screen s;
+    CHECK(msg::parse_screen(r.message(), r.length(), &s));
+    CHECK(s.sid == 42 && s.state == State::Review && s.line_count == 12);
+}
+
+HALO_TEST(reassembly_handles_the_ordinary_one_fragment_write) {
+    const std::string doc = R"({"phone_ready":true})";
+    msg::Reassembler r;
+    const auto pieces = fragment(doc, 3, 1);
+    CHECK(r.feed(pieces[0].data(), pieces[0].size()) == msg::Reassembler::Result::Complete);
+    CHECK(std::string(r.message(), r.length()) == doc);
+
+    msg::Settings st;
+    msg::parse_settings(r.message(), r.length(), &st);
+    CHECK(st.phone_ready);
+}
+
+HALO_TEST(reassembly_drops_a_skipped_fragment_rather_than_guessing) {
+    const std::string doc = R"({"sid":1,"screen":"REVIEW","screen_lines":["a","b"]})";
+    msg::Reassembler r;
+    const auto pieces = fragment(doc, 5, 3);
+    CHECK(r.feed(pieces[0].data(), pieces[0].size()) == msg::Reassembler::Result::Incomplete);
+    // fragment 1 never arrives
+    CHECK(r.feed(pieces[2].data(), pieces[2].size()) == msg::Reassembler::Result::Dropped);
+    CHECK(std::string(r.note()) == "fragment number skipped");
+}
+
+HALO_TEST(reassembly_drops_a_message_id_that_changes_half_way) {
+    const std::string doc = R"({"sid":1,"screen":"REVIEW"})";
+    msg::Reassembler r;
+    auto a = fragment(doc, 5, 2);
+    auto b = fragment(doc, 6, 2);
+    CHECK(r.feed(a[0].data(), a[0].size()) == msg::Reassembler::Result::Incomplete);
+    CHECK(r.feed(b[1].data(), b[1].size()) == msg::Reassembler::Result::Dropped);
+    CHECK(std::string(r.note()) == "message ID changed part way through a message");
+}
+
+HALO_TEST(reassembly_reports_a_partial_message_that_was_abandoned) {
+    // Fragment 0 of a new message always wins, but the half built one that it
+    // threw away means a write was lost, and that must reach the log.
+    const std::string doc = R"({"sid":2,"screen":"REVIEW"})";
+    msg::Reassembler r;
+    auto a = fragment(doc, 5, 2);
+    auto b = fragment(doc, 6, 1);
+    CHECK(r.feed(a[0].data(), a[0].size()) == msg::Reassembler::Result::Incomplete);
+    CHECK(r.feed(b[0].data(), b[0].size()) == msg::Reassembler::Result::Complete);
+    CHECK(std::string(r.note()) == "a new message started before the previous one finished");
+    CHECK(std::string(r.message(), r.length()) == doc);
+}
+
+HALO_TEST(reassembly_refuses_a_stray_fragment_and_a_runt_write) {
+    msg::Reassembler r;
+    const uint8_t stray[] = {7, 0x82, '{', '}'};  // fragment 2, nothing in progress
+    CHECK(r.feed(stray, sizeof(stray)) == msg::Reassembler::Result::Dropped);
+    CHECK(std::string(r.note()) == "fragment arrived with no message in progress");
+
+    const uint8_t runt[] = {7};
+    CHECK(r.feed(runt, sizeof(runt)) == msg::Reassembler::Result::Dropped);
+    CHECK(std::string(r.note()) == "write is shorter than the 2 byte fragment prefix");
+}
+
+HALO_TEST(reassembly_refuses_a_message_past_the_one_kilobyte_ceiling) {
+    msg::Reassembler r;
+    std::vector<uint8_t> f{9, 0x00};
+    f.insert(f.end(), 600, 'x');
+    CHECK(r.feed(f.data(), f.size()) == msg::Reassembler::Result::Incomplete);
+    std::vector<uint8_t> g{9, 0x01};
+    g.insert(g.end(), 600, 'x');
+    CHECK(r.feed(g.data(), g.size()) == msg::Reassembler::Result::Dropped);
+    CHECK(std::string(r.note()) == "message is larger than the 1 KB ceiling");
+}
+
+HALO_TEST(reassembly_recovers_on_the_next_whole_message_after_a_drop) {
+    // A dropped write must not poison the link: the next good screen has to land.
+    msg::Reassembler r;
+    const uint8_t stray[] = {1, 0x83, 'x'};
+    CHECK(r.feed(stray, sizeof(stray)) == msg::Reassembler::Result::Dropped);
+
+    const std::string doc = R"({"sid":99,"screen":"SUCCESS"})";
+    const auto pieces = fragment(doc, 2, 2);
+    CHECK(r.feed(pieces[0].data(), pieces[0].size()) == msg::Reassembler::Result::Incomplete);
+    CHECK(r.feed(pieces[1].data(), pieces[1].size()) == msg::Reassembler::Result::Complete);
+    CHECK(std::string(r.message(), r.length()) == doc);
+    CHECK(std::string(r.note()).empty());
 }

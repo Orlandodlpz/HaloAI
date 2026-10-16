@@ -593,10 +593,43 @@ void queue_message(Incoming kind, const char* data, size_t len) {
         ESP_LOGE(kTag, "inbox full: a message from the phone was dropped");
 }
 
-void on_screen(const char* js, size_t len) { queue_message(Incoming::Screen, js, len); }
-void on_settings(const char* js, size_t len) { queue_message(Incoming::Settings, js, len); }
+// Screen and Settings arrive fragmented, each write carrying the 2 byte prefix.
+// One reassembler per characteristic, so the two cannot interleave their message
+// IDs; both live on the NimBLE host task and are touched from nowhere else. Only
+// whole messages are handed to the main task.
+msg::Reassembler g_screen_rx;
+msg::Reassembler g_settings_rx;
+
+void feed_fragment(msg::Reassembler& rx, Incoming kind, const char* what, const char* data,
+                   size_t len) {
+    const msg::Reassembler::Result r = rx.feed(data, len);
+    if (rx.note()[0] != '\0') ESP_LOGW(kTag, "%s write: %s", what, rx.note());
+    switch (r) {
+        case msg::Reassembler::Result::Complete:
+            queue_message(kind, rx.message(), rx.length());
+            break;
+        case msg::Reassembler::Result::Dropped:
+            ESP_LOGE(kTag, "%s write dropped, nothing applied", what);
+            break;
+        case msg::Reassembler::Result::Incomplete:
+            break;
+    }
+}
+
+void on_screen(const char* js, size_t len) {
+    feed_fragment(g_screen_rx, Incoming::Screen, "screen", js, len);
+}
+void on_settings(const char* js, size_t len) {
+    feed_fragment(g_settings_rx, Incoming::Settings, "settings", js, len);
+}
 void on_events_subscribed() { queue_message(Incoming::EventsSubscribed, nullptr, 0); }
-void on_phone_gone() { queue_message(Incoming::Disconnected, nullptr, 0); }
+void on_phone_gone() {
+    // A half assembled write from the old link must not be completed by the new
+    // one: the IDs start over on a reconnect.
+    g_screen_rx.reset();
+    g_settings_rx.reset();
+    queue_message(Incoming::Disconnected, nullptr, 0);
+}
 
 // Drained by the main loop, so everything below here runs on the task that owns
 // the state machine.
