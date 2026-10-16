@@ -31,6 +31,17 @@ rm -rf "$APP.new" && install -d -o haloai -g haloai "$APP.new"
 sudo -u haloai tar -xzf "/tmp/haloai-$SHA.tgz" -C "$APP.new"
 echo "$SHA" > "$APP.new/DEPLOYED_SHA"
 rm -f "/tmp/haloai-$SHA.tgz"
+
+# Before touching the running version: install the new dependencies and check the new code
+# starts. If it does not, the old version keeps running and the deploy stops.
+sudo -u haloai /opt/haloai/venv/bin/pip install -q -e "$APP.new/pipeline"
+if ! sudo -u haloai bash -c "set -a; . $ENV; set +a; cd $APP.new/pipeline && /opt/haloai/venv/bin/python -c 'import app.main'"; then
+  sudo -u haloai /opt/haloai/venv/bin/pip install -q -e "$APP/pipeline"  # point back at the running code
+  rm -rf "$APP.new"
+  echo "deploy of $SHA STOPPED: the new code does not start; the old version is still running" >&2
+  exit 1
+fi
+
 if [ -d "$APP" ]; then mv "$APP" "$APP.old"; fi
 mv "$APP.new" "$APP"
 rm -rf "$APP.old"
