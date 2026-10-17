@@ -19,7 +19,10 @@ TZ = ZoneInfo("America/Chicago")
 NOW = datetime(2026, 10, 16, 9, 0, tzinfo=TZ)  # a Friday
 
 EVENTS = [
-    {"id": "timed1abcdefghijklmnopqrstu", "summary": "Office hours", "description": "Room 2.104",
+    {"id": "timed1abcdefghijklmnopqrstu", "summary": "Office hours", "description": "Room 2.104", "etag": '"v1"',
+     "organizer": {"self": True}, "attendees": [{"email": "me@example.com", "self": True},
+                                                {"email": "ta@uni.example.edu"}, {"email": "room@resource.example.com",
+                                                                                  "resource": True}],
      "start": {"dateTime": "2026-10-17T15:00:00Z"}, "end": {"dateTime": "2026-10-17T16:00:00Z"}},
     {"id": "allday1", "summary": "Fall break", "start": {"date": "2026-10-19"}, "end": {"date": "2026-10-20"},
      "transparency": "transparent"},
@@ -260,6 +263,7 @@ async def test_drafts_carry_googles_id_and_all_day_cannot_be_moved(gworld):
     moved = run_tool("update_event", {"event_id": office["event_id"], "new_start": "2026-10-17T11:00"}, w, NOW)
     gone = run_tool("delete_event", {"event_id": office["event_id"]}, w, NOW)
     assert moved.output.draft["google_id"] == gone.output.draft["google_id"] == "timed1abcdefghijklmnopqrstu"
+    assert moved.output.draft["etag"] == '"v1"' and moved.output.draft["guest_emails"] == ["ta@uni.example.edu"]
     with pytest.raises(ToolError, match="all day"):
         run_tool("update_event", {"event_id": ev(w, "Hackathon")["event_id"], "new_start": "2026-10-22T09:00"}, w, NOW)
     deleted_day = run_tool("delete_event", {"event_id": ev(w, "Hackathon")["event_id"]}, w, NOW)

@@ -23,10 +23,11 @@ from app.lifecycle import ApiError, Lifecycle
 from app.memory import MemoryStore
 from app.google_api import router as google_router
 from app.google_auth import GoogleAuth
+from app.google_executor import GoogleExecutor
 from app.google_world import GoogleWorld
 from app.memory_api import router as memory_router
 from app.mockstore import MockExecutor, MockStore
-from app.processing import FakeExecutor, FakeProcessor, Processor, RefusingExecutor, uses_real_tools
+from app.processing import FakeExecutor, FakeProcessor, Processor, uses_real_tools
 from app.streams import Streams
 from app.streams import router as stream_router
 from app.timing import hop, request_id_var
@@ -81,10 +82,9 @@ async def build_services(settings: Settings) -> Services:
     memory = MemoryStore(pool, clock)
     google = GoogleAuth(pool, settings, clock)
     # Approved actions change the user's mock world. The B1 fake processor's drafts are not real
-    # drafts, so it keeps the fake executor. Drafts made from the real calendar (B4 step 2) are
-    # refused until the real executor exists (step 3).
+    # drafts, so it keeps the fake executor. Drafts made from the real calendar go to Google.
     mock_exec = MockExecutor(store) if settings.processor == "nemotron" else FakeExecutor("mock")
-    real_exec = RefusingExecutor(["Not done", "Real Google actions are not built yet"])
+    real_exec = GoogleExecutor(google, settings)  # drafts from the real calendar (B4 step 3)
     lc = Lifecycle(pool, settings, clock, make_processor(settings, store, memory, GoogleWorld(google, settings)),
                    {"mock": mock_exec, "real": real_exec}, memory=memory)
     user_id = await lc.ensure_user("demo")
