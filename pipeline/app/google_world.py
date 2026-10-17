@@ -46,6 +46,12 @@ class _Expired(Exception):
     """Google answered 401: the access token is no longer accepted."""
 
 
+def allowed_recipients(settings) -> frozenset[str]:
+    """The ALLOWED_RECIPIENTS server secret as lowercase addresses. Missing means nobody (fail closed)."""
+    raw = settings.allowed_recipients.get_secret_value() if settings.allowed_recipients else ""
+    return frozenset(a.strip().lower() for a in raw.split(",") if a.strip())
+
+
 def event_alias(google_id: str, length: int = 8) -> str:
     return "g" + hashlib.sha256(google_id.encode()).hexdigest()[:length - 1]
 
@@ -69,7 +75,8 @@ def map_event(item: dict, tz: ZoneInfo) -> dict | None:
         all_day = True
     else:
         return None
-    declined = any(a.get("self") and a.get("responseStatus") == "declined" for a in item.get("attendees") or [])
+    attendees = item.get("attendees") or []
+    declined = any(a.get("self") and a.get("responseStatus") == "declined" for a in attendees)
     return {
         "event_id": event_alias(item["id"]), "google_id": item["id"],
         "title": (item.get("summary") or "(no title)").strip()[:80],
@@ -77,6 +84,11 @@ def map_event(item: dict, tz: ZoneInfo) -> dict | None:
         "start": start, "end": end, "all_day": all_day,
         # Google's own free/busy rule: shown as free, or declined, never blocks a time.
         "busy": item.get("transparency", "opaque") != "transparent" and not declined,
+        # For the executor: the version (a move or delete is refused if the event changed since REVIEW),
+        # whether the user organizes it (only the organizer can move it), and who would be notified.
+        "etag": item.get("etag", ""),
+        "organizer_self": bool((item.get("organizer") or {}).get("self")),
+        "guests": [a["email"] for a in attendees if a.get("email") and not a.get("self") and not a.get("resource")],
     }
 
 
@@ -123,7 +135,8 @@ class GoogleWorld:
                 f["result"] = "no_answer"
                 raise ScreenError(NO_ANSWER) from None
             f.update(events=len(events), contacts=len(contacts), contacts_cached=cached)
-        return MockWorld(tz=tz, today=today, contacts=contacts, events=events, source="google", window=window)
+        return MockWorld(tz=tz, today=today, contacts=contacts, events=events, source="google", window=window,
+                         allowed=allowed_recipients(self.settings))
 
     async def _with_token(self, user_id: str, call):
         """Run with a valid access token. One retry with a fresh token if Google refuses the cached one."""

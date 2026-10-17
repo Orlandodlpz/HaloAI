@@ -224,8 +224,23 @@ def _event_view(e: dict) -> dict:
 
 
 def _google_id(e: dict) -> dict:
-    """The executor needs Google's own id; the model only ever sees the short alias."""
-    return {"google_id": e["google_id"]} if e.get("google_id") else {}
+    """What the executor needs about a real event: Google's own id (the model only ever sees the
+    short alias), its version, so a move or delete is refused if it changed since REVIEW, and its
+    guests, who are told about the change only if every one of them is on the allowlist."""
+    if not e.get("google_id"):
+        return {}
+    return {"google_id": e["google_id"], "etag": e.get("etag", ""), "guest_emails": list(e.get("guests", []))}
+
+
+NOT_ALLOWED_HINT = "Only team addresses work in the demo"
+
+
+def _blocked(world: MockWorld, emails: list[str]) -> list[str]:
+    """Real mode: addresses not on the allowlist (ALLOWED_RECIPIENTS). Checked before REVIEW so the
+    user never approves something that cannot go out; the executor checks again before sending."""
+    if world.allowed is None:
+        return []
+    return [e for e in emails if e.lower() not in world.allowed]
 
 
 def _event_proposal(world: MockWorld, draft: dict, review_lines: list[str], start: datetime, end: datetime,
@@ -330,6 +345,9 @@ def run_tool(name: str, args: dict, world: MockWorld, now: datetime, timings: di
                 return Final(ProcessorOutput("conflict_ambiguous", [f"Which {said[:1].upper() + said[1:]}?"], draft=pending,
                                              candidates=candidates, timings=timings))
             guests.append({"name": matches[0]["name"], "email": matches[0]["email"]})
+        if blocked := _blocked(world, [g["email"] for g in guests]):
+            return Final(ProcessorOutput("read_only_result", [f"I can't invite {blocked[0]} yet", NOT_ALLOWED_HINT],
+                                         timings=timings))
         draft.update({"guests": guests, "video_call": video_call, "description": description})
         review = ["New event", title, fmt_day(start), fmt_range(start, end)]
         review += [f"Invite: {g['email']}" for g in guests]  # approving sends these invitations
@@ -345,6 +363,9 @@ def run_tool(name: str, args: dict, world: MockWorld, now: datetime, timings: di
             raise ToolError("unknown event_id; use an event_id from the calendar")
         if event.get("all_day"):
             raise ToolError("all day events cannot be moved from the badge; tell the user to use the calendar app")
+        if event.get("organizer_self") is False:  # Google only lets the organizer move it
+            return Final(ProcessorOutput("read_only_result", [f"You can't move {event['title']}",
+                                                              "Someone else organizes it"], timings=timings))
         start = parse_local(args["new_start"], world) if args.get("new_start") else event["start"]
         if args.get("new_end"):
             end = parse_local(args["new_end"], world)
@@ -395,6 +416,9 @@ def run_tool(name: str, args: dict, world: MockWorld, now: datetime, timings: di
                 return Final(ProcessorOutput("conflict_ambiguous", [f"Which {recipient[:1].upper() + recipient[1:]}?"], draft=draft_base,
                                              candidates=candidates, timings=timings))
             address, to_name = matches[0]["email"], matches[0]["name"]
+        if _blocked(world, [address]):
+            return Final(ProcessorOutput("read_only_result", [f"I can't email {address} yet", NOT_ALLOWED_HINT],
+                                         timings=timings))
         draft = {"kind": "send_email", "to": address, "to_name": to_name, "subject": subject, "body": body}
         return Final(ProcessorOutput("review", [f"To: {address}", f"Re: {subject}", body], draft=draft,
                                      timings=timings))

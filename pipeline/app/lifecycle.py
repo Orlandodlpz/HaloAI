@@ -21,7 +21,7 @@ from app import ids
 from app.config import Settings
 from app.processing import (Executor, ProcessContext, Processor, ProcessorOutput, RefusingExecutor, ScreenError,
                             Segment, uses_real_tools)
-from app.screens import OUTCOME_LINES, wrap
+from app.screens import OUTCOME_LINES, uncertain_lines, wrap
 
 OPEN_STATES = ("processing", "conflict_ambiguous", "conflict_schedule", "review", "executing")
 DECISION_STATES = ("conflict_ambiguous", "conflict_schedule", "review")
@@ -141,6 +141,8 @@ class Lifecycle:
             lines = exe["screen_lines"]
         elif state == "failure" and rev and rev["state"] == "failure":
             lines = rev["screen_lines"]
+        elif state == "execution_uncertain":  # also after a restart, which records no lines
+            lines = uncertain_lines(rev["draft"] if rev else None)
         else:
             lines = OUTCOME_LINES.get(state, [state])
         expires_at = req.get("expires_at") if state in DECISION_STATES else None

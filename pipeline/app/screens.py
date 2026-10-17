@@ -37,3 +37,11 @@ OUTCOME_LINES = {
     "execution_uncertain": ["Not sure it went through", "Press to check again"],
     "cancelled": ["Cancelled"],
 }
+
+
+def uncertain_lines(draft: dict | None) -> list[str]:
+    """EXECUTION UNCERTAIN. For email there is no way to look afterwards (no Gmail read access, decided
+    2026-10-15), so the user is told where to check before saying it again, never told it was sent."""
+    if (draft or {}).get("kind") == "send_email":
+        return ["Not sure it was sent", "Check Sent in Gmail before trying again", "Press to check again"]
+    return OUTCOME_LINES["execution_uncertain"]
