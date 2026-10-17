@@ -21,7 +21,7 @@ from app.processing import ProcessContext, Processor, ProcessorOutput
 from app.prompt import system_prompt, user_message
 from app.screens import budget
 from app.timing import hop
-from app.tools import READ_TOOLS, STATUS, TOOL_SPECS, Final, ToolError, run_tool, untrusted
+from app.tools import READ_TOOLS, STATUS, TOOL_SPECS, Final, ToolError, compact_speech, run_tool, untrusted
 
 
 def plain_text(text: str) -> str:
@@ -65,6 +65,7 @@ class NemotronProcessor(Processor):
         world = await self.world_factory(ctx, now, tz)
         world.remember_allowed = remember_intent(ctx.segments)  # the user's own words, never a tool result
         request_text = " ".join(s.text or "" for s in ctx.segments if s.kind == "voice")
+        world.heard = compact_speech(request_text)  # addresses the user said themselves (tools._untraced)
         chars, lines = budget(self.settings, ctx.orientation)
         answer_chars = min(self.settings.max_answer_chars, chars * (lines - 1))
         messages = [

@@ -226,21 +226,35 @@ def _event_view(e: dict) -> dict:
 def _google_id(e: dict) -> dict:
     """What the executor needs about a real event: Google's own id (the model only ever sees the
     short alias), its version, so a move or delete is refused if it changed since REVIEW, and its
-    guests, who are told about the change only if every one of them is on the allowlist."""
+    guests, who are told about the change."""
     if not e.get("google_id"):
         return {}
     return {"google_id": e["google_id"], "etag": e.get("etag", ""), "guest_emails": list(e.get("guests", []))}
 
 
-NOT_ALLOWED_HINT = "Only team addresses work in the demo"
+SAY_IT_HINT = "Say the address out loud to use it"
 
 
-def _blocked(world: MockWorld, emails: list[str]) -> list[str]:
-    """Real mode: addresses not on the allowlist (ALLOWED_RECIPIENTS). Checked before REVIEW so the
-    user never approves something that cannot go out; the executor checks again before sending."""
-    if world.allowed is None:
+def compact_speech(text: str) -> str:
+    """The user's words with spoken punctuation turned into symbols and spaces removed, so a dictated
+    address is found however it was transcribed: 'Bob at Gmail dot com' and 'bob@gmail.com.' both
+    contain 'bob@gmail.com'."""
+    t = f" {text.lower()} "
+    for word, symbol in (("at", "@"), ("dot", "."), ("period", "."), ("underscore", "_"), ("dash", "-"),
+                         ("hyphen", "-")):
+        t = re.sub(rf"\s+{word}\s+", symbol, t)
+    return re.sub(r"\s+", "", t)
+
+
+def _untraced(world: MockWorld, emails: list[str]) -> list[str]:
+    """Real mode (decided 2026-10-16): email and invitations may go to any address the user said out loud
+    in this request, or that is their contact or a team address. Anything else, such as an address found
+    only in a web page or an event's notes, is refused before REVIEW. Checked in code against the user's
+    own words, never the model's say-so."""
+    if world.allowed is None:  # sample world: example addresses only
         return []
-    return [e for e in emails if e.lower() not in world.allowed]
+    known = world.allowed | {c["email"].lower() for c in world.contacts + memory_contacts(world)}
+    return [e for e in emails if e.lower() not in known and e.lower() not in world.heard]
 
 
 def _event_proposal(world: MockWorld, draft: dict, review_lines: list[str], start: datetime, end: datetime,
@@ -345,8 +359,8 @@ def run_tool(name: str, args: dict, world: MockWorld, now: datetime, timings: di
                 return Final(ProcessorOutput("conflict_ambiguous", [f"Which {said[:1].upper() + said[1:]}?"], draft=pending,
                                              candidates=candidates, timings=timings))
             guests.append({"name": matches[0]["name"], "email": matches[0]["email"]})
-        if blocked := _blocked(world, [g["email"] for g in guests]):
-            return Final(ProcessorOutput("read_only_result", [f"I can't invite {blocked[0]} yet", NOT_ALLOWED_HINT],
+        if untraced := _untraced(world, [g["email"] for g in guests]):
+            return Final(ProcessorOutput("read_only_result", [f"I can't invite {untraced[0]}", SAY_IT_HINT],
                                          timings=timings))
         draft.update({"guests": guests, "video_call": video_call, "description": description})
         review = ["New event", title, fmt_day(start), fmt_range(start, end)]
@@ -416,8 +430,8 @@ def run_tool(name: str, args: dict, world: MockWorld, now: datetime, timings: di
                 return Final(ProcessorOutput("conflict_ambiguous", [f"Which {recipient[:1].upper() + recipient[1:]}?"], draft=draft_base,
                                              candidates=candidates, timings=timings))
             address, to_name = matches[0]["email"], matches[0]["name"]
-        if _blocked(world, [address]):
-            return Final(ProcessorOutput("read_only_result", [f"I can't email {address} yet", NOT_ALLOWED_HINT],
+        if _untraced(world, [address]):
+            return Final(ProcessorOutput("read_only_result", [f"I can't email {address}", SAY_IT_HINT],
                                          timings=timings))
         draft = {"kind": "send_email", "to": address, "to_name": to_name, "subject": subject, "body": body}
         return Final(ProcessorOutput("review", [f"To: {address}", f"Re: {subject}", body], draft=draft,

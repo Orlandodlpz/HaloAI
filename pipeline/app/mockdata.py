@@ -68,7 +68,8 @@ class MockWorld:
     remember_allowed: bool = False  # set by code: only when the user's own words ask to remember
     source: str = "mock"  # 'google' for the connected account (app/google_world.py)
     window: tuple[date, date] | None = None  # real calendar: the days that were read; None = all of it
-    allowed: frozenset[str] | None = None  # real mode: the only addresses email and invitations may go to
+    allowed: frozenset[str] | None = None  # real mode: the team's addresses; None = sample world, no checks
+    heard: str = ""  # the user's own words in this request, compacted (app/tools.py said_in), set by code
 
     def event(self, event_id: str) -> dict | None:
         return next((e for e in self.events if e["event_id"] == event_id), None)
