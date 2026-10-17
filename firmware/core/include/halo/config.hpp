@@ -49,6 +49,12 @@ struct Config {
     uint32_t processing_slow_ms = 3000;        // PROVISIONAL
     uint32_t processing_deadline_ms = 20000;   // PROVISIONAL
     uint32_t delivery_deadline_ms = 10000;     // PROVISIONAL, FINALIZE AUDIO
+    // FINALIZE AUDIO: the final marker is resent this often until the phone
+    // acknowledges it with `final: true`, bounded by delivery_deadline_ms. One
+    // lost marker would otherwise leave the phone waiting for a segment it will
+    // never be told has ended, and the device waiting for an ack that will never
+    // come. Agreed with Carlos 2026-10-13.
+    uint32_t final_marker_resend_ms = 300;
     uint32_t execution_timeout_ms = 30000;     // PROVISIONAL, EXECUTING
     uint32_t outcome_timeout_ms = 5000;        // PROVISIONAL, SUCCESS and FAILURE
     uint32_t read_only_timeout_ms = 15000;     // PROVISIONAL, READ-ONLY RESULT

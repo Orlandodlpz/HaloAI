@@ -37,6 +37,70 @@ const char* find_value(const char* doc, size_t len, const char* key) {
     return nullptr;
 }
 
+// Walks a JSON string. `p` points at the opening quote; returns the position
+// just past the closing quote, or `end` if it is never closed.
+const char* skip_string(const char* p, const char* end) {
+    ++p;
+    while (p < end) {
+        if (*p == '\\') {
+            p += 2;  // an escaped quote does not end the string
+            continue;
+        }
+        if (*p == '"') return p + 1;
+        ++p;
+    }
+    return end;
+}
+
+// Copies a JSON string at `p` (the opening quote) into out, always null
+// terminated, truncating rather than overflowing. False if it is never closed.
+//
+// Shared by get_str and get_str_at on purpose: escape handling that differed
+// between a scalar and an array element would be a silent corruption of
+// screen_lines, which is the one place the user actually reads the text.
+bool copy_string(const char* p, const char* end, char* out, size_t out_size) {
+    ++p;
+    size_t n = 0;
+    while (p < end && *p != '"') {
+        char c = *p;
+        if (c == '\\' && p + 1 < end) {
+            ++p;
+            switch (*p) {
+                case 'n': c = '\n'; break;
+                case 't': c = '\t'; break;
+                case 'r': c = '\r'; break;
+                default: c = *p; break;  // quote and backslash escape to themselves
+            }
+        }
+        if (n + 1 < out_size) out[n++] = c;
+        ++p;
+    }
+    out[n] = '\0';
+    return p < end;
+}
+
+// Skips one array element, whatever it is, leaving p on the following comma or
+// closing bracket.
+const char* skip_element(const char* p, const char* end) {
+    int depth = 0;
+    while (p < end) {
+        if (*p == '"') {
+            p = skip_string(p, end);
+            continue;
+        }
+        if (*p == '[' || *p == '{') {
+            ++depth;
+        } else if (*p == ']' || *p == '}') {
+            if (depth == 0) break;
+            --depth;
+        } else if (*p == ',' && depth == 0) {
+            break;
+        }
+        ++p;
+    }
+    return p;
+}
+
 }  // namespace
 
 bool get_int(const char* doc, size_t len, const char* key, int32_t* out) {
@@ -78,25 +142,50 @@ bool get_str(const char* doc, size_t len, const char* key, char* out, size_t out
     if (out_size == 0) return false;
     const char* p = find_value(doc, len, key);
     if (p == nullptr || *p != '"') return false;
+    return copy_string(p, doc + len, out, out_size);
+}
+
+size_t array_len(const char* doc, size_t len, const char* key) {
+    const char* p = find_value(doc, len, key);
+    const char* const end = doc + len;
+    if (p == nullptr || *p != '[') return 0;
     ++p;
-    const char* end = doc + len;
-    size_t n = 0;
-    while (p < end && *p != '"') {
-        char c = *p;
-        if (c == '\\' && p + 1 < end) {
+    size_t count = 0;
+    for (;;) {
+        while (p < end && is_ws(*p)) ++p;
+        if (p >= end) return 0;       // never closed: report nothing rather than guess
+        if (*p == ']') return count;  // an empty array lands here with count 0
+        p = skip_element(p, end);
+        ++count;
+        while (p < end && is_ws(*p)) ++p;
+        if (p < end && *p == ',') {
             ++p;
-            switch (*p) {
-                case 'n': c = '\n'; break;
-                case 't': c = '\t'; break;
-                case 'r': c = '\r'; break;
-                default: c = *p; break;  // quote and backslash escape to themselves
-            }
+            continue;
         }
-        if (n + 1 < out_size) out[n++] = c;
+        if (p < end && *p == ']') return count;
+        return 0;
+    }
+}
+
+bool get_str_at(const char* doc, size_t len, const char* key, size_t index, char* out,
+                size_t out_size) {
+    if (out_size == 0) return false;
+    const char* p = find_value(doc, len, key);
+    const char* const end = doc + len;
+    if (p == nullptr || *p != '[') return false;
+    ++p;
+    for (size_t at = 0;; ++at) {
+        while (p < end && is_ws(*p)) ++p;
+        if (p >= end || *p == ']') return false;
+        if (at == index) {
+            if (*p != '"') return false;  // the contract has no non string elements
+            return copy_string(p, end, out, out_size);
+        }
+        p = skip_element(p, end);
+        while (p < end && is_ws(*p)) ++p;
+        if (p >= end || *p != ',') return false;
         ++p;
     }
-    out[n] = '\0';
-    return p < end;  // false if the string was never closed
 }
 
 // ---------------------------------------------------------------- writer
@@ -167,6 +256,19 @@ void Writer::key_int(const char* key, int32_t value) {
         digits[n++] = static_cast<char>('0' + (v % 10));
         v /= 10;
     } while (v != 0);
+    while (n-- > 0) put(digits[n]);
+}
+
+void Writer::key_uint(const char* key, uint32_t value) {
+    comma();
+    put_escaped(key);
+    put(':');
+    char digits[12];
+    int n = 0;
+    do {
+        digits[n++] = static_cast<char>('0' + (value % 10));
+        value /= 10;
+    } while (value != 0);
     while (n-- > 0) put(digits[n]);
 }
 
