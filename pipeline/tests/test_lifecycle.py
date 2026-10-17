@@ -163,6 +163,74 @@ async def test_unknown_execution_key(lc, user):
     assert e.value.code == "not_found"
 
 
+# ---------- the key on REVIEW (2026-10-16, Victor): saved by the device before it approves ----------
+
+async def test_review_carries_the_key_approve_will_use(lc, user):
+    rid, r = await new_review(lc, user)
+    assert len(r["execution_key"]) == 26
+    done = await lc.approve(user, rid, approve_body(r))
+    assert done["execution_key"] == r["execution_key"]
+
+
+async def test_key_only_on_review_and_after_continue(lc, user):
+    rid, r = await new_review(lc, user, "conflict at 3")
+    assert r["state"] == "conflict_schedule" and r["execution_key"] is None  # not approvable yet
+    r2 = await lc.continue_(user, rid, {"revision": 1})
+    assert r2["state"] == "review" and len(r2["execution_key"]) == 26
+    assert (await lc.approve(user, rid, approve_body(r2)))["execution_key"] == r2["execution_key"]
+
+
+async def test_an_addition_gives_a_new_key(lc, user):
+    rid, r1 = await new_review(lc, user)
+    r2 = await lc.process(rid, await lc.add(user, rid, addition_body("make it 4", 1)))
+    assert r2["state"] == "review" and r2["execution_key"] != r1["execution_key"]
+    old = await lc.execution_status(user, r1["execution_key"])  # the device saved the old one
+    assert old["state"] == "review" and old["execution_key"] == r2["execution_key"]  # not that approval
+
+
+async def test_status_of_a_key_never_approved_then_cancel_is_final(lc, user, executors):
+    """Device rebooted after saving the key; the approve never arrived."""
+    rid, r = await new_review(lc, user)
+    status = await lc.execution_status(user, r["execution_key"])  # 200, not 404
+    assert status["state"] == "review" and status["request_id"] == rid
+    assert (await lc.cancel(user, rid))["state"] == "cancelled"
+    assert (await lc.execution_status(user, r["execution_key"]))["state"] == "cancelled"
+    with pytest.raises(ApiError):  # a late approve can no longer win
+        await lc.approve(user, rid, approve_body(r))
+    assert executors["mock"].calls == []
+
+
+async def test_expired_review_reads_as_cancelled_by_key(lc, user, clock):
+    rid, r = await new_review(lc, user)
+    clock.advance(61)
+    assert (await lc.execution_status(user, r["execution_key"]))["state"] == "cancelled"
+
+
+async def test_key_of_another_user_is_not_found(lc, user, demo_user):
+    _, r = await new_review(lc, user)
+    with pytest.raises(ApiError) as e:
+        await lc.execution_status(demo_user, r["execution_key"])
+    assert e.value.code == "not_found"
+
+
+async def test_approve_and_cancel_racing_exactly_one_wins(lc, user, executors):
+    wins = 0
+    for _ in range(5):
+        rid, r = await new_review(lc, user)
+        results = await asyncio.gather(lc.approve(user, rid, approve_body(r)), lc.cancel(user, rid),
+                                       return_exceptions=True)
+        approved, cancelled = results
+        status = await lc.execution_status(user, r["execution_key"])
+        if isinstance(cancelled, ApiError):  # the approve won: the cancel says so
+            assert cancelled.code == "already_executing" and status["state"] in ("success", "executing")
+            wins += 1
+        else:  # the cancel won: the approve was refused and nothing ran
+            assert cancelled["state"] == "cancelled" and isinstance(approved, ApiError)
+            assert status["state"] == "cancelled"
+    await lc.drain()
+    assert len(executors["mock"].calls) == wins  # only the approvals that won ran, each once
+
+
 # ---------- cancel and one request at a time ----------
 
 async def test_cancel_after_approve_rejected(lc, user):

@@ -152,7 +152,10 @@ class Lifecycle:
             "screen_lines": wrap(lines, self.settings, req["orientation"]),
             "candidates": (rev["candidates"] if rev else None) if state == "conflict_ambiguous" else None,
             "proposal_hash": rev["proposal_hash"] if rev and show_proposal else None,
-            "execution_key": exe["execution_key"] if exe else None,
+            # REVIEW already carries the key approve will use, so the device saves it before it
+            # approves (2026-10-16, Victor). After approve it is the execution's own key.
+            "execution_key": exe["execution_key"] if exe else (rev.get("execution_key") if rev and state == "review"
+                                                               else None),
             # Which FAILURE this is (2026-10-16, asked by Carlos and Victor). 'execution': approved and
             # confirmed not done, so the device may clear its saved key. 'processing': never approved.
             # A failure can only come from execution once a request is approved, so the executions row
@@ -261,10 +264,11 @@ class Lifecycle:
             output = ProcessorOutput("failure", OUTCOME_LINES["failure"])
 
         proposal = ids.proposal_hash(output.draft) if output.draft is not None else None
+        key = ids.execution_key(str(request_id), revision, proposal) if proposal else None
         rev_row = {
             "state": output.state, "screen_lines": output.screen_lines,
             "review_screen_lines": output.review_screen_lines, "candidates": output.candidates,
-            "draft": output.draft, "proposal_hash": proposal, "timings": output.timings,
+            "draft": output.draft, "proposal_hash": proposal, "execution_key": key, "timings": output.timings,
         }
         async with self.pool.connection() as conn, conn.transaction():
             await self._lock_user(conn, req["user_id"])
@@ -278,13 +282,13 @@ class Lifecycle:
                 return self.build_result(req, output.state, revision, rev_row, None)
             await conn.execute(
                 "INSERT INTO revisions (request_id, revision, state, screen_lines, review_screen_lines,"
-                " candidates, draft, proposal_hash, timings, created_at)"
-                " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                " candidates, draft, proposal_hash, execution_key, timings, created_at)"
+                " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
                 (request_id, revision, output.state, Jsonb(output.screen_lines),
                  Jsonb(output.review_screen_lines) if output.review_screen_lines is not None else None,
                  Jsonb(output.candidates) if output.candidates is not None else None,
                  Jsonb(output.draft) if output.draft is not None else None,
-                 proposal, Jsonb(output.timings), self.clock.now()))
+                 proposal, key, Jsonb(output.timings), self.clock.now()))
             expires = self._new_expiry() if output.state in DECISION_STATES else None
             req = await self._set_state(conn, req, state=output.state, expires_at=expires,
                                         failure_reason=failure_reason)
@@ -395,13 +399,25 @@ class Lifecycle:
             return await self._result(conn, req)
 
     async def execution_status(self, user_id: str, key: str) -> dict:
-        async with self.pool.connection() as conn:
+        """Status by execution key. A key from a REVIEW that was never approved still answers, with
+        the request's current state (review, cancelled, ...): approved only if the state is executing,
+        success, failure or execution_uncertain. If it is still open, the device cancels it, and the
+        cancel reply is final, because approve and cancel take the same user lock: either
+        'cancelled' (nothing happened) or 'already_executing' (the approve won)."""
+        async with self.pool.connection() as conn, conn.transaction():
             cur = await conn.execute(
                 "SELECT r.* FROM executions e JOIN requests r ON r.id = e.request_id"
                 " WHERE e.execution_key = %s AND r.user_id = %s", (key, user_id))
             req = await cur.fetchone()
             if req is None:
-                raise ApiError("not_found", 404, "unknown execution key")
+                await self._lock_user(conn, user_id)  # read the state after any approve or cancel in flight
+                cur = await conn.execute(
+                    "SELECT r.* FROM revisions v JOIN requests r ON r.id = v.request_id"
+                    " WHERE v.execution_key = %s AND r.user_id = %s", (key, user_id))
+                req = await cur.fetchone()
+                if req is None:
+                    raise ApiError("not_found", 404, "unknown execution key")
+                req = await self._expire_if_due(conn, req)  # an expired REVIEW reads as cancelled
             return await self._result(conn, req)
 
     # ---------- startup and tests ----------
