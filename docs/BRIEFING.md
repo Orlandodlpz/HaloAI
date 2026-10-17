@@ -119,7 +119,7 @@ API rules:
 - **Time.** Each segment is read against its own `sent_at`, so "tomorrow" keeps its meaning when an addition after midnight reruns the request.
 - **Empty transcripts (phone, no backend call).** On a new request the phone shows FAILURE. On an addition it does not: the phone resends the current screen with the same revision and sends a `touch`, so the proposal survives.
 - **Language.** `language` is a hint ("en" until P5); other values are not rejected.
-- **API keys.** One key per client, each with a scope: the demo site key works only in sample data mode and can never send real email; the phone key can. In real mode the demo Gmail account sends only to an allowlist of addresses (the team, plus any added for judging). Keys are rate limited per key and can be replaced without code changes. The APK contains its key, so the APK is shared directly, never posted publicly.
+- **API keys.** One key per client, each with a scope: the demo site key works only in sample data mode and can never send real email; the phone key can. In real mode the demo Gmail account sends to any address the user said out loud in that request or has as a contact; any other address is refused before REVIEW, and sends to addresses outside the team list are capped at 20 a day (revised 2026-10-16, agreed by the team). Keys are rate limited per key and can be replaced without code changes. The APK contains its key, so the APK is shared directly, never posted publicly.
 
 Errors have one shape. `message` is for logs only, never for the screen; `current` lets the phone resync without another call. `expired` means the request is no longer open: expired, cancelled or finished; there is no separate `cancelled` code (decided 2026-10-13, Orlando and Carlos).
 
