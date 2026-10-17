@@ -9,6 +9,10 @@ Outcomes, which decide what the device may do with its saved key:
 - an exception: we cannot know whether it happened (EXECUTION UNCERTAIN). Network errors,
   timeouts and Google 5xx land here, never as "sent".
 
+Recipients: tools.py already refused any address the user did not say or have as a contact. Here,
+email and invitations to addresses outside the team list (ALLOWED_RECIPIENTS) count against a daily
+cap, so a leaked phone key cannot turn the demo account into a spam source (decided 2026-10-16).
+
 Duplicates: a created event's id comes from the execution key, so if a create is ever repeated
 Google answers "already exists" instead of making a second event. Gmail has no such id and we
 have no read access, so a send that times out stays uncertain.
@@ -16,7 +20,7 @@ have no read access, so a send that times out stays uncertain.
 
 import base64
 import hashlib
-from datetime import datetime
+from datetime import datetime, timedelta
 from email.message import EmailMessage
 
 import httpx
@@ -24,7 +28,7 @@ import httpx
 from app.google_auth import GoogleAuth, GoogleError
 from app.google_world import EXPIRED, allowed_recipients, event_alias
 from app.processing import ExecutionOutcome, Executor
-from app.tools import EMAIL_RE, NOT_ALLOWED_HINT, fmt_day, fmt_range
+from app.tools import EMAIL_RE, fmt_day, fmt_range
 
 EVENTS_URL = "https://www.googleapis.com/calendar/v3/calendars/primary/events"
 SEND_URL = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send"
@@ -43,12 +47,23 @@ def _one_line(text: str) -> str:
     return " ".join(str(text).split())  # no line breaks in a mail header
 
 
+def recipients(draft: dict) -> list[str]:
+    """Who an approved draft sends to: the email's address, or the new event's guests."""
+    if draft.get("kind") == "send_email":
+        return [draft.get("to", "")]
+    if draft.get("kind") == "create_event":
+        return [g["email"] for g in draft.get("guests", [])]
+    return []
+
+
 class GoogleExecutor(Executor):
     name = "google"
 
-    def __init__(self, auth: GoogleAuth, settings, http: httpx.AsyncClient | None = None):
+    def __init__(self, auth: GoogleAuth, settings, pool, clock, http: httpx.AsyncClient | None = None):
         self.auth = auth
         self.settings = settings
+        self.pool = pool
+        self.clock = clock
         self.http = http or httpx.AsyncClient(timeout=10)
 
     async def execute(self, draft: dict, execution_key: str, user_id: str = "") -> ExecutionOutcome:
@@ -59,15 +74,35 @@ class GoogleExecutor(Executor):
                    "delete_event": self._delete, "send_email": self._send}.get(kind)
         if handler is None:
             return ExecutionOutcome(False, ["Not done", f"Unknown action {kind}"])
-        allowed = allowed_recipients(self.settings)  # checked again here, right before anything goes out
+        team = allowed_recipients(self.settings)
+        outside = [r for r in recipients(draft) if r.lower() not in team]
+        if outside and await self._outside_today(user_id, execution_key, team) + len(outside) \
+                > self.settings.outside_recipients_per_day:
+            return ExecutionOutcome(False, ["Not done", "Daily limit for new addresses reached",
+                                            "Team addresses still work"])
         try:
             try:
-                return await handler(draft, execution_key, await self.auth.access_token(user_id), allowed)
+                return await handler(draft, execution_key, await self.auth.access_token(user_id))
             except _Expired:  # refused before acting: safe to retry once with a fresh token
                 self.auth.drop_access_token(user_id)
-                return await handler(draft, execution_key, await self.auth.access_token(user_id), allowed)
+                return await handler(draft, execution_key, await self.auth.access_token(user_id))
         except (GoogleError, _Expired):
             return ExecutionOutcome(False, ["Not done", *EXPIRED])
+
+    async def _outside_today(self, user_id: str, execution_key: str, team: frozenset) -> int:
+        """Recipients outside the team list in this user's real sends of the last 24 hours, counting
+        sends that may have happened (pending, unknown) as well as done ones."""
+        since = self.clock.now() - timedelta(hours=24)
+        async with self.pool.connection() as conn:
+            cur = await conn.execute(
+                "SELECT v.draft FROM executions e"
+                " JOIN revisions v ON v.request_id = e.request_id AND v.revision = e.revision"
+                " JOIN requests r ON r.id = e.request_id"
+                " WHERE r.user_id = %s AND e.created_at > %s AND e.execution_key <> %s"
+                " AND e.status IN ('pending', 'applied', 'unknown')", (user_id, since, execution_key))
+            drafts = [row["draft"] for row in await cur.fetchall()]
+        return sum(1 for d in drafts if d and d.get("source") == "google"
+                   for r in recipients(d) if r.lower() not in team)
 
     # ---------- HTTP ----------
 
@@ -82,10 +117,8 @@ class GoogleExecutor(Executor):
 
     # ---------- calendar ----------
 
-    async def _create(self, draft: dict, key: str, token: str, allowed: frozenset) -> ExecutionOutcome:
+    async def _create(self, draft: dict, key: str, token: str) -> ExecutionOutcome:
         guests = [g["email"] for g in draft.get("guests", [])]
-        if blocked := [g for g in guests if g.lower() not in allowed]:
-            return ExecutionOutcome(False, ["Not added", f"I can't invite {blocked[0]} yet", NOT_ALLOWED_HINT])
         start, end = datetime.fromisoformat(draft["start"]), datetime.fromisoformat(draft["end"])
         google_id = created_google_id(key)
         body = {"id": google_id, "summary": draft["title"],
@@ -114,18 +147,18 @@ class GoogleExecutor(Executor):
             lines.append("Google Meet link added")
         return ExecutionOutcome(True, lines, {"event_id": event_alias(google_id), "google_id": google_id})
 
-    def _notify(self, draft: dict, allowed: frozenset) -> str:
-        """Guests hear about a move or delete only if every one of them is on the allowlist."""
-        guests = draft.get("guest_emails") or []
-        return "all" if guests and all(g.lower() in allowed for g in guests) else "none"
+    def _notify(self, draft: dict) -> str:
+        """Guests hear about a move or delete: only the organizer can do either, so they are people
+        the user invited."""
+        return "all" if draft.get("guest_emails") else "none"
 
-    async def _update(self, draft: dict, key: str, token: str, allowed: frozenset) -> ExecutionOutcome:
+    async def _update(self, draft: dict, key: str, token: str) -> ExecutionOutcome:
         after = draft["after"]
         start, end = datetime.fromisoformat(after["start"]), datetime.fromisoformat(after["end"])
         body = {"summary": after["title"], "start": {"dateTime": after["start"], "timeZone": draft["timezone"]},
                 "end": {"dateTime": after["end"], "timeZone": draft["timezone"]}}
         resp = await self._call("PATCH", f"{EVENTS_URL}/{draft['google_id']}", token, json=body,
-                                params={"sendUpdates": self._notify(draft, allowed)},
+                                params={"sendUpdates": self._notify(draft)},
                                 headers={"If-Match": draft.get("etag") or "*"})
         if resp.status_code == 412:
             return ExecutionOutcome(False, ["Not changed", "That event changed since you saw it"])
@@ -136,9 +169,9 @@ class GoogleExecutor(Executor):
         return ExecutionOutcome(True, ["Event moved", after["title"], f"{fmt_day(start)}, {fmt_range(start, end)}"],
                                 {"event_id": draft["event_id"]})
 
-    async def _delete(self, draft: dict, key: str, token: str, allowed: frozenset) -> ExecutionOutcome:
+    async def _delete(self, draft: dict, key: str, token: str) -> ExecutionOutcome:
         resp = await self._call("DELETE", f"{EVENTS_URL}/{draft['google_id']}", token,
-                                params={"sendUpdates": self._notify(draft, allowed)},
+                                params={"sendUpdates": self._notify(draft)},
                                 headers={"If-Match": draft.get("etag") or "*"})
         if resp.status_code == 412:
             return ExecutionOutcome(False, ["Not deleted", "That event changed since you saw it"])
@@ -148,12 +181,10 @@ class GoogleExecutor(Executor):
 
     # ---------- email ----------
 
-    async def _send(self, draft: dict, key: str, token: str, allowed: frozenset) -> ExecutionOutcome:
+    async def _send(self, draft: dict, key: str, token: str) -> ExecutionOutcome:
         to = str(draft.get("to", "")).strip()
         if not EMAIL_RE.fullmatch(to.lower()):
             return ExecutionOutcome(False, ["Not sent", "The address is not valid"])
-        if to.lower() not in allowed:
-            return ExecutionOutcome(False, ["Not sent", f"I can't email {to} yet", NOT_ALLOWED_HINT])
         msg = EmailMessage()
         msg["To"] = to
         msg["Subject"] = _one_line(draft["subject"])

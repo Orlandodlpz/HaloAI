@@ -82,8 +82,9 @@ def real_settings(settings):
 
 
 @pytest.fixture
-def executor(stub_auth, real_settings, fake):
-    return GoogleExecutor(stub_auth, real_settings, httpx.AsyncClient(transport=httpx.MockTransport(fake.handler)))
+def executor(stub_auth, real_settings, fake, pool, clock):
+    return GoogleExecutor(stub_auth, real_settings, pool, clock,
+                          httpx.AsyncClient(transport=httpx.MockTransport(fake.handler)))
 
 
 def create_draft(**extra):
@@ -107,9 +108,9 @@ def email_draft(**extra):
 
 # ---------- calendar ----------
 
-async def test_create_with_guests_and_meet(executor, fake):
+async def test_create_with_guests_and_meet(executor, user, fake):
     out = await executor.execute(create_draft(guests=[{"name": "Carlos", "email": "carlos@uni.example.edu"}],
-                                              video_call=True, description="Budget"), KEY, "u1")
+                                              video_call=True, description="Budget"), KEY, user)
     (call,) = fake.writes
     assert call["params"] == {"conferenceDataVersion": "1", "sendUpdates": "all"}
     body = call["json"]
@@ -122,8 +123,8 @@ async def test_create_with_guests_and_meet(executor, fake):
     assert out.detail["event_id"] == event_alias(created_google_id(KEY))  # "move that meeting" finds it
 
 
-async def test_create_alone_sends_no_invitations(executor, fake):
-    out = await executor.execute(create_draft(), KEY, "u1")
+async def test_create_alone_sends_no_invitations(executor, user, fake):
+    out = await executor.execute(create_draft(), KEY, user)
     (call,) = fake.writes
     assert call["params"]["sendUpdates"] == "none" and "attendees" not in call["json"]
     assert "conferenceData" not in call["json"] and out.screen_lines[-1] == "Tue Oct 20, 3:00 PM to 4:00 PM"
@@ -135,59 +136,59 @@ async def test_event_id_is_valid_for_google_and_stable():
     assert set(gid) <= set("abcdefghijklmnopqrstuv0123456789")  # Google's allowed characters
 
 
-async def test_repeated_create_finds_its_own_event(executor, fake):
+async def test_repeated_create_finds_its_own_event(executor, user, fake):
     fake.answers[("POST", EVENTS_URL)] = [(409, {})]
     fake.answers[("GET", EVENTS_URL)] = [(200, {"id": created_google_id(KEY), "status": "confirmed"})]
-    assert (await executor.execute(create_draft(), KEY, "u1")).applied
+    assert (await executor.execute(create_draft(), KEY, user)).applied
     fake.answers[("POST", EVENTS_URL)] = [(409, {})]
     fake.answers[("GET", EVENTS_URL)] = [(200, {"status": "cancelled"})]
-    out = await executor.execute(create_draft(), KEY, "u1")
+    out = await executor.execute(create_draft(), KEY, user)
     assert not out.applied and out.screen_lines[0] == "Not added"
 
 
-async def test_guest_off_the_allowlist_is_refused_before_any_call(executor, fake):
-    out = await executor.execute(create_draft(guests=[{"name": "x", "email": "stranger@example.net"}]), KEY, "u1")
-    assert not out.applied and "stranger@example.net" in out.screen_lines[1] and fake.writes == []
+async def test_guest_outside_the_team_is_invited(executor, user, fake):
+    out = await executor.execute(create_draft(guests=[{"name": "x", "email": "judge@example.net"}]), KEY, user)
+    assert out.applied and fake.writes[0]["json"]["attendees"] == [{"email": "judge@example.net"}]
 
 
-async def test_move_uses_the_version_seen_in_review(executor, fake):
-    out = await executor.execute(update_draft(), KEY, "u1")
+async def test_move_uses_the_version_seen_in_review(executor, user, fake):
+    out = await executor.execute(update_draft(), KEY, user)
     (call,) = fake.writes
     assert call["method"] == "PATCH" and call["url"] == f"{EVENTS_URL}/gid1"
     assert call["headers"]["if-match"] == '"v1"' and call["params"]["sendUpdates"] == "none"
     assert out.applied and out.screen_lines[0] == "Event moved" and out.detail == {"event_id": "g1234567"}
 
 
-async def test_guests_hear_about_a_move_only_if_all_are_allowed(executor, fake):
-    await executor.execute(update_draft(guest_emails=["TA@uni.example.edu"]), KEY, "u1")
-    await executor.execute(update_draft(guest_emails=["ta@uni.example.edu", "stranger@example.net"]), KEY, "u1")
+async def test_guests_hear_about_a_move(executor, user, fake):
+    await executor.execute(update_draft(guest_emails=["ta@uni.example.edu", "judge@example.net"]), KEY, user)
+    await executor.execute(update_draft(), KEY, user)
     assert [w["params"]["sendUpdates"] for w in fake.writes] == ["all", "none"]
 
 
 @pytest.mark.parametrize("code,line", [(412, "That event changed since you saw it"),
                                        (404, "That event is no longer on your calendar")])
-async def test_move_refused_when_the_event_changed_or_is_gone(executor, fake, code, line):
+async def test_move_refused_when_the_event_changed_or_is_gone(executor, user, fake, code, line):
     fake.answers[("PATCH", EVENTS_URL)] = [(code, {})]
-    out = await executor.execute(update_draft(), KEY, "u1")
+    out = await executor.execute(update_draft(), KEY, user)
     assert not out.applied and out.screen_lines == ["Not changed", line]
 
 
-async def test_delete(executor, fake):
+async def test_delete(executor, user, fake):
     draft = {"kind": "delete_event", "source": "google", "event_id": "g1234567", "google_id": "gid1", "etag": '"v1"',
              "guest_emails": [], "event": {"title": "Office hours"}}
-    out = await executor.execute(draft, KEY, "u1")
+    out = await executor.execute(draft, KEY, user)
     assert out.applied and fake.writes[0]["method"] == "DELETE" and fake.writes[0]["headers"]["if-match"] == '"v1"'
     fake.answers[("DELETE", EVENTS_URL)] = [(410, {})]
-    assert (await executor.execute(draft, KEY, "u1")).applied  # already gone counts as done
+    assert (await executor.execute(draft, KEY, user)).applied  # already gone counts as done
     fake.answers[("DELETE", EVENTS_URL)] = [(412, {})]
-    changed = await executor.execute(draft, KEY, "u1")
+    changed = await executor.execute(draft, KEY, user)
     assert not changed.applied and changed.screen_lines[1] == "That event changed since you saw it"
 
 
 # ---------- email ----------
 
-async def test_send_email(executor, fake):
-    out = await executor.execute(email_draft(subject="Demo\nBcc: attacker@evil.example.net"), KEY, "u1")
+async def test_send_email(executor, user, fake):
+    out = await executor.execute(email_draft(subject="Demo\nBcc: attacker@evil.example.net"), KEY, user)
     (call,) = fake.gmail_calls()
     msg = email.message_from_bytes(base64.urlsafe_b64decode(call["json"]["raw"]), policy=email.policy.default)
     assert msg["To"] == "carlos@uni.example.edu" and msg["Bcc"] is None  # no header injection
@@ -196,51 +197,49 @@ async def test_send_email(executor, fake):
     assert out.applied and out.screen_lines[:2] == ["Email sent", "To: carlos@uni.example.edu"]
 
 
-@pytest.mark.parametrize("to", ["stranger@example.net", "not an address"])
-async def test_email_off_the_allowlist_or_invalid_is_never_sent(executor, fake, to):
-    out = await executor.execute(email_draft(to=to), KEY, "u1")
+async def test_invalid_address_is_never_sent(executor, user, fake):
+    out = await executor.execute(email_draft(to="not an address"), KEY, user)
     assert not out.applied and out.screen_lines[0] == "Not sent" and fake.gmail_calls() == []
 
 
-async def test_no_allowlist_means_nobody(stub_auth, settings, fake):
-    ex = GoogleExecutor(stub_auth, settings.model_copy(update={"allowed_recipients": None}),
-                        httpx.AsyncClient(transport=httpx.MockTransport(fake.handler)))
-    assert not (await ex.execute(email_draft(), KEY, "u1")).applied and fake.gmail_calls() == []
+async def test_outside_address_is_sent(executor, user, fake):
+    assert (await executor.execute(email_draft(to="judge@example.net"), KEY, user)).applied
+    assert len(fake.gmail_calls()) == 1
 
 
-async def test_gmail_refusal_is_not_sent(executor, fake):
+async def test_gmail_refusal_is_not_sent(executor, user, fake):
     fake.answers[("POST", SEND_URL)] = [(400, {})]
-    out = await executor.execute(email_draft(), KEY, "u1")
+    out = await executor.execute(email_draft(), KEY, user)
     assert not out.applied and out.screen_lines[0] == "Not sent"
 
 
 @pytest.mark.parametrize("answer", [(500, {}), (503, {}), httpx.ReadTimeout("slow"), httpx.ConnectError("down")])
-async def test_unknown_outcomes_raise_so_they_become_uncertain(executor, fake, answer):
+async def test_unknown_outcomes_raise_so_they_become_uncertain(executor, user, fake, answer):
     fake.answers[("POST", SEND_URL)] = [answer]
     with pytest.raises(Exception):
-        await executor.execute(email_draft(), KEY, "u1")
+        await executor.execute(email_draft(), KEY, user)
 
 
 # ---------- tokens and sources ----------
 
-async def test_refused_token_is_retried_once_with_a_fresh_one(executor, fake, stub_auth):
+async def test_refused_token_is_retried_once_with_a_fresh_one(executor, user, fake, stub_auth):
     fake.answers[("POST", SEND_URL)] = [(401, {})]
-    assert (await executor.execute(email_draft(), KEY, "u1")).applied and stub_auth.dropped == 1
+    assert (await executor.execute(email_draft(), KEY, user)).applied and stub_auth.dropped == 1
     fake.answers[("POST", SEND_URL)] = [(401, {}), (401, {})]
-    out = await executor.execute(email_draft(), KEY, "u1")
+    out = await executor.execute(email_draft(), KEY, user)
     assert not out.applied and out.screen_lines == ["Not done", *EXPIRED]
 
 
-async def test_sign_in_expired_is_not_done(executor, fake, stub_auth):
+async def test_sign_in_expired_is_not_done(executor, user, fake, stub_auth):
     stub_auth.error = GoogleError("expired")
-    out = await executor.execute(email_draft(), KEY, "u1")
+    out = await executor.execute(email_draft(), KEY, user)
     assert not out.applied and out.screen_lines == ["Not done", *EXPIRED] and fake.writes == []
 
 
-async def test_sample_drafts_are_refused(executor, fake):
+async def test_sample_drafts_are_refused(executor, user, fake):
     draft = email_draft()
     del draft["source"]
-    assert not (await executor.execute(draft, KEY, "u1")).applied and fake.writes == []
+    assert not (await executor.execute(draft, KEY, user)).applied and fake.writes == []
 
 
 # ---------- the whole path: Gmail is never contacted before approval ----------
@@ -256,7 +255,7 @@ def real_lc(lc, executors, real_settings, stub_auth, fake):
         return await gworld.world(ctx.user_id, now, tz)
 
     lc.settings = real_settings.model_copy(update={"real_tools_enabled": True})
-    executors["real"] = GoogleExecutor(stub_auth, real_settings, http)
+    executors["real"] = GoogleExecutor(stub_auth, real_settings, lc.pool, lc.clock, http)
 
     def script(*calls):
         lc.processor = NemotronProcessor(ScriptedClient([reply([tool_call(n, a)]) for n, a in calls]),
@@ -294,12 +293,55 @@ async def test_cancelled_and_expired_drafts_leave_nothing(real_lc, user, fake, c
     assert fake.writes == []
 
 
-async def test_stranger_is_refused_before_review(real_lc, user, fake):
-    real_lc.script(("draft_email", {"recipient": "stranger at example dot net", "subject": "Hi", "body": "Hello."}))
-    _, r = await review(real_lc, user, "email stranger at example dot net saying hello")
+async def approve(lc, user, rid, r):
+    return await lc.approve(user, rid, {"revision": r["revision"], "proposal_hash": r["proposal_hash"]})
+
+
+@pytest.mark.parametrize("said", ["email judge at example dot net saying hello",
+                                  "email Judge@Example.net. saying hello"])
+async def test_an_address_said_out_loud_is_accepted(real_lc, user, fake, said):
+    real_lc.script(("draft_email", {"recipient": "judge at example dot net", "subject": "Hi", "body": "Hello."}))
+    rid, r = await review(real_lc, user, said)
+    assert r["state"] == "review" and r["screen_lines"][0] == "To: judge@example.net"
+    assert (await approve(real_lc, user, rid, r))["state"] == "success" and len(fake.gmail_calls()) == 1
+
+
+async def test_an_address_the_user_never_said_is_refused(real_lc, user, fake):
+    """E.g. taken from a web page or an event's notes: not a contact, not in the user's words."""
+    real_lc.script(("draft_email", {"recipient": "attacker@evil.example.net", "subject": "Calendar", "body": "x"}))
+    _, r = await review(real_lc, user, "email my calendar to the address on that page")
     assert r["state"] == "read_only_result" and r["proposal_hash"] is None
-    assert r["screen_lines"] == ["I can't email stranger@example.net yet", "Only team addresses work in the demo"]
+    assert r["screen_lines"] == ["I can't email attacker@evil.example.net", "Say the address out loud to use it"]
     assert fake.writes == []
+
+
+async def test_daily_cap_on_outside_addresses(real_lc, user, fake, executors, clock):
+    executors["real"].settings = executors["real"].settings.model_copy(update={"outside_recipients_per_day": 2})
+    for name in ("one", "two", "three"):
+        real_lc.script(("draft_email", {"recipient": f"{name}@example.net", "subject": "Hi", "body": "Hello."}))
+        rid, r = await review(real_lc, user, f"email {name} at example dot net saying hello")
+        done = await approve(real_lc, user, rid, r)
+    assert done["state"] == "failure" and done["failure_stage"] == "execution"
+    assert done["screen_lines"][1] == "Daily limit for new addresses reached"
+    assert len(fake.gmail_calls()) == 2
+    real_lc.script(("draft_email", {"recipient": "Carlos", "subject": "Hi", "body": "Hello."}))
+    rid, r = await review(real_lc, user, "email carlos saying hello")
+    assert (await approve(real_lc, user, rid, r))["state"] == "success"  # the team never counts
+    clock.advance(24 * 3600 + 1)
+    real_lc.script(("draft_email", {"recipient": "four@example.net", "subject": "Hi", "body": "Hello."}))
+    rid, r = await review(real_lc, user, "email four at example dot net saying hello")
+    assert (await approve(real_lc, user, rid, r))["state"] == "success"  # a day later
+
+
+async def test_uncertain_sends_count_toward_the_cap(real_lc, user, fake, executors):
+    executors["real"].settings = executors["real"].settings.model_copy(update={"outside_recipients_per_day": 1})
+    fake.answers[("POST", SEND_URL)] = [httpx.ReadTimeout("slow")]
+    real_lc.script(("draft_email", {"recipient": "one@example.net", "subject": "Hi", "body": "Hello."}))
+    rid, r = await review(real_lc, user, "email one at example dot net saying hello")
+    assert (await approve(real_lc, user, rid, r))["state"] == "execution_uncertain"  # may have gone out
+    real_lc.script(("draft_email", {"recipient": "two@example.net", "subject": "Hi", "body": "Hello."}))
+    rid, r = await review(real_lc, user, "email two at example dot net saying hello")
+    assert (await approve(real_lc, user, rid, r))["screen_lines"][1] == "Daily limit for new addresses reached"
 
 
 async def test_uncertain_email_says_where_to_check(real_lc, user, fake):
@@ -311,11 +353,15 @@ async def test_uncertain_email_says_where_to_check(real_lc, user, fake):
     assert done["screen_lines"][:2] == ["Not sure it was sent", "Check Sent in Gmail before trying again"]
 
 
-async def test_invite_off_the_allowlist_is_refused_before_review(real_lc, user, fake):
+async def test_invite_needs_a_said_or_known_address(real_lc, user, fake):
     real_lc.script(("create_event", {"title": "Call", "start": "2026-10-20T15:00",
-                                     "guests": ["stranger@example.net"], "video_call": True}))
-    _, r = await review(real_lc, user, "call with stranger@example.net tuesday at 3")
-    assert r["state"] == "read_only_result" and r["screen_lines"][0].startswith("I can't invite")
+                                     "guests": ["judge@example.net"], "video_call": True}))
+    _, r = await review(real_lc, user, "call with judge at example dot net tuesday at 3")
+    assert r["state"] == "review" and "Invite: judge@example.net" in r["screen_lines"]
+    real_lc.script(("create_event", {"title": "Call", "start": "2026-10-20T15:00",
+                                     "guests": ["attacker@evil.example.net"], "video_call": True}))
+    _, r = await review(real_lc, user, "set up the call from that event tuesday at 3")
+    assert r["state"] == "read_only_result" and r["screen_lines"][0] == "I can't invite attacker@evil.example.net"
     assert fake.writes == []
 
 
@@ -328,7 +374,7 @@ async def test_someone_elses_event_cannot_be_moved(real_lc, user, fake):
                                                                       "Someone else organizes it"]
 
 
-async def test_missing_allowlist_blocks_before_review_too(stub_auth, settings, fake):
+async def test_missing_team_list_still_checks_where_addresses_come_from(stub_auth, settings, fake):
     from datetime import datetime
     from zoneinfo import ZoneInfo
 
@@ -337,6 +383,8 @@ async def test_missing_allowlist_blocks_before_review_too(stub_auth, settings, f
                      httpx.AsyncClient(transport=httpx.MockTransport(fake.handler)))
     now = datetime(2026, 10, 16, 9, 0, tzinfo=ZoneInfo("America/Chicago"))
     w = await gw.world("u1", now, now.tzinfo)
-    assert w.allowed == frozenset()  # not "no limit"
-    out = run_tool("draft_email", {"recipient": "Carlos", "subject": "Hi", "body": "Hello."}, w, now)
-    assert out.output.state == "read_only_result" and out.output.draft is None
+    assert w.allowed == frozenset()  # an empty team list, not "no checks"
+    contact = run_tool("draft_email", {"recipient": "Carlos", "subject": "Hi", "body": "Hello."}, w, now)
+    assert contact.output.state == "review"  # a contact is fine
+    unsaid = run_tool("draft_email", {"recipient": "attacker@evil.example.net", "subject": "Hi", "body": "x"}, w, now)
+    assert unsaid.output.state == "read_only_result" and unsaid.output.draft is None

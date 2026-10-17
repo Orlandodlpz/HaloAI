@@ -84,7 +84,7 @@ async def build_services(settings: Settings) -> Services:
     # Approved actions change the user's mock world. The B1 fake processor's drafts are not real
     # drafts, so it keeps the fake executor. Drafts made from the real calendar go to Google.
     mock_exec = MockExecutor(store) if settings.processor == "nemotron" else FakeExecutor("mock")
-    real_exec = GoogleExecutor(google, settings)  # drafts from the real calendar (B4 step 3)
+    real_exec = GoogleExecutor(google, settings, pool, clock)  # drafts from the real calendar (B4 step 3)
     lc = Lifecycle(pool, settings, clock, make_processor(settings, store, memory, GoogleWorld(google, settings)),
                    {"mock": mock_exec, "real": real_exec}, memory=memory)
     user_id = await lc.ensure_user("demo")

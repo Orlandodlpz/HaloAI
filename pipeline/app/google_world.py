@@ -47,7 +47,8 @@ class _Expired(Exception):
 
 
 def allowed_recipients(settings) -> frozenset[str]:
-    """The ALLOWED_RECIPIENTS server secret as lowercase addresses. Missing means nobody (fail closed)."""
+    """The team's addresses (ALLOWED_RECIPIENTS secret), lowercase. Missing means every address counts
+    as outside, so the daily cap applies to all of them."""
     raw = settings.allowed_recipients.get_secret_value() if settings.allowed_recipients else ""
     return frozenset(a.strip().lower() for a in raw.split(",") if a.strip())
 

@@ -71,8 +71,10 @@ class Settings(BaseSettings):
     google_redirect_uri: str = "https://api.haloai-cov.io/v1/google/callback"
     token_encryption_key: SecretStr | None = None  # Fernet key for stored Google refresh tokens
     tavily_api_key: SecretStr | None = None
-    # Real mode sends email and invitations only to these addresses (comma separated, server secret).
+    # The team's addresses (comma separated, server secret). Real mode sends to any address the user
+    # said or has as a contact; sends to addresses outside this list count against a daily cap.
     allowed_recipients: SecretStr | None = None
+    outside_recipients_per_day: int = 20  # if the phone key leaks, this bounds what it can send
     oauth_state_minutes: int = 10
     # The part of the real calendar read for each request: conflicts are only checked inside it.
     calendar_past_days: int = 7

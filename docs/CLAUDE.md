@@ -1,7 +1,7 @@
 # CLAUDE.md: HaloAI
 
 Project context and conventions for the whole team. Read this first in every session, whatever part of the project you work on.
-**Last Updated:** 2026-10-15
+**Last Updated:** 2026-10-16
 
 ## Interaction Mode: Always On
 
@@ -154,7 +154,7 @@ Decisions already made. Do not re-litigate unless new evidence is presented, and
 - Previous recipients come from Google People "other contacts", not from reading Gmail.
 - Memory stores contacts, preferences and recent actions; the user can view, edit and delete all of it. Learning is automatic but only from actions the user approved, never from content (web pages, email text, event descriptions); "remember that..." saves explicitly (decided 2026-10-15).
 - No Gmail read access: a timed out send is reported as uncertain, never as sent (decided 2026-10-15).
-- Real mode sends email and invitations only to an allowlist kept in the server secret `ALLOWED_RECIPIENTS`, never in git (decided 2026-10-15).
+- Real mode sends email and invitations to any address the user **said out loud in that request** or has as a contact (saved, "other contacts" or memory), checked in code against the transcript; an address found only in a web page or an event's text is refused before REVIEW. Addresses outside the team list (server secret `ALLOWED_RECIPIENTS`, never in git) are capped at 20 a day (`OUTSIDE_RECIPIENTS_PER_DAY`), counting sends that may have happened, so a leaked phone key cannot turn the demo account into a spam source (decided 2026-10-16, replacing the 2026-10-15 team-only allowlist, which would have blocked saying a judge's address). Verify: `cd pipeline && .venv/bin/python -m pytest -q tests/test_google_executor.py`.
 - Subject is generated from the email body unless the user says one.
 - Reasoning off by default; on only for multi-step requests.
 - Demo site main mode: "Try it with sample data" (mock tools, no Google login).
