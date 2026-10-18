@@ -2,6 +2,7 @@
 Covers the B1 gate items that do not need HTTP."""
 
 import asyncio
+import uuid
 
 import pytest
 
@@ -155,6 +156,43 @@ async def test_execution_outcomes(lc, user, executors, mode, hang, expected):
     await lc.drain()
     status = await lc.execution_status(user, result["execution_key"])
     assert status["state"] == expected
+
+
+async def test_request_status_in_every_state(lc, user, clock, executors):
+    """GET /v1/requests/{id} (asked by Victor, 2026-10-17): any request, any state, read only."""
+    body = start_body("block 3 to 4 tomorrow for the gym")
+    await lc.start(user, "real", body)
+    assert (await lc.request_status(user, body["request_id"]))["state"] == "processing"  # no key yet
+    await lc.process(body["request_id"], 1)
+    assert (await lc.request_status(user, body["request_id"]))["state"] == "review"
+    clock.advance(61)
+    assert (await lc.request_status(user, body["request_id"]))["state"] == "cancelled"  # expired
+    rid, r = await new_review(lc, user)
+    await lc.cancel(user, rid)
+    assert (await lc.request_status(user, rid))["state"] == "cancelled"  # by the user
+    old, _ = await new_review(lc, user)
+    await new_review(lc, user)
+    assert (await lc.request_status(user, old))["state"] == "cancelled"  # replaced by a newer request
+    rid, r = await new_review(lc, user)
+    await lc.approve(user, rid, approve_body(r))
+    done = await lc.request_status(user, rid)
+    assert done["state"] == "success" and done["execution_key"] == r["execution_key"]
+    executors["mock"].mode = "fail"
+    rid, r = await new_review(lc, user)
+    await lc.approve(user, rid, approve_body(r))
+    failed = await lc.request_status(user, rid)
+    assert failed["state"] == "failure" and failed["failure_stage"] == "execution"
+    _, bad = await new_review(lc, user, "explode please")
+    assert (await lc.request_status(user, bad["request_id"]))["failure_stage"] == "processing"
+    assert len(executors["mock"].calls) == 2  # reading never runs anything
+
+
+async def test_request_status_of_unknown_or_other_users_request(lc, user, demo_user):
+    rid, _ = await new_review(lc, user)
+    for who, request_id in ((demo_user, rid), (user, str(uuid.uuid4()))):
+        with pytest.raises(ApiError) as e:
+            await lc.request_status(who, request_id)
+        assert e.value.code == "not_found"
 
 
 async def test_unknown_execution_key(lc, user):

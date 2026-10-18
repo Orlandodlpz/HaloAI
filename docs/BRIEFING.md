@@ -62,7 +62,10 @@ POST /v1/requests/{request_id}/touch           knob activity in a decision state
 { "revision": 2 }
 
 GET  /v1/executions/{execution_key}            RECONCILE STATUS, and polling after approve
+GET  /v1/requests/{request_id}                 current result of any request, in any state (added 2026-10-17)
 ```
+
+- **Status by request (added 2026-10-17, asked by Victor).** `GET /v1/requests/{request_id}` returns the result shape for any request: processing, a decision, cancelled (by the user, the 60 s expiry or a newer request), approved or done. An expired decision reads as cancelled. Read only. It covers requests that never reached REVIEW and so never had an execution key; for a saved key, `GET /v1/executions/{execution_key}` is still the way to reconcile, and for a key that was never approved it answers with the request's state as well.
 
 *Memory (phone app and demo site).* **Signed off by Carlos 2026-10-15.** Everything the assistant remembers can be viewed, edited and deleted (locked decision).
 
