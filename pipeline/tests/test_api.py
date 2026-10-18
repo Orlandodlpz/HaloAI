@@ -167,3 +167,16 @@ async def test_unknown_request_404(client, keys):
     r = await client.post(f"/v1/requests/{uuid.uuid4()}/cancel", headers=auth(keys["phone"]),
                           json={"call_id": str(uuid.uuid4())})
     assert r.status_code == 404 and r.json()["error"]["code"] == "not_found"
+
+
+# ---------- status by request (2026-10-17) ----------
+
+async def test_request_status_over_http(client, keys, lc, user):
+    rid, _ = await review(lc, user)
+    r = await client.get(f"/v1/requests/{rid}", headers=auth(keys["phone"]))
+    assert r.status_code == 200 and r.json()["state"] == "review" and len(r.json()["execution_key"]) == 26
+    assert (await client.get(f"/v1/requests/{rid}")).status_code == 401
+    assert (await client.get(f"/v1/requests/{rid}", headers=auth(keys["demo"]))).status_code == 404  # not theirs
+    unknown = await client.get(f"/v1/requests/{uuid.uuid4()}", headers=auth(keys["phone"]))
+    assert unknown.status_code == 404 and unknown.json()["error"]["code"] == "not_found"
+    assert (await client.get("/v1/requests/not-a-uuid", headers=auth(keys["phone"]))).status_code == 422

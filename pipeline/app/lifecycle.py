@@ -400,6 +400,15 @@ class Lifecycle:
             req = await self._set_state(conn, req, expires_at=self._new_expiry())
             return await self._result(conn, req)
 
+    async def request_status(self, user_id: str, request_id: str) -> dict:
+        """A request's current result by its id, whatever its state: processing, a decision, cancelled,
+        approved or done. Covers requests that never reached REVIEW, so never had an execution key.
+        An expired decision reads as cancelled. Changes nothing else."""
+        async with self.pool.connection() as conn, conn.transaction():
+            await self._lock_user(conn, user_id)
+            req = await self._expire_if_due(conn, await self._load(conn, user_id, request_id))
+            return await self._result(conn, req)
+
     async def execution_status(self, user_id: str, key: str) -> dict:
         """Status by execution key. A key from a REVIEW that was never approved still answers, with
         the request's current state (review, cancelled, ...): approved only if the state is executing,

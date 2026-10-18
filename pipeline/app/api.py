@@ -110,6 +110,14 @@ async def touch_request(request_id: UUID, body: TouchBody, request: Request,
                            lambda: lc.touch(caller.user_id, str(request_id), body.revision))
 
 
+@router.get("/v1/requests/{request_id}")
+async def request_status(request_id: UUID, request: Request, caller: Caller = Depends(require_caller)):
+    """Any request's current result, in any state (asked by Victor, 2026-10-17): read only."""
+    lc = request.app.state.services.lc
+    return await json_call(request, caller, "request_status", None,
+                           lambda: lc.request_status(caller.user_id, str(request_id)))
+
+
 @router.get("/v1/executions/{execution_key}")
 async def execution_status(execution_key: str, request: Request, caller: Caller = Depends(require_caller)):
     lc = request.app.state.services.lc
