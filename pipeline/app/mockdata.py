@@ -9,6 +9,7 @@ model orders, and a web result that does the same. Tool results are data, never
 instructions (hard constraint).
 """
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
@@ -70,6 +71,7 @@ class MockWorld:
     window: tuple[date, date] | None = None  # real calendar: the days that were read; None = all of it
     allowed: frozenset[str] | None = None  # real mode: the team's addresses; None = sample world, no checks
     heard: str = ""  # the user's own words in this request, compacted (app/tools.py said_in), set by code
+    web: Callable[[str], Awaitable[list[dict]]] | None = None  # real web search (Tavily); None = canned results
 
     def event(self, event_id: str) -> dict | None:
         return next((e for e in self.events if e["event_id"] == event_id), None)

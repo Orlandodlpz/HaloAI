@@ -31,6 +31,7 @@ from app.processing import FakeExecutor, FakeProcessor, Processor, uses_real_too
 from app.streams import Streams
 from app.streams import router as stream_router
 from app.timing import hop, request_id_var
+from app.web_search import TavilySearch
 
 log = logging.getLogger("haloai")
 
@@ -85,7 +86,8 @@ async def build_services(settings: Settings) -> Services:
     # drafts, so it keeps the fake executor. Drafts made from the real calendar go to Google.
     mock_exec = MockExecutor(store) if settings.processor == "nemotron" else FakeExecutor("mock")
     real_exec = GoogleExecutor(google, settings, pool, clock)  # drafts from the real calendar (B4 step 3)
-    lc = Lifecycle(pool, settings, clock, make_processor(settings, store, memory, GoogleWorld(google, settings)),
+    world = GoogleWorld(google, settings, web=TavilySearch(settings))
+    lc = Lifecycle(pool, settings, clock, make_processor(settings, store, memory, world),
                    {"mock": mock_exec, "real": real_exec}, memory=memory)
     user_id = await lc.ensure_user("demo")
     # The phone key from .env, so the existing key keeps working. More keys: scripts/create_key.py

@@ -71,6 +71,7 @@ class Settings(BaseSettings):
     google_redirect_uri: str = "https://api.haloai-cov.io/v1/google/callback"
     token_encryption_key: SecretStr | None = None  # Fernet key for stored Google refresh tokens
     tavily_api_key: SecretStr | None = None
+    web_search_timeout_s: float = 6.0  # PROVISIONAL: past this the model answers without the search
     # The team's addresses (comma separated, server secret). Real mode sends to any address the user
     # said or has as a contact; sends to addresses outside this list count against a daily cap.
     allowed_recipients: SecretStr | None = None

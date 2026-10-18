@@ -107,9 +107,10 @@ def _people(items: list[dict], key_names: str = "names") -> list[tuple[str, str]
 
 class GoogleWorld:
     def __init__(self, auth: GoogleAuth, settings, http: httpx.AsyncClient | None = None,
-                 monotonic=clock_time.monotonic):
+                 monotonic=clock_time.monotonic, web=None):
         self.auth = auth
         self.settings = settings
+        self.web = web  # TavilySearch (app/web_search.py) or None: then web search says it is not connected
         self.http = http or httpx.AsyncClient(timeout=10)
         self.monotonic = monotonic
         self._contacts: dict[str, tuple[float, list[dict]]] = {}  # user_id -> (valid until, contacts)
@@ -136,8 +137,9 @@ class GoogleWorld:
                 f["result"] = "no_answer"
                 raise ScreenError(NO_ANSWER) from None
             f.update(events=len(events), contacts=len(contacts), contacts_cached=cached)
+        web = self.web.search if self.web is not None and self.web.configured() else None
         return MockWorld(tz=tz, today=today, contacts=contacts, events=events, source="google", window=window,
-                         allowed=allowed_recipients(self.settings))
+                         allowed=allowed_recipients(self.settings), web=web)
 
     async def _with_token(self, user_id: str, call):
         """Run with a valid access token. One retry with a fresh token if Google refuses the cached one."""
