@@ -21,7 +21,8 @@ from app.processing import ProcessContext, Processor, ProcessorOutput
 from app.prompt import system_prompt, user_message
 from app.screens import budget
 from app.timing import hop
-from app.tools import READ_TOOLS, STATUS, TOOL_SPECS, Final, ToolError, compact_speech, run_tool, untrusted
+from app.tools import (READ_TOOLS, STATUS, TOOL_SPECS, Final, ReadResult, ToolError, compact_speech, run_tool,
+                       untrusted)
 
 
 def plain_text(text: str) -> str:
@@ -111,8 +112,11 @@ class NemotronProcessor(Processor):
                     if name in STATUS:
                         await ctx.on_status(STATUS[name])
                     with hop(f"tool_{name}"):
-                        result = run_tool(name, args, world, now,
-                                          {"model_ms": round(model_ms), "tools_ms": round(tools_ms)})
+                        if name == "web_search" and world.web is not None:  # real search is a network call
+                            result = ReadResult({"results": await world.web(str(args.get("query", "")))})
+                        else:
+                            result = run_tool(name, args, world, now,
+                                              {"model_ms": round(model_ms), "tools_ms": round(tools_ms)})
                 except ToolError as err:
                     content = json.dumps({"error": str(err)})
                 else:
