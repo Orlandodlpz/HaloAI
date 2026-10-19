@@ -1,0 +1,343 @@
+{
+ "label": "b6_articles_call",
+ "only": "call",
+ "repeat": 3,
+ "git_sha": "786a030",
+ "model": "nvidia/Nemotron-3-Ultra-550b-a55b",
+ "reasoning": false,
+ "max_turns": 4,
+ "summary": {
+  "n": 9,
+  "correct": 9,
+  "within_turns": 9,
+  "traps_correct": 0,
+  "traps_n": 0,
+  "median_ms": 796,
+  "p90_ms": 904,
+  "median_ms_one_turn": 796,
+  "turns": {
+   "1": 9
+  },
+  "tokens_in": 24105,
+  "tokens_out": 807,
+  "cost_usd_estimate": 0.0265,
+  "by_category": {
+   "calls_and_guests": {
+    "n": 9,
+    "correct": 9,
+    "within_turns": 9
+   }
+  }
+ },
+ "cases": [
+  {
+   "id": "call_02",
+   "category": "calls_and_guests",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 1220,
+   "tokens_in": 2681,
+   "tokens_out": 113,
+   "state": "review",
+   "draft": {
+    "kind": "create_event",
+    "title": "Call with Maria about the budget",
+    "start": "2026-10-16T16:00:00-05:00",
+    "end": "2026-10-16T17:00:00-05:00",
+    "timezone": "America/Chicago",
+    "guests": [
+     {
+      "name": "Maria Lopez",
+      "email": "maria.lopez@example.com"
+     }
+    ],
+    "video_call": true,
+    "description": "Budget"
+   },
+   "screen_lines": [
+    "New event",
+    "Call with Maria about the budget",
+    "Fri Oct 16",
+    "4:00 PM to 5:00 PM",
+    "Invite: maria.lopez@example.com",
+    "Google Meet link",
+    "About: Budget"
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 1
+  },
+  {
+   "id": "call_03",
+   "category": "calls_and_guests",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 802,
+   "tokens_in": 2677,
+   "tokens_out": 65,
+   "state": "conflict_ambiguous",
+   "draft": {
+    "kind": "create_event",
+    "title": "Meeting with Alex",
+    "start": "2026-10-14T14:00:00-05:00",
+    "end": "2026-10-14T15:00:00-05:00",
+    "timezone": "America/Chicago",
+    "video_call": false,
+    "description": ""
+   },
+   "screen_lines": [
+    "Which Alex?"
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 1
+  },
+  {
+   "id": "call_04",
+   "category": "calls_and_guests",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 642,
+   "tokens_in": 2677,
+   "tokens_out": 91,
+   "state": "review",
+   "draft": {
+    "kind": "create_event",
+    "title": "Coffee with Carlos",
+    "start": "2026-10-15T15:00:00-05:00",
+    "end": "2026-10-15T16:00:00-05:00",
+    "timezone": "America/Chicago",
+    "guests": [
+     {
+      "name": "Carlos Diaz",
+      "email": "carlos.diaz@example.com"
+     }
+    ],
+    "video_call": false,
+    "description": ""
+   },
+   "screen_lines": [
+    "New event",
+    "Coffee with Carlos",
+    "Thu Oct 15",
+    "3:00 PM to 4:00 PM",
+    "Invite: carlos.diaz@example.com"
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 1
+  },
+  {
+   "id": "call_02",
+   "category": "calls_and_guests",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 904,
+   "tokens_in": 2681,
+   "tokens_out": 113,
+   "state": "review",
+   "draft": {
+    "kind": "create_event",
+    "title": "Call with Maria about the budget",
+    "start": "2026-10-16T16:00:00-05:00",
+    "end": "2026-10-16T17:00:00-05:00",
+    "timezone": "America/Chicago",
+    "guests": [
+     {
+      "name": "Maria Lopez",
+      "email": "maria.lopez@example.com"
+     }
+    ],
+    "video_call": true,
+    "description": "Budget"
+   },
+   "screen_lines": [
+    "New event",
+    "Call with Maria about the budget",
+    "Fri Oct 16",
+    "4:00 PM to 5:00 PM",
+    "Invite: maria.lopez@example.com",
+    "Google Meet link",
+    "About: Budget"
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 2
+  },
+  {
+   "id": "call_03",
+   "category": "calls_and_guests",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 796,
+   "tokens_in": 2677,
+   "tokens_out": 65,
+   "state": "conflict_ambiguous",
+   "draft": {
+    "kind": "create_event",
+    "title": "Meeting with Alex",
+    "start": "2026-10-14T14:00:00-05:00",
+    "end": "2026-10-14T15:00:00-05:00",
+    "timezone": "America/Chicago",
+    "video_call": false,
+    "description": ""
+   },
+   "screen_lines": [
+    "Which Alex?"
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 2
+  },
+  {
+   "id": "call_04",
+   "category": "calls_and_guests",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 852,
+   "tokens_in": 2677,
+   "tokens_out": 91,
+   "state": "review",
+   "draft": {
+    "kind": "create_event",
+    "title": "Coffee with Carlos",
+    "start": "2026-10-15T15:00:00-05:00",
+    "end": "2026-10-15T16:00:00-05:00",
+    "timezone": "America/Chicago",
+    "guests": [
+     {
+      "name": "Carlos Diaz",
+      "email": "carlos.diaz@example.com"
+     }
+    ],
+    "video_call": false,
+    "description": ""
+   },
+   "screen_lines": [
+    "New event",
+    "Coffee with Carlos",
+    "Thu Oct 15",
+    "3:00 PM to 4:00 PM",
+    "Invite: carlos.diaz@example.com"
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 2
+  },
+  {
+   "id": "call_02",
+   "category": "calls_and_guests",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 693,
+   "tokens_in": 2681,
+   "tokens_out": 113,
+   "state": "review",
+   "draft": {
+    "kind": "create_event",
+    "title": "Call with Maria about the budget",
+    "start": "2026-10-16T16:00:00-05:00",
+    "end": "2026-10-16T17:00:00-05:00",
+    "timezone": "America/Chicago",
+    "guests": [
+     {
+      "name": "Maria Lopez",
+      "email": "maria.lopez@example.com"
+     }
+    ],
+    "video_call": true,
+    "description": "Budget"
+   },
+   "screen_lines": [
+    "New event",
+    "Call with Maria about the budget",
+    "Fri Oct 16",
+    "4:00 PM to 5:00 PM",
+    "Invite: maria.lopez@example.com",
+    "Google Meet link",
+    "About: Budget"
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 3
+  },
+  {
+   "id": "call_03",
+   "category": "calls_and_guests",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 622,
+   "tokens_in": 2677,
+   "tokens_out": 65,
+   "state": "conflict_ambiguous",
+   "draft": {
+    "kind": "create_event",
+    "title": "Meeting with Alex",
+    "start": "2026-10-14T14:00:00-05:00",
+    "end": "2026-10-14T15:00:00-05:00",
+    "timezone": "America/Chicago",
+    "video_call": false,
+    "description": ""
+   },
+   "screen_lines": [
+    "Which Alex?"
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 3
+  },
+  {
+   "id": "call_04",
+   "category": "calls_and_guests",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 635,
+   "tokens_in": 2677,
+   "tokens_out": 91,
+   "state": "review",
+   "draft": {
+    "kind": "create_event",
+    "title": "Coffee with Carlos",
+    "start": "2026-10-15T15:00:00-05:00",
+    "end": "2026-10-15T16:00:00-05:00",
+    "timezone": "America/Chicago",
+    "guests": [
+     {
+      "name": "Carlos Diaz",
+      "email": "carlos.diaz@example.com"
+     }
+    ],
+    "video_call": false,
+    "description": ""
+   },
+   "screen_lines": [
+    "New event",
+    "Coffee with Carlos",
+    "Thu Oct 15",
+    "3:00 PM to 4:00 PM",
+    "Invite: carlos.diaz@example.com"
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 3
+  }
+ ]
+}

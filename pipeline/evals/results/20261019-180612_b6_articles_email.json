@@ -1,0 +1,904 @@
+{
+ "label": "b6_articles_email",
+ "only": "email",
+ "repeat": 3,
+ "git_sha": "786a030",
+ "model": "nvidia/Nemotron-3-Ultra-550b-a55b",
+ "reasoning": false,
+ "max_turns": 4,
+ "summary": {
+  "n": 30,
+  "correct": 30,
+  "within_turns": 30,
+  "traps_correct": 0,
+  "traps_n": 0,
+  "median_ms": 791.0,
+  "p90_ms": 823,
+  "median_ms_one_turn": 791.0,
+  "turns": {
+   "1": 30
+  },
+  "tokens_in": 80328,
+  "tokens_out": 1659,
+  "cost_usd_estimate": 0.0853,
+  "by_category": {
+   "email_known": {
+    "n": 30,
+    "correct": 30,
+    "within_turns": 30
+   }
+  }
+ },
+ "cases": [
+  {
+   "id": "email_01",
+   "category": "email_known",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 922,
+   "tokens_in": 2678,
+   "tokens_out": 57,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "victor.morales@example.com",
+    "to_name": "Victor Morales",
+    "subject": "Meeting moved to Thursday",
+    "body": "The meeting has been moved to Thursday."
+   },
+   "screen_lines": [
+    "To: victor.morales@example.com",
+    "Re: Meeting moved to Thursday",
+    "The meeting has been moved to Thursday."
+   ],
+   "statuses": [
+    "Email to Victor Morales"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 1
+  },
+  {
+   "id": "email_02",
+   "category": "email_known",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 622,
+   "tokens_in": 2678,
+   "tokens_out": 55,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "victor.morales@example.com",
+    "to_name": "Victor Morales",
+    "subject": "Meeting moved to Thursday",
+    "body": "The meeting has been moved to Thursday."
+   },
+   "screen_lines": [
+    "To: victor.morales@example.com",
+    "Re: Meeting moved to Thursday",
+    "The meeting has been moved to Thursday."
+   ],
+   "statuses": [
+    "Email to Victor Morales"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 1
+  },
+  {
+   "id": "email_03",
+   "category": "email_known",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 856,
+   "tokens_in": 2678,
+   "tokens_out": 55,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "carlos.diaz@example.com",
+    "to_name": "Carlos Diaz",
+    "subject": "Running late",
+    "body": "I'll be 10 minutes late."
+   },
+   "screen_lines": [
+    "To: carlos.diaz@example.com",
+    "Re: Running late",
+    "I'll be 10 minutes late."
+   ],
+   "statuses": [
+    "Email to Carlos Diaz"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 1
+  },
+  {
+   "id": "email_04",
+   "category": "email_known",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 801,
+   "tokens_in": 2673,
+   "tokens_out": 51,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "maria.lopez@example.com",
+    "to_name": "Maria Lopez",
+    "subject": "Thanks for dinner",
+    "body": "Thanks for dinner"
+   },
+   "screen_lines": [
+    "To: maria.lopez@example.com",
+    "Re: Thanks for dinner",
+    "Thanks for dinner"
+   ],
+   "statuses": [
+    "Email to Maria Lopez"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 1
+  },
+  {
+   "id": "email_05",
+   "category": "email_known",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 823,
+   "tokens_in": 2679,
+   "tokens_out": 57,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "alex.kim@example.com",
+    "to_name": "Alex Kim",
+    "subject": "Report status",
+    "body": "Hi Alex, is the report ready? Thanks."
+   },
+   "screen_lines": [
+    "To: alex.kim@example.com",
+    "Re: Report status",
+    "Hi Alex, is the report ready? Thanks."
+   ],
+   "statuses": [
+    "Email to Alex Kim"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 1
+  },
+  {
+   "id": "email_06",
+   "category": "email_known",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 802,
+   "tokens_in": 2679,
+   "tokens_out": 57,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "tomai.nguyen@example.com",
+    "to_name": "Tomai Nguyen",
+    "subject": "Cannot attend meeting",
+    "body": "I cannot attend the meeting because I am sick."
+   },
+   "screen_lines": [
+    "To: tomai.nguyen@example.com",
+    "Re: Cannot attend meeting",
+    "I cannot attend the meeting because I am sick."
+   ],
+   "statuses": [
+    "Email to Tomai Nguyen"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 1
+  },
+  {
+   "id": "email_07",
+   "category": "email_known",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 579,
+   "tokens_in": 2678,
+   "tokens_out": 52,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "victor.morales@example.com",
+    "to_name": "Victor Morales",
+    "subject": "Budget update",
+    "body": "The numbers are in."
+   },
+   "screen_lines": [
+    "To: victor.morales@example.com",
+    "Re: Budget update",
+    "The numbers are in."
+   ],
+   "statuses": [
+    "Email to Victor Morales"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 1
+  },
+  {
+   "id": "email_08",
+   "category": "email_known",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 588,
+   "tokens_in": 2679,
+   "tokens_out": 57,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "victor@gmail.com",
+    "to_name": "victor@gmail.com",
+    "subject": "See you tomorrow",
+    "body": "See you tomorrow"
+   },
+   "screen_lines": [
+    "To: victor@gmail.com",
+    "Re: See you tomorrow",
+    "See you tomorrow"
+   ],
+   "statuses": [
+    "Email to victor@gmail.com"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 1
+  },
+  {
+   "id": "email_09",
+   "category": "email_known",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 804,
+   "tokens_in": 2678,
+   "tokens_out": 55,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "carlos.diaz@example.com",
+    "to_name": "Carlos Diaz",
+    "subject": "Demo on Friday",
+    "body": "The demo is on Friday."
+   },
+   "screen_lines": [
+    "To: carlos.diaz@example.com",
+    "Re: Demo on Friday",
+    "The demo is on Friday."
+   ],
+   "statuses": [
+    "Email to Carlos Diaz"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 1
+  },
+  {
+   "id": "email_10",
+   "category": "email_known",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 793,
+   "tokens_in": 2676,
+   "tokens_out": 57,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "alex.rivera@example.com",
+    "to_name": "Alex Rivera",
+    "subject": "Lunch is on me",
+    "body": "Lunch is on me."
+   },
+   "screen_lines": [
+    "To: alex.rivera@example.com",
+    "Re: Lunch is on me",
+    "Lunch is on me."
+   ],
+   "statuses": [
+    "Email to Alex Rivera"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 1
+  },
+  {
+   "id": "email_01",
+   "category": "email_known",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 592,
+   "tokens_in": 2678,
+   "tokens_out": 57,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "victor.morales@example.com",
+    "to_name": "Victor Morales",
+    "subject": "Meeting moved to Thursday",
+    "body": "The meeting has been moved to Thursday."
+   },
+   "screen_lines": [
+    "To: victor.morales@example.com",
+    "Re: Meeting moved to Thursday",
+    "The meeting has been moved to Thursday."
+   ],
+   "statuses": [
+    "Email to Victor Morales"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 2
+  },
+  {
+   "id": "email_02",
+   "category": "email_known",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 790,
+   "tokens_in": 2678,
+   "tokens_out": 55,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "victor.morales@example.com",
+    "to_name": "Victor Morales",
+    "subject": "Meeting moved to Thursday",
+    "body": "The meeting has been moved to Thursday."
+   },
+   "screen_lines": [
+    "To: victor.morales@example.com",
+    "Re: Meeting moved to Thursday",
+    "The meeting has been moved to Thursday."
+   ],
+   "statuses": [
+    "Email to Victor Morales"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 2
+  },
+  {
+   "id": "email_03",
+   "category": "email_known",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 808,
+   "tokens_in": 2678,
+   "tokens_out": 55,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "carlos.diaz@example.com",
+    "to_name": "Carlos Diaz",
+    "subject": "Running late",
+    "body": "I'll be 10 minutes late."
+   },
+   "screen_lines": [
+    "To: carlos.diaz@example.com",
+    "Re: Running late",
+    "I'll be 10 minutes late."
+   ],
+   "statuses": [
+    "Email to Carlos Diaz"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 2
+  },
+  {
+   "id": "email_04",
+   "category": "email_known",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 572,
+   "tokens_in": 2673,
+   "tokens_out": 51,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "maria.lopez@example.com",
+    "to_name": "Maria Lopez",
+    "subject": "Thanks for dinner",
+    "body": "Thanks for dinner"
+   },
+   "screen_lines": [
+    "To: maria.lopez@example.com",
+    "Re: Thanks for dinner",
+    "Thanks for dinner"
+   ],
+   "statuses": [
+    "Email to Maria Lopez"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 2
+  },
+  {
+   "id": "email_05",
+   "category": "email_known",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 811,
+   "tokens_in": 2679,
+   "tokens_out": 57,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "alex.kim@example.com",
+    "to_name": "Alex Kim",
+    "subject": "Report status",
+    "body": "Hi Alex, is the report ready? Thanks."
+   },
+   "screen_lines": [
+    "To: alex.kim@example.com",
+    "Re: Report status",
+    "Hi Alex, is the report ready? Thanks."
+   ],
+   "statuses": [
+    "Email to Alex Kim"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 2
+  },
+  {
+   "id": "email_06",
+   "category": "email_known",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 593,
+   "tokens_in": 2679,
+   "tokens_out": 57,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "tomai.nguyen@example.com",
+    "to_name": "Tomai Nguyen",
+    "subject": "Cannot attend meeting",
+    "body": "I cannot attend the meeting because I am sick."
+   },
+   "screen_lines": [
+    "To: tomai.nguyen@example.com",
+    "Re: Cannot attend meeting",
+    "I cannot attend the meeting because I am sick."
+   ],
+   "statuses": [
+    "Email to Tomai Nguyen"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 2
+  },
+  {
+   "id": "email_07",
+   "category": "email_known",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 783,
+   "tokens_in": 2678,
+   "tokens_out": 52,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "victor.morales@example.com",
+    "to_name": "Victor Morales",
+    "subject": "Budget update",
+    "body": "The numbers are in."
+   },
+   "screen_lines": [
+    "To: victor.morales@example.com",
+    "Re: Budget update",
+    "The numbers are in."
+   ],
+   "statuses": [
+    "Email to Victor Morales"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 2
+  },
+  {
+   "id": "email_08",
+   "category": "email_known",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 584,
+   "tokens_in": 2679,
+   "tokens_out": 57,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "victor@gmail.com",
+    "to_name": "victor@gmail.com",
+    "subject": "See you tomorrow",
+    "body": "See you tomorrow"
+   },
+   "screen_lines": [
+    "To: victor@gmail.com",
+    "Re: See you tomorrow",
+    "See you tomorrow"
+   ],
+   "statuses": [
+    "Email to victor@gmail.com"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 2
+  },
+  {
+   "id": "email_09",
+   "category": "email_known",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 808,
+   "tokens_in": 2678,
+   "tokens_out": 55,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "carlos.diaz@example.com",
+    "to_name": "Carlos Diaz",
+    "subject": "Demo on Friday",
+    "body": "The demo is on Friday."
+   },
+   "screen_lines": [
+    "To: carlos.diaz@example.com",
+    "Re: Demo on Friday",
+    "The demo is on Friday."
+   ],
+   "statuses": [
+    "Email to Carlos Diaz"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 2
+  },
+  {
+   "id": "email_10",
+   "category": "email_known",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 792,
+   "tokens_in": 2676,
+   "tokens_out": 57,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "alex.rivera@example.com",
+    "to_name": "Alex Rivera",
+    "subject": "Lunch is on me",
+    "body": "Lunch is on me."
+   },
+   "screen_lines": [
+    "To: alex.rivera@example.com",
+    "Re: Lunch is on me",
+    "Lunch is on me."
+   ],
+   "statuses": [
+    "Email to Alex Rivera"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 2
+  },
+  {
+   "id": "email_01",
+   "category": "email_known",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 865,
+   "tokens_in": 2678,
+   "tokens_out": 57,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "victor.morales@example.com",
+    "to_name": "Victor Morales",
+    "subject": "Meeting moved to Thursday",
+    "body": "The meeting has been moved to Thursday."
+   },
+   "screen_lines": [
+    "To: victor.morales@example.com",
+    "Re: Meeting moved to Thursday",
+    "The meeting has been moved to Thursday."
+   ],
+   "statuses": [
+    "Email to Victor Morales"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 3
+  },
+  {
+   "id": "email_02",
+   "category": "email_known",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 580,
+   "tokens_in": 2678,
+   "tokens_out": 55,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "victor.morales@example.com",
+    "to_name": "Victor Morales",
+    "subject": "Meeting moved to Thursday",
+    "body": "The meeting has been moved to Thursday."
+   },
+   "screen_lines": [
+    "To: victor.morales@example.com",
+    "Re: Meeting moved to Thursday",
+    "The meeting has been moved to Thursday."
+   ],
+   "statuses": [
+    "Email to Victor Morales"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 3
+  },
+  {
+   "id": "email_03",
+   "category": "email_known",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 787,
+   "tokens_in": 2678,
+   "tokens_out": 55,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "carlos.diaz@example.com",
+    "to_name": "Carlos Diaz",
+    "subject": "Running late",
+    "body": "I'll be 10 minutes late."
+   },
+   "screen_lines": [
+    "To: carlos.diaz@example.com",
+    "Re: Running late",
+    "I'll be 10 minutes late."
+   ],
+   "statuses": [
+    "Email to Carlos Diaz"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 3
+  },
+  {
+   "id": "email_04",
+   "category": "email_known",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 573,
+   "tokens_in": 2673,
+   "tokens_out": 51,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "maria.lopez@example.com",
+    "to_name": "Maria Lopez",
+    "subject": "Thanks for dinner",
+    "body": "Thanks for dinner"
+   },
+   "screen_lines": [
+    "To: maria.lopez@example.com",
+    "Re: Thanks for dinner",
+    "Thanks for dinner"
+   ],
+   "statuses": [
+    "Email to Maria Lopez"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 3
+  },
+  {
+   "id": "email_05",
+   "category": "email_known",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 819,
+   "tokens_in": 2679,
+   "tokens_out": 57,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "alex.kim@example.com",
+    "to_name": "Alex Kim",
+    "subject": "Report status",
+    "body": "Hi Alex, is the report ready? Thanks."
+   },
+   "screen_lines": [
+    "To: alex.kim@example.com",
+    "Re: Report status",
+    "Hi Alex, is the report ready? Thanks."
+   ],
+   "statuses": [
+    "Email to Alex Kim"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 3
+  },
+  {
+   "id": "email_06",
+   "category": "email_known",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 816,
+   "tokens_in": 2679,
+   "tokens_out": 57,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "tomai.nguyen@example.com",
+    "to_name": "Tomai Nguyen",
+    "subject": "Cannot attend meeting",
+    "body": "I cannot attend the meeting because I am sick."
+   },
+   "screen_lines": [
+    "To: tomai.nguyen@example.com",
+    "Re: Cannot attend meeting",
+    "I cannot attend the meeting because I am sick."
+   ],
+   "statuses": [
+    "Email to Tomai Nguyen"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 3
+  },
+  {
+   "id": "email_07",
+   "category": "email_known",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 570,
+   "tokens_in": 2678,
+   "tokens_out": 52,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "victor.morales@example.com",
+    "to_name": "Victor Morales",
+    "subject": "Budget update",
+    "body": "The numbers are in."
+   },
+   "screen_lines": [
+    "To: victor.morales@example.com",
+    "Re: Budget update",
+    "The numbers are in."
+   ],
+   "statuses": [
+    "Email to Victor Morales"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 3
+  },
+  {
+   "id": "email_08",
+   "category": "email_known",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 804,
+   "tokens_in": 2679,
+   "tokens_out": 57,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "victor@gmail.com",
+    "to_name": "victor@gmail.com",
+    "subject": "See you tomorrow",
+    "body": "See you tomorrow"
+   },
+   "screen_lines": [
+    "To: victor@gmail.com",
+    "Re: See you tomorrow",
+    "See you tomorrow"
+   ],
+   "statuses": [
+    "Email to victor@gmail.com"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 3
+  },
+  {
+   "id": "email_09",
+   "category": "email_known",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 786,
+   "tokens_in": 2678,
+   "tokens_out": 55,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "carlos.diaz@example.com",
+    "to_name": "Carlos Diaz",
+    "subject": "Demo on Friday",
+    "body": "The demo is on Friday."
+   },
+   "screen_lines": [
+    "To: carlos.diaz@example.com",
+    "Re: Demo on Friday",
+    "The demo is on Friday."
+   ],
+   "statuses": [
+    "Email to Carlos Diaz"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 3
+  },
+  {
+   "id": "email_10",
+   "category": "email_known",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 583,
+   "tokens_in": 2676,
+   "tokens_out": 57,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "alex.rivera@example.com",
+    "to_name": "Alex Rivera",
+    "subject": "Lunch is on me",
+    "body": "Lunch is on me."
+   },
+   "screen_lines": [
+    "To: alex.rivera@example.com",
+    "Re: Lunch is on me",
+    "Lunch is on me."
+   ],
+   "statuses": [
+    "Email to Alex Rivera"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 3
+  }
+ ]
+}
