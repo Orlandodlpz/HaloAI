@@ -40,6 +40,12 @@ def tavily():
     return FakeTavily()
 
 
+async def test_depth_comes_from_config(settings, tavily):
+    s = settings.model_copy(update={"tavily_api_key": SecretStr("k"), "web_search_depth": "basic"})
+    await TavilySearch(s, httpx.AsyncClient(transport=httpx.MockTransport(tavily.handler))).search("spurs")
+    assert tavily.calls[0]["json"]["search_depth"] == "basic"
+
+
 @pytest.fixture
 def search(settings, tavily):
     s = settings.model_copy(update={"tavily_api_key": SecretStr("tvly-test-key")})
@@ -52,7 +58,7 @@ async def test_request_shape(search, tavily):
     await search.search("  next   spurs\nhome game ")
     (call,) = tavily.calls
     assert call["url"] == SEARCH_URL and call["headers"]["authorization"] == "Bearer tvly-test-key"
-    assert call["json"] == {"query": "next spurs home game", "search_depth": "basic", "max_results": MAX_RESULTS,
+    assert call["json"] == {"query": "next spurs home game", "search_depth": "advanced", "max_results": MAX_RESULTS,
                             "include_answer": False, "include_raw_content": False}
 
 

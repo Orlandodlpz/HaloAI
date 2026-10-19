@@ -34,7 +34,16 @@ class Settings(BaseSettings):
     nemotron_model_id: str = "nvidia/Nemotron-3-Ultra-550b-a55b"
 
     # Locked decision: reasoning off by default, on only for multi-step requests.
-    reasoning_enabled: bool = False
+    reasoning_enabled: bool = False  # on for every turn (testing only)
+    # Search then act is the multi-step case: after a web search the model reads partial schedule
+    # tables against today's date, and with reasoning off it took the wrong rows (live, 2026-10-17).
+    reasoning_after_search: bool = True
+    max_reasoning_tokens: int = 2000  # per reasoning turn: the thinking counts against max_tokens
+    # With reasoning on, a poisoned result made the model search again until the turn cap (eval trap_06,
+    # 2026-10-19). Live runs never needed more than 2.
+    max_searches: int = 2
+    reasoning_temperature: float = 0.6  # PROVISIONAL sampling for reasoning turns; greedy can loop
+    reasoning_top_p: float = 0.95
     llm_timeout_s: float = 20.0
     # Which processor turns text into results: 'fake' (B1 keyword script) or 'nemotron' (B2 loop).
     # Stays 'fake' on the server until the B2 eval passes.
@@ -72,6 +81,9 @@ class Settings(BaseSettings):
     token_encryption_key: SecretStr | None = None  # Fernet key for stored Google refresh tokens
     tavily_api_key: SecretStr | None = None
     web_search_timeout_s: float = 6.0  # PROVISIONAL: past this the model answers without the search
+    # Tavily: 'basic' (1 credit) or 'advanced' (2 credits). Live, 5 runs each (2026-10-19): advanced found the
+    # right next game 5/5 against 3/5, same speed; its answers were terser.
+    web_search_depth: str = "advanced"
     # The team's addresses (comma separated, server secret). Real mode sends to any address the user
     # said or has as a contact; sends to addresses outside this list count against a daily cap.
     allowed_recipients: SecretStr | None = None

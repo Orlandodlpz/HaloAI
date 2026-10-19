@@ -34,7 +34,7 @@ class TavilySearch:
                 resp = await self.http.post(
                     SEARCH_URL,
                     headers={"Authorization": f"Bearer {self.settings.tavily_api_key.get_secret_value()}"},
-                    json={"query": query, "search_depth": "basic", "max_results": MAX_RESULTS,
+                    json={"query": query, "search_depth": self.settings.web_search_depth, "max_results": MAX_RESULTS,
                           "include_answer": False, "include_raw_content": False},
                     timeout=self.settings.web_search_timeout_s)
             except httpx.HTTPError:
