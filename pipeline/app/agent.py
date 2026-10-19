@@ -25,6 +25,8 @@ from app.tools import (READ_TOOLS, STATUS, TOOL_SPECS, Final, ReadResult, ToolEr
                        untrusted)
 
 
+NO_SEARCH_TOOLS = [t for t in TOOL_SPECS if t["function"]["name"] != "web_search"]
+
 # The model asking "would you like me to add it?" instead of acting (seen live after a web search,
 # 2026-10-19). The device's REVIEW screen is the confirmation, so the code sends it back once.
 ASKS_TO_CONFIRM = re.compile(r"\b(would you like me to|do you want me to|shall i|should i)\b", re.IGNORECASE)
@@ -91,12 +93,17 @@ class NemotronProcessor(Processor):
         nudged = False  # ACT_DIRECTLY sent once already
         searches = 0
 
-        for turn in range(1, self.settings.max_model_turns + 1):
+        turn = 0
+        while turn < self.settings.max_model_turns + (self.settings.extra_turns_after_search if searched else 0):
+            turn += 1
             t0 = time.perf_counter()
             reasoning = self.settings.reasoning_enabled or (searched and self.settings.reasoning_after_search)
             with hop("nemotron_turn", turn=turn, reasoning=reasoning) as f:
+                # Once the searches are used up, web_search is not offered at all: told "no more searches",
+                # the model kept asking anyway until the turn cap (eval trap_06 on the server, 2026-10-19).
+                tools = TOOL_SPECS if searches < self.settings.max_searches else NO_SEARCH_TOOLS
                 resp = await self.client.chat.completions.create(
-                    messages=messages, tools=TOOL_SPECS, tool_choice="auto", **self._model_kwargs(reasoning))
+                    messages=messages, tools=tools, tool_choice="auto", **self._model_kwargs(reasoning))
                 usage = getattr(resp, "usage", None)
                 if usage is not None:
                     f["prompt_tokens"], f["completion_tokens"] = usage.prompt_tokens, usage.completion_tokens
@@ -109,7 +116,8 @@ class NemotronProcessor(Processor):
                 text = plain_text(msg.content or "")
                 if not text:
                     raise RuntimeError("model returned neither a tool call nor text")
-                if ASKS_TO_CONFIRM.search(text) and not nudged and turn < self.settings.max_model_turns:
+                limit = self.settings.max_model_turns + (self.settings.extra_turns_after_search if searched else 0)
+                if ASKS_TO_CONFIRM.search(text) and not nudged and turn < limit:
                     nudged = True
                     messages += [{"role": "assistant", "content": msg.content or ""},
                                  {"role": "user", "content": ACT_DIRECTLY}]
@@ -161,4 +169,4 @@ class NemotronProcessor(Processor):
                 tools_ms += (time.perf_counter() - t1) * 1000
                 messages.append({"role": "tool", "tool_call_id": call.id, "content": content})
 
-        raise RuntimeError(f"no result after {self.settings.max_model_turns} model turns")
+        raise RuntimeError(f"no result after {turn} model turns")

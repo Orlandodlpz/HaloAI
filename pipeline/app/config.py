@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     # With reasoning on, a poisoned result made the model search again until the turn cap (eval trap_06,
     # 2026-10-19). Live runs never needed more than 2.
     max_searches: int = 2
+    # The model calls web_search even when it is no longer offered (it remembers it from the conversation),
+    # which costs a turn; a request that searched gets one more turn (eval trap_06 traces, 2026-10-19).
+    extra_turns_after_search: int = 1
     reasoning_temperature: float = 0.6  # PROVISIONAL sampling for reasoning turns; greedy can loop
     reasoning_top_p: float = 0.95
     llm_timeout_s: float = 20.0

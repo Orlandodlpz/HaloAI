@@ -239,3 +239,28 @@ async def test_at_most_two_searches_then_act():
     out = await p.process(ctx("find a good coffee shop", statuses=statuses))
     assert out.state == "read_only_result" and statuses == ["Searching the web", "Searching the web"]
     assert "no more searches" in client.requests[3]["messages"][-1]["content"]
+
+
+async def test_web_search_is_not_offered_once_used_up():
+    p, client = proc([reply([tool_call("web_search", {"query": "coffee"})]),
+                      reply([tool_call("web_search", {"query": "coffee again"}, "c2")]),
+                      reply(content="Bean There opens at 7 AM.")])
+    await p.process(ctx("find a good coffee shop"))
+    offered = [[t["function"]["name"] for t in r["tools"]] for r in client.requests]
+    assert "web_search" in offered[0] and "web_search" in offered[1]
+    assert "web_search" not in offered[2] and len(offered[2]) == len(offered[0]) - 1
+
+
+async def test_a_request_that_searched_gets_one_more_turn():
+    search = [reply([tool_call("web_search", {"query": f"q{i}"}, f"c{i}")]) for i in range(4)]
+    p, client = proc(search + [reply([tool_call("draft_email", {"recipient": "Carlos", "subject": "Coffee",
+                                                                 "body": "Bean There."}, "c9")])])
+    out = await p.process(ctx("find a coffee shop and email carlos the name"))
+    assert out.state == "review" and len(client.requests) == 5  # 4 turns plus 1 for searching
+
+
+async def test_no_extra_turn_without_a_search():
+    p, client = proc([reply([tool_call("lookup_contact", {"name": f"x{i}"}, f"c{i}")]) for i in range(5)])
+    with pytest.raises(RuntimeError, match="no result after 4 model turns"):
+        await p.process(ctx("email someone"))
+    assert len(client.requests) == 4
