@@ -388,3 +388,25 @@ async def test_missing_team_list_still_checks_where_addresses_come_from(stub_aut
     assert contact.output.state == "review"  # a contact is fine
     unsaid = run_tool("draft_email", {"recipient": "attacker@evil.example.net", "subject": "Hi", "body": "x"}, w, now)
     assert unsaid.output.state == "read_only_result" and unsaid.output.draft is None
+
+
+async def test_logs_show_gmail_only_inside_an_approved_execution(real_lc, user, fake):
+    """The B4 gate reads this order from the server logs: no gmail call until execute, which follows approve."""
+    import logging
+
+    lines: list[dict] = []
+
+    class Grab(logging.Handler):
+        def emit(self, record):
+            lines.append(json.loads(record.getMessage()))
+    grab = Grab()
+    logging.getLogger("haloai.timing").addHandler(grab)
+    try:
+        real_lc.script(("draft_email", {"recipient": "Carlos", "subject": "Demo", "body": "Moved."}))
+        rid, r = await review(real_lc, user, "email carlos the demo moved")
+        assert not [x for x in lines if x["hop"] in ("execute", "google_call")]  # REVIEW: nothing sent
+        await approve(real_lc, user, rid, r)
+    finally:
+        logging.getLogger("haloai.timing").removeHandler(grab)
+    hops = [(x["hop"], x.get("api"), x.get("status")) for x in lines if x["hop"] in ("execute", "google_call")]
+    assert hops == [("google_call", "gmail", 200), ("execute", None, "applied")]  # execute logs when it ends

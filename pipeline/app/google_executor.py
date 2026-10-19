@@ -28,6 +28,7 @@ import httpx
 from app.google_auth import GoogleAuth, GoogleError
 from app.google_world import EXPIRED, allowed_recipients, event_alias
 from app.processing import ExecutionOutcome, Executor
+from app.timing import hop
 from app.tools import EMAIL_RE, fmt_day, fmt_range
 
 EVENTS_URL = "https://www.googleapis.com/calendar/v3/calendars/primary/events"
@@ -108,7 +109,9 @@ class GoogleExecutor(Executor):
 
     async def _call(self, method: str, url: str, token: str, **kwargs) -> httpx.Response:
         headers = {"Authorization": f"Bearer {token}", **kwargs.pop("headers", {})}
-        resp = await self.http.request(method, url, headers=headers, **kwargs)
+        with hop("google_call", api="gmail" if url.startswith(SEND_URL) else "calendar", method=method) as f:
+            resp = await self.http.request(method, url, headers=headers, **kwargs)
+            f["status"] = resp.status_code
         if resp.status_code == 401:
             raise _Expired()
         if resp.status_code >= 500:
