@@ -71,15 +71,17 @@ GET  /v1/requests/{request_id}                 current result of any request, in
 
 ```
 GET    /v1/memory                     list: { "items": [ memory item, ... ] }
-POST   /v1/memory                     { "call_id": "uuid", "kind": "contact | preference | fact", "label": "Victor", "value": "victor@example.com" }
+POST   /v1/memory                     { "call_id": "uuid", "kind": "contact | preference | fact | routine", "label": "Victor", "value": "victor@example.com" }
 PATCH  /v1/memory/{memory_id}         { "call_id": "uuid", "label": "...", "value": "..." }   (either field)
 DELETE /v1/memory/{memory_id}         { "call_id": "uuid" }   -> { "deleted": true }
 
-memory item: { "memory_id": "...", "kind": "contact | preference | fact | action", "label": "...", "value": "...",
+memory item: { "memory_id": "...", "kind": "contact | preference | fact | routine | action", "label": "...", "value": "...",
                "source": "user | learned | action", "uses": 3, "updated_at": "RFC 3339" }
 ```
 
 `action` items are recent approved actions; they can be deleted but not edited. Errors use the usual shape.
+
+**Routines (added 2026-10-19, Orlando; tell Carlos):** a `routine` item is a saved command the user reuses by name, the Personal AI track's "reusable skills". `label` is the name (for example `gym`, stored lowercase without "my" or "routine"), `value` is the command in the user's words (for example `block 7 to 8 am for the gym`, at most 200 characters). Saved by voice ("save a routine called gym: ...", "save that as my gym routine"), only when the user's own words ask for it, or with `POST /v1/memory`; viewed, edited and deleted like any memory item, so the phone's memory screen should show them. Using one ("do my gym routine on friday") is an ordinary request that ends in REVIEW and needs a press: **routines never run on their own.**
 
 *Google account (B4).* **Proposed 2026-10-15, signed off by Carlos 2026-10-19.** Sign in happens on the backend (locked decision).
 
