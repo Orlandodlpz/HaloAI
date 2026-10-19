@@ -72,13 +72,14 @@ async def test_calendar_is_seeded_per_visitor_and_isolated(client, keys, demo_se
     _, a = await session(client, keys["demo"])
     _, b = await session(client, keys["demo"])
     ca = (await client.get("/v1/demo/calendar", headers=auth(a))).json()["events"]
-    assert {"Standup", "Team sync", "Dentist"} <= {e["title"] for e in ca}  # the sample week
+    assert {"Algorithms lecture", "Office hours with Professor Patel", "Gym with Marcus"} <= {e["title"] for e in ca}  # a student's week
     ua = str((await visitor_user(pool, a))["id"])
     await demo_services.store.apply(ua, "k" * 26, {"kind": "delete_event", "event_id": "e3",
-                                                   "event": {"title": "Dentist"}})
+                                                   "event": {"title": "Office hours with Professor Patel"}})
     ca2 = (await client.get("/v1/demo/calendar", headers=auth(a))).json()["events"]
     cb = (await client.get("/v1/demo/calendar", headers=auth(b))).json()["events"]
-    assert "Dentist" not in {e["title"] for e in ca2} and "Dentist" in {e["title"] for e in cb}
+    office = "Office hours with Professor Patel"
+    assert office not in {e["title"] for e in ca2} and office in {e["title"] for e in cb}
 
 
 async def test_outbox_shows_only_the_visitors_own_emails(client, keys, demo_services, pool):
@@ -96,6 +97,7 @@ async def test_contacts_are_the_sample_address_book(client, keys, demo_services)
     _, a = await session(client, keys["demo"])
     people = (await client.get("/v1/demo/contacts", headers=auth(a))).json()["contacts"]
     assert {"name": "Victor Morales", "email": "victor.morales@example.com"} in people
+    assert {"name": "TA Jordan Lee", "email": "jordan.lee@example.com"} in people  # "email the TA" resolves
     assert all(p["email"].endswith("example.com") for p in people)
 
 

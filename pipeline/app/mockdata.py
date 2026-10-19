@@ -36,6 +36,36 @@ SEED_EVENTS = [
     ("e7", 6, "11:00", "12:00", "Hackathon check-in", ""),
 ]
 
+# The demo site's own world (decided 2026-10-19): a student's week, matching the target audience in
+# BRIEFING section 5. Seeded per visitor by app/mockstore.py. The eval keeps CONTACTS and SEED_EVENTS
+# above, so its 100 cases stay comparable. Roles are part of names so "email the TA" or "email
+# Professor Patel" resolve; two Alexes keep the "Which Alex?" moment. All addresses @example.com.
+DEMO_CONTACTS = [
+    {"contact_id": "d_carlos", "name": "Carlos Diaz", "email": "carlos.diaz@example.com"},
+    {"contact_id": "d_victor", "name": "Victor Morales", "email": "victor.morales@example.com"},
+    {"contact_id": "d_ta", "name": "TA Jordan Lee", "email": "jordan.lee@example.com"},
+    {"contact_id": "d_patel", "name": "Professor Patel", "email": "professor.patel@example.com"},
+    {"contact_id": "d_alex_k", "name": "Alex Kim", "email": "alex.kim@example.com"},
+    {"contact_id": "d_alex_r", "name": "Alex Rivera", "email": "alex.rivera@example.com"},
+    {"contact_id": "d_marcus", "name": "Marcus Green", "email": "marcus.green@example.com"},
+    {"contact_id": "d_maria", "name": "Maria Lopez", "email": "maria.lopez@example.com"},
+    {"contact_id": "d_advising", "name": "Advising Office", "email": "advising@example.com"},
+]
+
+# (id, days from the visitor's first day, start, end, title, notes)
+DEMO_EVENTS = [
+    ("e1", 0, "09:00", "10:15", "Algorithms lecture", "Room ENGR 1.300"),
+    ("e2", 0, "13:00", "16:00", "Library work shift", ""),
+    ("e3", 1, "10:00", "11:00", "Office hours with Professor Patel", "Questions on homework 4"),
+    ("e4", 1, "18:00", "19:00", "Gym with Marcus", "Leg day"),
+    ("e5", 2, "09:00", "10:15", "Algorithms lecture", ""),
+    ("e6", 2, "12:00", "13:00", "Group project meeting", "Slides due Friday"),
+    ("e7", 3, "14:00", "16:50", "Physics lab", ""),
+    ("e8", 4, "19:00", "21:00", "Hackathon team meeting", "HaloAI demo prep"),
+    ("e9", 5, "10:00", "12:00", "Midterm review session", "Calculus II"),
+    ("e10", 6, "17:00", "18:00", "Gym with Marcus", ""),
+]
+
 _SEARCH = [
     (("spurs",), [{
         "title": "San Antonio Spurs vs. Los Angeles Lakers",

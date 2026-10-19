@@ -1,0 +1,466 @@
+{
+ "label": "b6_articles_ambig",
+ "only": "ambig",
+ "repeat": 3,
+ "git_sha": "786a030",
+ "model": "nvidia/Nemotron-3-Ultra-550b-a55b",
+ "reasoning": false,
+ "max_turns": 4,
+ "summary": {
+  "n": 18,
+  "correct": 18,
+  "within_turns": 18,
+  "traps_correct": 0,
+  "traps_n": 0,
+  "median_ms": 793.5,
+  "p90_ms": 847,
+  "median_ms_one_turn": 793.5,
+  "turns": {
+   "1": 18
+  },
+  "tokens_in": 48213,
+  "tokens_out": 921,
+  "cost_usd_estimate": 0.051,
+  "by_category": {
+   "email_ambiguous": {
+    "n": 18,
+    "correct": 18,
+    "within_turns": 18
+   }
+  }
+ },
+ "cases": [
+  {
+   "id": "ambig_01",
+   "category": "email_ambiguous",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 1121,
+   "tokens_in": 2676,
+   "tokens_out": 53,
+   "state": "conflict_ambiguous",
+   "draft": {
+    "kind": "send_email",
+    "subject": "Meeting time",
+    "body": "The meeting is at 3."
+   },
+   "screen_lines": [
+    "Which Alex?"
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 1
+  },
+  {
+   "id": "ambig_02",
+   "category": "email_ambiguous",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 790,
+   "tokens_in": 2680,
+   "tokens_out": 31,
+   "state": "conflict_ambiguous",
+   "draft": null,
+   "screen_lines": [
+    "Who should I send this email to?",
+    "Hold and say your answer"
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 1
+  },
+  {
+   "id": "ambig_03",
+   "category": "email_ambiguous",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 779,
+   "tokens_in": 2674,
+   "tokens_out": 47,
+   "state": "conflict_ambiguous",
+   "draft": {
+    "kind": "send_email",
+    "subject": "Hello",
+    "body": "Hello"
+   },
+   "screen_lines": [
+    "No contact named jordan",
+    "Hold and say the address"
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 1
+  },
+  {
+   "id": "ambig_04",
+   "category": "email_ambiguous",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 788,
+   "tokens_in": 2673,
+   "tokens_out": 51,
+   "state": "conflict_ambiguous",
+   "draft": {
+    "kind": "send_email",
+    "subject": "Great work today",
+    "body": "Great work today"
+   },
+   "screen_lines": [
+    "No contact named the team",
+    "Hold and say the address"
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 1
+  },
+  {
+   "id": "ambig_05",
+   "category": "email_ambiguous",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 815,
+   "tokens_in": 2692,
+   "tokens_out": 53,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "alex.rivera@example.com",
+    "to_name": "Alex Rivera",
+    "subject": "Meeting time",
+    "body": "The meeting is at 3."
+   },
+   "screen_lines": [
+    "To: alex.rivera@example.com",
+    "Re: Meeting time",
+    "The meeting is at 3."
+   ],
+   "statuses": [
+    "Email to Alex Rivera"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 1
+  },
+  {
+   "id": "ambig_06",
+   "category": "email_ambiguous",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 845,
+   "tokens_in": 2676,
+   "tokens_out": 72,
+   "state": "conflict_ambiguous",
+   "draft": {
+    "kind": "send_email",
+    "subject": "Reschedule appointment",
+    "body": "Hi, I'd like to reschedule my appointment. Please let me know what times you have available. Thanks."
+   },
+   "screen_lines": [
+    "No contact named dentist office",
+    "Hold and say the address"
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 1
+  },
+  {
+   "id": "ambig_01",
+   "category": "email_ambiguous",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 819,
+   "tokens_in": 2676,
+   "tokens_out": 53,
+   "state": "conflict_ambiguous",
+   "draft": {
+    "kind": "send_email",
+    "subject": "Meeting time",
+    "body": "The meeting is at 3."
+   },
+   "screen_lines": [
+    "Which Alex?"
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 2
+  },
+  {
+   "id": "ambig_02",
+   "category": "email_ambiguous",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 775,
+   "tokens_in": 2680,
+   "tokens_out": 31,
+   "state": "conflict_ambiguous",
+   "draft": null,
+   "screen_lines": [
+    "Who should I send this email to?",
+    "Hold and say your answer"
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 2
+  },
+  {
+   "id": "ambig_03",
+   "category": "email_ambiguous",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 795,
+   "tokens_in": 2674,
+   "tokens_out": 47,
+   "state": "conflict_ambiguous",
+   "draft": {
+    "kind": "send_email",
+    "subject": "Hello",
+    "body": "Hello"
+   },
+   "screen_lines": [
+    "No contact named jordan",
+    "Hold and say the address"
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 2
+  },
+  {
+   "id": "ambig_04",
+   "category": "email_ambiguous",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 577,
+   "tokens_in": 2673,
+   "tokens_out": 51,
+   "state": "conflict_ambiguous",
+   "draft": {
+    "kind": "send_email",
+    "subject": "Great work today",
+    "body": "Great work today"
+   },
+   "screen_lines": [
+    "No contact named the team",
+    "Hold and say the address"
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 2
+  },
+  {
+   "id": "ambig_05",
+   "category": "email_ambiguous",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 792,
+   "tokens_in": 2692,
+   "tokens_out": 53,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "alex.rivera@example.com",
+    "to_name": "Alex Rivera",
+    "subject": "Meeting time",
+    "body": "The meeting is at 3."
+   },
+   "screen_lines": [
+    "To: alex.rivera@example.com",
+    "Re: Meeting time",
+    "The meeting is at 3."
+   ],
+   "statuses": [
+    "Email to Alex Rivera"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 2
+  },
+  {
+   "id": "ambig_06",
+   "category": "email_ambiguous",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 847,
+   "tokens_in": 2676,
+   "tokens_out": 72,
+   "state": "conflict_ambiguous",
+   "draft": {
+    "kind": "send_email",
+    "subject": "Reschedule appointment",
+    "body": "Hi, I'd like to reschedule my appointment. Please let me know what times you have available. Thanks."
+   },
+   "screen_lines": [
+    "No contact named dentist office",
+    "Hold and say the address"
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 2
+  },
+  {
+   "id": "ambig_01",
+   "category": "email_ambiguous",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 1968,
+   "tokens_in": 2676,
+   "tokens_out": 53,
+   "state": "conflict_ambiguous",
+   "draft": {
+    "kind": "send_email",
+    "subject": "Meeting time",
+    "body": "The meeting is at 3."
+   },
+   "screen_lines": [
+    "Which Alex?"
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 3
+  },
+  {
+   "id": "ambig_02",
+   "category": "email_ambiguous",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 785,
+   "tokens_in": 2680,
+   "tokens_out": 31,
+   "state": "conflict_ambiguous",
+   "draft": null,
+   "screen_lines": [
+    "Who should I send this email to?",
+    "Hold and say your answer"
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 3
+  },
+  {
+   "id": "ambig_03",
+   "category": "email_ambiguous",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 841,
+   "tokens_in": 2674,
+   "tokens_out": 47,
+   "state": "conflict_ambiguous",
+   "draft": {
+    "kind": "send_email",
+    "subject": "Hello",
+    "body": "Hello"
+   },
+   "screen_lines": [
+    "No contact named jordan",
+    "Hold and say the address"
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 3
+  },
+  {
+   "id": "ambig_04",
+   "category": "email_ambiguous",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 589,
+   "tokens_in": 2673,
+   "tokens_out": 51,
+   "state": "conflict_ambiguous",
+   "draft": {
+    "kind": "send_email",
+    "subject": "Great work today",
+    "body": "Great work today"
+   },
+   "screen_lines": [
+    "No contact named the team",
+    "Hold and say the address"
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 3
+  },
+  {
+   "id": "ambig_05",
+   "category": "email_ambiguous",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 792,
+   "tokens_in": 2692,
+   "tokens_out": 53,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "alex.rivera@example.com",
+    "to_name": "Alex Rivera",
+    "subject": "Meeting time",
+    "body": "The meeting is at 3."
+   },
+   "screen_lines": [
+    "To: alex.rivera@example.com",
+    "Re: Meeting time",
+    "The meeting is at 3."
+   ],
+   "statuses": [
+    "Email to Alex Rivera"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 3
+  },
+  {
+   "id": "ambig_06",
+   "category": "email_ambiguous",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 844,
+   "tokens_in": 2676,
+   "tokens_out": 72,
+   "state": "conflict_ambiguous",
+   "draft": {
+    "kind": "send_email",
+    "subject": "Reschedule appointment",
+    "body": "Hi, I'd like to reschedule my appointment. Please let me know what times you have available. Thanks."
+   },
+   "screen_lines": [
+    "No contact named dentist office",
+    "Hold and say the address"
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 3
+  }
+ ]
+}

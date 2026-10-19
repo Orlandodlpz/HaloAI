@@ -12,16 +12,17 @@ const CONFIRM_GUARD_MS = 1000; // the badge ignores a press for about 1 s after 
 const NARROW = matchMedia("(max-width: 600px)");
 const orientationNow = () => (NARROW.matches ? "portrait" : "landscape");
 
+// A student's week (the demo's sample world, app/mockdata.py DEMO_EVENTS and DEMO_CONTACTS).
 const EXAMPLES = [
-  ["Calendar", ["block 3 to 4 tomorrow for the gym", "what's my next meeting?", "move the dentist to friday at 2",
-                "book a meeting tomorrow at 10 with Carlos"]],
-  ["Email", ["email Victor saying the demo is ready", "email Alex about lunch on friday",
-             "email judge at example dot com saying thanks for trying HaloAI"]],
+  ["Calendar", ["block 7 to 8 am tomorrow for the gym", "what do I have tomorrow?", "move the group project meeting to friday at 4",
+                "book a study session tomorrow at 10 with Carlos"]],
+  ["Email", ["email the TA saying I'll be late to lab", "email Professor Patel asking for an extension on homework 4",
+             "email Alex about the group project slides", "email judge at example dot com saying thanks for trying HaloAI"]],
   ["Search, then act", ["what time does the UTRGV library in Edinburg close on Saturday?",
-                        "when does the Edinburg farmers market open on Saturday? add it to my calendar"]],
-  ["Memory", ["remember that I prefer meetings after 10 am", "what do you remember about me?"]],
-  ["Routines (reusable skills)", ["save a routine called gym: block 7 to 8 am for the gym", "do my gym routine tomorrow",
-                                  "do my gym routine on friday but at 6"]],
+                        "block a study session at the UTRGV library this Saturday from 2 until it closes"]],
+  ["Memory", ["remember that I prefer to study in the mornings", "what do you remember about me?"]],
+  ["Routines (reusable skills)", ["save a routine called gym: block 7 to 8 am for the gym", "do my gym routine on friday",
+                                  "save a routine called late: email the TA saying I'll be late to lab today", "do my late routine"]],
 ];
 
 const $ = (id) => document.getElementById(id);

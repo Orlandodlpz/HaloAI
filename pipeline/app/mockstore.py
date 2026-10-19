@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 
 from psycopg.types.json import Jsonb
 
-from app.mockdata import CONTACTS, SEED_EVENTS, MockWorld
+from app.mockdata import DEMO_CONTACTS, DEMO_EVENTS, MockWorld
 from app.processing import ExecutionOutcome, Executor
 from app.tools import fmt_day, fmt_range
 
@@ -34,7 +34,7 @@ class MockStore:
                 (user_id, str(tz), now.astimezone(tz).date()))
             seeded = await cur.fetchone()
             if seeded:  # first use: lay down the sample calendar relative to today
-                for event_id, days, start, end, title, notes in SEED_EVENTS:
+                for event_id, days, start, end, title, notes in DEMO_EVENTS:  # a student's week
                     d = seeded["seeded_on"] + timedelta(days=days)
                     await conn.execute(
                         "INSERT INTO mock_events (user_id, event_id, title, starts_at, ends_at, notes)"
@@ -45,7 +45,7 @@ class MockStore:
             rows = await cur.fetchall()
         events = [{"event_id": r["event_id"], "title": r["title"], "notes": r["notes"],
                    "start": r["starts_at"].astimezone(tz), "end": r["ends_at"].astimezone(tz)} for r in rows]
-        return MockWorld(tz=tz, today=now.astimezone(tz).date(), contacts=[dict(c) for c in CONTACTS], events=events)
+        return MockWorld(tz=tz, today=now.astimezone(tz).date(), contacts=[dict(c) for c in DEMO_CONTACTS], events=events)
 
     async def apply(self, user_id: str, execution_key: str, draft: dict) -> ExecutionOutcome:
         """Carry out an approved proposal on the user's mock world. Safe to repeat."""
