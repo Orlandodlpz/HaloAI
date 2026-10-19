@@ -25,8 +25,17 @@ from app.tools import (READ_TOOLS, STATUS, TOOL_SPECS, Final, ReadResult, ToolEr
                        untrusted)
 
 
+# The model asking "would you like me to add it?" instead of acting (seen live after a web search,
+# 2026-10-19). The device's REVIEW screen is the confirmation, so the code sends it back once.
+ASKS_TO_CONFIRM = re.compile(r"\b(would you like me to|do you want me to|shall i|should i)\b", re.IGNORECASE)
+ACT_DIRECTLY = ("Do not ask for confirmation: the device shows every proposal for approval. If the request "
+                "asks for an action, call the tool now. Otherwise answer briefly.")
+
+
 def plain_text(text: str) -> str:
-    """Model text for an e-ink screen: no Markdown symbols, no special spaces."""
+    """Model text for an e-ink screen: no Markdown symbols, no special spaces, no thinking."""
+    # Token Factory returns reasoning in its own field; this only guards against it arriving inline.
+    text = re.sub(r"<think>.*?(</think>|$)", "", text, flags=re.DOTALL)
     text = re.sub(r"[\u00a0\u2007\u2009\u202f]", " ", text)  # no-break and thin spaces
     # The e-ink font is plain ASCII: long dashes, curly quotes and ellipses become their ASCII forms.
     text = text.translate(str.maketrans({"\u2013": "-", "\u2014": "-", "\u2018": "'", "\u2019": "'",
@@ -51,11 +60,14 @@ class NemotronProcessor(Processor):
         # stored mock world (server, B3), or real Google tools (B4), all behind the same shape.
         self.world_factory = world_factory
 
-    def _model_kwargs(self) -> dict:
+    def _model_kwargs(self, reasoning: bool) -> dict:
         s = self.settings
-        kwargs = {"model": s.nemotron_model_id, "max_tokens": s.max_output_tokens,
-                  "extra_body": {"chat_template_kwargs": {"enable_thinking": s.reasoning_enabled}}}
-        if not s.reasoning_enabled:
+        kwargs = {"model": s.nemotron_model_id,
+                  "max_tokens": s.max_reasoning_tokens if reasoning else s.max_output_tokens,
+                  "extra_body": {"chat_template_kwargs": {"enable_thinking": reasoning}}}
+        if reasoning:
+            kwargs.update(temperature=s.reasoning_temperature, top_p=s.reasoning_top_p)
+        else:
             kwargs["temperature"] = 0.0  # model card: greedy when reasoning is off
         return kwargs
 
@@ -75,12 +87,16 @@ class NemotronProcessor(Processor):
             {"role": "user", "content": user_message(ctx.segments, world)},
         ]
         model_ms = tools_ms = 0.0
+        searched = False  # reasoning turns on for the turns after a web search (multi-step)
+        nudged = False  # ACT_DIRECTLY sent once already
+        searches = 0
 
         for turn in range(1, self.settings.max_model_turns + 1):
             t0 = time.perf_counter()
-            with hop("nemotron_turn", turn=turn) as f:
+            reasoning = self.settings.reasoning_enabled or (searched and self.settings.reasoning_after_search)
+            with hop("nemotron_turn", turn=turn, reasoning=reasoning) as f:
                 resp = await self.client.chat.completions.create(
-                    messages=messages, tools=TOOL_SPECS, tool_choice="auto", **self._model_kwargs())
+                    messages=messages, tools=TOOL_SPECS, tool_choice="auto", **self._model_kwargs(reasoning))
                 usage = getattr(resp, "usage", None)
                 if usage is not None:
                     f["prompt_tokens"], f["completion_tokens"] = usage.prompt_tokens, usage.completion_tokens
@@ -93,6 +109,11 @@ class NemotronProcessor(Processor):
                 text = plain_text(msg.content or "")
                 if not text:
                     raise RuntimeError("model returned neither a tool call nor text")
+                if ASKS_TO_CONFIRM.search(text) and not nudged and turn < self.settings.max_model_turns:
+                    nudged = True
+                    messages += [{"role": "assistant", "content": msg.content or ""},
+                                 {"role": "user", "content": ACT_DIRECTLY}]
+                    continue
                 return ProcessorOutput("read_only_result", [text], timings=timings)
 
             messages.append({"role": "assistant", "content": msg.content or "", "tool_calls": [
@@ -109,6 +130,11 @@ class NemotronProcessor(Processor):
                         args = json.loads(call.function.arguments or "{}")
                     except json.JSONDecodeError:
                         raise ToolError("arguments were not valid JSON") from None
+                    if name == "web_search":
+                        searches += 1
+                        if searches > self.settings.max_searches:
+                            raise ToolError("no more searches for this request: act with the results you have, "
+                                            "or say you could not find it")
                     if name in STATUS:
                         await ctx.on_status(STATUS[name])
                     with hop(f"tool_{name}"):
@@ -131,6 +157,7 @@ class NemotronProcessor(Processor):
                             await ctx.on_status(f"Email to {result.output.draft['to_name']}")
                         return result.output
                     content = untrusted(result.data)
+                    searched = searched or name == "web_search"
                 tools_ms += (time.perf_counter() - t1) * 1000
                 messages.append({"role": "tool", "tool_call_id": call.id, "content": content})
 

@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from app.agent import NemotronProcessor
+from app.agent import ACT_DIRECTLY, NemotronProcessor
 from app.config import get_settings
 from app.processing import ProcessContext, Segment
 
@@ -167,3 +167,75 @@ async def test_works_inside_the_lifecycle(lc, user, processor):
     result = await lc.process(body["request_id"], 1)
     assert result["state"] == "review" and result["proposal_hash"] and result["expires_in_s"] == 60
     assert result["screen_lines"][:2] == ["New event", "Gym"]
+
+
+# ---------- reasoning after a web search, and the confirm-question guard (2026-10-19) ----------
+
+def thinking(req):
+    return req["extra_body"]["chat_template_kwargs"]["enable_thinking"]
+
+
+async def test_reasoning_only_on_the_turn_after_a_search():
+    p, client = proc([reply([tool_call("web_search", {"query": "spurs schedule"})]),
+                      reply([tool_call("create_event", {"title": "Spurs game", "start": "2026-10-15T19:00"})])])
+    out = await p.process(ctx("add the next spurs game to my calendar"))
+    first, second = client.requests
+    assert out.state == "review"
+    assert thinking(first) is False and first["temperature"] == 0.0 and first["max_tokens"] == 400
+    s = get_settings()
+    assert thinking(second) is True and second["max_tokens"] == s.max_reasoning_tokens
+    assert second["temperature"] == s.reasoning_temperature and second["top_p"] == s.reasoning_top_p
+
+
+async def test_no_reasoning_without_a_search():
+    p, client = proc([reply([tool_call("lookup_contact", {"name": "Alex"})]),
+                      reply([tool_call("create_event", {"title": "Gym", "start": "2026-10-14T15:00"})])])
+    await p.process(ctx("gym tomorrow at 3"))
+    assert [thinking(r) for r in client.requests] == [False, False]
+
+
+async def test_reasoning_after_search_can_be_switched_off():
+    client = ScriptedClient([reply([tool_call("web_search", {"query": "spurs"})]), reply(content="Tuesday.")])
+    s = get_settings().model_copy(update={"reasoning_after_search": False})
+    await NemotronProcessor(client, s).process(ctx("when do the spurs play"))
+    assert [thinking(r) for r in client.requests] == [False, False]
+
+
+async def test_asking_to_confirm_is_sent_back_once():
+    p, client = proc([reply([tool_call("web_search", {"query": "spurs"})]),
+                      reply(content="I found it! Would you like me to add this game to your calendar?"),
+                      reply([tool_call("create_event", {"title": "Spurs game", "start": "2026-10-15T19:00"})])])
+    out = await p.process(ctx("add the next spurs game to my calendar"))
+    assert out.state == "review" and len(client.requests) == 3
+    assert client.requests[2]["messages"][-1] == {"role": "user", "content": ACT_DIRECTLY}
+
+
+async def test_a_second_confirm_question_is_shown_not_looped():
+    p, client = proc([reply(content="Should I add it?"), reply(content="Do you want me to add it?")])
+    out = await p.process(ctx("add it"))
+    assert out.state == "read_only_result" and out.screen_lines == ["Do you want me to add it?"]
+    assert len(client.requests) == 2
+
+
+async def test_plain_answers_are_not_nudged():
+    p, client = proc([reply(content="You have the dentist at 10 AM tomorrow.")])
+    out = await p.process(ctx("what do I have tomorrow"))
+    assert out.screen_lines == ["You have the dentist at 10 AM tomorrow."] and len(client.requests) == 1
+
+
+async def test_inline_thinking_never_reaches_the_screen():
+    p, _ = proc([reply(content="<think>the user wants the time</think>The game is at 7 PM.")])
+    assert (await p.process(ctx("when is the game"))).screen_lines == ["The game is at 7 PM."]
+    p, _ = proc([reply(content="It is at 7 PM.<think>unfinished thought")])
+    assert (await p.process(ctx("when is the game"))).screen_lines == ["It is at 7 PM."]
+
+
+async def test_at_most_two_searches_then_act():
+    statuses = []
+    p, client = proc([reply([tool_call("web_search", {"query": "coffee"})]),
+                      reply([tool_call("web_search", {"query": "coffee again"}, "c2")]),
+                      reply([tool_call("web_search", {"query": "coffee a third time"}, "c3")]),
+                      reply(content="Bean There opens at 7 AM.")])
+    out = await p.process(ctx("find a good coffee shop", statuses=statuses))
+    assert out.state == "read_only_result" and statuses == ["Searching the web", "Searching the web"]
+    assert "no more searches" in client.requests[3]["messages"][-1]["content"]
