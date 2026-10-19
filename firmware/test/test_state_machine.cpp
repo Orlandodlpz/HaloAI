@@ -763,3 +763,85 @@ HALO_TEST(every_state_is_reachable_by_the_test_driver) {
         CHECK_STATE(r.sm, static_cast<State>(s));
     }
 }
+
+// ---------------------------------------------------------------------------
+// The backend cancels a request on its own (team additions, 2026-10-17):
+// Orlando's row for the ordinary case, Carlos's for the one that also has to
+// throw away a saved execution key.
+
+HALO_TEST(a_cancelled_screen_from_the_phone_cancels_work_in_flight) {
+    // The request expired on the backend, or a newer one replaced it. Everything
+    // before the approve is the backend's to cancel.
+    for (State from : {State::PhoneCheck, State::FinalizeAudio, State::Processing,
+                       State::ProcessingSlow, State::ConflictAmbiguous,
+                       State::ConflictSchedule, State::Review}) {
+        Rig r;
+        drive_to(r, from);
+        CHECK_STATE(r.sm, from);
+        const Transition t = r.send(EventKind::ScreenCancelled);
+        CHECK(t.handled);
+        CHECK_STATE(r.sm, State::Cancelled);
+        CHECK(!t.actions.has(Action::ClearExecutionKey));  // nothing was dispatched
+    }
+}
+
+HALO_TEST(a_cancelled_screen_while_recording_stops_the_microphone) {
+    for (State from : {State::Recording, State::RecordAddition}) {
+        Rig r;
+        drive_to(r, from);
+        const Transition t = r.send(EventKind::ScreenCancelled);
+        CHECK_STATE(r.sm, State::Cancelled);
+        CHECK(t.actions.has(Action::StopCapture));
+    }
+}
+
+HALO_TEST(a_cancelled_screen_in_reconcile_status_clears_the_key) {
+    // Carlos's row. The device saved a key as it left REVIEW, the approve never
+    // reached the backend, and the request was cancelled there. The status
+    // endpoint says so, and the key is for something that never happened.
+    Rig r;
+    drive_to(r, State::ReconcileStatus);
+    CHECK(r.sm.has_pending_execution());
+    const Transition t = r.send(EventKind::ScreenCancelled);
+    CHECK_STATE(r.sm, State::Cancelled);
+    CHECK(t.actions.has(Action::ClearExecutionKey));
+    CHECK(!r.sm.has_pending_execution());
+}
+
+HALO_TEST(a_cancelled_screen_never_throws_away_a_dispatched_action) {
+    // The dangerous direction. Once approve has gone out the effect may already
+    // exist, so a cancel screen must not clear the key or claim nothing happened.
+    for (State from : {State::Executing, State::ExecutionUncertain}) {
+        Rig r;
+        drive_to(r, from);
+        CHECK(r.sm.has_pending_execution());
+        const Transition t = r.send(EventKind::ScreenCancelled);
+        CHECK(!t.handled);
+        CHECK_STATE(r.sm, from);
+        CHECK(!t.actions.has(Action::ClearExecutionKey));
+        CHECK(r.sm.has_pending_execution());
+    }
+}
+
+HALO_TEST(a_cancelled_screen_is_ignored_when_nothing_is_in_flight) {
+    for (State from : {State::Ready, State::Wallpaper}) {
+        Rig r;
+        drive_to(r, from);
+        const Transition t = r.send(EventKind::ScreenCancelled);
+        CHECK(!t.handled);
+        CHECK_STATE(r.sm, from);
+    }
+}
+
+HALO_TEST(any_input_dismisses_the_cancellation_notice) {
+    // Team addition 2026-10-17: waiting out the notice timer is no longer the
+    // only way out of CANCELLED.
+    for (EventKind k : {EventKind::SinglePress, EventKind::DoublePress, EventKind::RotateUp,
+                        EventKind::Wake, EventKind::HoldStart}) {
+        Rig r;
+        drive_to(r, State::Cancelled);
+        const Transition t = r.send(k);
+        CHECK(t.handled);
+        CHECK_STATE(r.sm, State::Ready);
+    }
+}

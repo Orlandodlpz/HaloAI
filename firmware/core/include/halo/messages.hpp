@@ -185,8 +185,9 @@ bool parse_screen(const char* doc, size_t len, Screen* out);
 // executing, and that processing failed otherwise. The two differ in whether a
 // pending execution key may be cleared, so they cannot be collapsed.
 //
-// READY, CANCELLED, EXECUTING and the device's own local states imply nothing:
-// either the device is already there or the V1 table has no event for it.
+// READY, EXECUTING and the device's own local states imply nothing: either the
+// device is already there, or the V1 table has no event for it. CANCELLED does
+// imply one, since 2026-10-17: the backend can cancel a request on its own.
 bool event_for_screen(State screen, State current, EventKind* out);
 
 struct Settings {

@@ -81,6 +81,7 @@ const char* name(EventKind k) {
         case EventKind::ProcessingSlow: return "slow";
         case EventKind::ProcessingProgress: return "progress";
         case EventKind::ProcessingFailed: return "processing failed";
+        case EventKind::ScreenCancelled: return "screen: cancelled";
         case EventKind::ExecutionApplied: return "execution applied";
         case EventKind::ExecutionRejected: return "execution rejected";
         case EventKind::ExecutionUnknown: return "execution unknown";

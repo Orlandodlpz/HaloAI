@@ -12,3 +12,6 @@ board/dependencies.lock
 
 # clangd index, written by the editor
 .cache/
+
+# Python bytecode from the bench tools
+tools/__pycache__/

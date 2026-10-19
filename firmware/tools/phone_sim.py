@@ -11,6 +11,8 @@ import asyncio, json, struct, sys, time, wave
 import serial
 from bleak import BleakClient, BleakScanner
 
+from serial_port import find_port
+
 BASE = "78450000-6bb6-46e1-be3c-499c2950b6ac"
 AUDIO = BASE.replace("0000", "0001", 1)
 AUDIO_ACK = BASE.replace("0000", "0002", 1)
@@ -94,7 +96,7 @@ class Rx:
 
 
 async def main():
-    ser = serial.Serial("/dev/cu.usbserial-110", 115200, timeout=0.1)
+    ser = serial.Serial(find_port(), 115200, timeout=0.1)
     print("scanning for HaloAI ...")
     dev = await BleakScanner.find_device_by_name("HaloAI", timeout=15.0)
     if dev is None:

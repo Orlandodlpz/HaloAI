@@ -40,6 +40,11 @@ enum class EventKind : uint8_t {
     ProcessingSlow,      // backend said processing passed the slow threshold
     ProcessingProgress,  // progress resumed, latest revision still active
     ProcessingFailed,    // STT or model error, or the processing deadline
+    // The backend cancelled this request: it expired there, or a newer request
+    // replaced it (team addition 2026-10-17, Orlando and Carlos). In RECONCILE
+    // STATUS it means something sharper: the saved key was never approved and
+    // the cancel was confirmed, so nothing happened and the key can go.
+    ScreenCancelled,
     ExecutionApplied,    // authoritative success for the execution key
     ExecutionRejected,   // authoritative rejection, confirmed no effect
     ExecutionUnknown,    // ambiguous response, link loss or restart

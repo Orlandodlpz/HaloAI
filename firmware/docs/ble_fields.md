@@ -271,6 +271,33 @@ Two things worth knowing from that session:
 
 You were right that it does not block P1 and needed to be in before P2. It is in now.
 
+## The backend cancelling on its own, agreed 2026-10-19
+
+Both rows proposed for the Team additions table are agreed and implemented on the device.
+
+**Orlando's row.** A CANCELLED screen from the phone now moves the device to CANCELLED, from any
+state where work is in flight and has not been dispatched: PHONE / BLUETOOTH CHECK, RECORDING,
+FINALIZE AUDIO, PROCESSING, PROCESSING SLOW, RECORD ADDITION, both conflict states and REVIEW.
+Recording stops the microphone on the way. Any input then dismisses the notice to READY, which
+also closes a smaller gap: CANCELLED previously only left on its own timer.
+
+**Carlos's row.** In RECONCILE STATUS the same screen means something sharper, so it is handled
+separately: the saved key was never approved and the cancel was confirmed, so the device goes to
+CANCELLED **and clears the execution key**. Without it that answer matched no event at all, the
+device would have waited out its timeout into EXECUTION UNCERTAIN, and it would have told the
+user an action might have happened immediately after the backend said with certainty that it
+never did. Good catch.
+
+**Where the device refuses to act on it**, and this is the part worth checking on your side: a
+CANCELLED screen arriving in EXECUTING or EXECUTION UNCERTAIN is **ignored**. After approve has
+gone out the effect may already exist, so nothing may claim it was cancelled and nothing may
+throw the key away. Those two states are reconciled by execution key or not at all. A test pins
+it from both states.
+
+Six host tests cover the two rows. The hardware check is written and waiting
+(`tools/flow_sim.py cancel`); the development board is unplugged as of 2026-10-19, so it has not
+been run on real hardware yet.
+
 ## Still open, and not mine to close
 
 - `pending_key` on the Screen write: **agreed with Carlos 2026-10-16**, optional on the Screen

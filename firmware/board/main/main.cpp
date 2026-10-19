@@ -778,31 +778,53 @@ void handle_serial() {
             ESP_LOGI(kTag, "panel cleaned");
             break;
         case 'T': {
-            // Orientation probe. I cannot see the panel, so this draws something
-            // whose description settles both questions at once: if line 1 is at
-            // the bottom the image is flipped vertically, and if the text reads
-            // backwards it is mirrored horizontally.
+            // Full panel probe. The old one drew five short lines starting at
+            // x=48, so every line ended around x=350 of 792 and the right hand
+            // controller was legitimately given nothing to draw: it could not
+            // tell a half dead panel from a short string. This one covers every
+            // row and both controllers, and labels the extremes, so a region
+            // that does not update can be named rather than guessed at.
             static DisplayList probe;
             probe.clear();
-            probe.rect(RectCmd{Box{0, 0, 40, 40}, true, 0});
-            static const char* const kLines[] = {
-                "1 TOP-LEFT >>>>>",
-                "2 the quick brown fox",
-                "3 HALOAI 0123456789",
-                "4",
-                "5 BOTTOM-LAST-LINE",
-            };
+            const Caps caps = board::display().caps();
             const TextMetrics tm = board::display().metrics(TextStyle::Body);
-            for (int i = 0; i < 5; ++i) {
+            const int cols = tm.char_w ? caps.logical_w / tm.char_w - 1 : 0;
+            const int rows = tm.line_h ? caps.visible_h / tm.line_h : 0;
+
+            static char lines[12][80];
+            const int n = rows > 12 ? 12 : rows;
+            const int w = cols > 78 ? 78 : cols;
+            for (int r = 0; r < n; ++r) {
+                for (int i = 0; i < w; ++i)
+                    lines[r][i] = (i % 10 == 0) ? static_cast<char>('0' + (i / 10) % 10) : '-';
+                // Both ends carry the row letter, so a row that stops half way
+                // across is obvious: you see A but not the A that closes it.
+                lines[r][0] = static_cast<char>('A' + r);
+                if (w > 1) lines[r][w - 1] = static_cast<char>('A' + r);
+                lines[r][w] = '\0';
                 TextCmd t;
-                t.box = Box{48, static_cast<int16_t>(56 + i * tm.line_h), 700, tm.line_h};
-                t.text = kLines[i];
+                t.box = Box{0, static_cast<int16_t>(r * tm.line_h), caps.logical_w, tm.line_h};
+                t.text = lines[r];
                 probe.text(t);
             }
+
+            // Solid blocks just inside each corner of the visible area.
+            const int16_t right = static_cast<int16_t>(caps.logical_w - 40);
+            const int16_t bottom = static_cast<int16_t>(caps.visible_h - 24);
+            probe.rect(RectCmd{Box{0, 0, 24, 24}, true, 0});
+            probe.rect(RectCmd{Box{right, 0, 24, 24}, true, 0});
+            probe.rect(RectCmd{Box{0, bottom, 24, 24}, true, 0});
+            probe.rect(RectCmd{Box{right, bottom, 24, 24}, true, 0});
+
             board::display().draw(probe);
+            if (probe.dropped())
+                ESP_LOGE(kTag, "probe dropped %u commands: the display list is full",
+                         probe.dropped());
             board::display().present(Refresh::Full, nullptr, nullptr);
-            ESP_LOGI(kTag, "test pattern drawn: tell me where line 1 is and "
-                           "whether the text reads normally");
+            ESP_LOGI(kTag, "full panel probe: rows A to %c, %d columns, a black block inside "
+                           "each of the four corners. Every row should start and end with its "
+                           "own letter.",
+                     static_cast<char>('A' + n - 1), w);
             break;
         }
         case '?':

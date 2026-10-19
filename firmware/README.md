@@ -19,7 +19,7 @@ closes a phase gate for the product.
 | BLE audio throughput | 158 kbit/s, 2.25x realtime |
 | Clip delivered, clean link | 233 chunks, 2.21 s, 2.10x realtime, 0 bad CRC |
 | Final marker resend | verified: 2 dropped on purpose, resent, segment completed |
-| Host tests | 156, about 20 ms |
+| Host tests | 162, about 20 ms |
 
 ## Layout
 
@@ -61,8 +61,10 @@ idf.py -p /dev/cu.usbserial-210 flash monitor
 ```
 
 The serial port number is not stable across replugs: check `ls /dev/cu.usbserial-*`.
-In the bench build, `?` lists the keys that inject phone events and gestures, `T`
-draws a text probe and `C` deep cleans the panel. `-DHALO_BENCH_INJECT=1` is a CMake
+`?` lists the console keys. `C` deep cleans the panel and `T` draws the full panel
+probe: 8 rows labelled A to H, each starting and ending with its own letter, and a
+black block inside each of the four corners. Anything missing can then be named.
+In the bench build, `?` also lists the keys that inject gestures. `-DHALO_BENCH_INJECT=1` is a CMake
 cache variable and therefore **sticky**: once passed, later plain builds stay bench
 builds until `idf.py fullclean`. The boot log names the build it is running.
 
@@ -109,6 +111,9 @@ Two rules the tests exist to defend:
 - A Screen write that cannot be fully understood is dropped whole and the previous
   screen stays on the glass. Drawing the half that parsed would show a screen nobody
   designed, and the user confirms what is on the glass.
+- The backend may cancel a request it owns, and the device follows. But a CANCELLED
+  screen is ignored once approve has gone out: EXECUTING onwards is reconciled by
+  execution key, never cancelled.
 - A dispatched action outlives a reboot. The execution key is written to flash as the
   device leaves REVIEW, so BOOT / RECOVERY comes up in RECONCILE STATUS and asks what
   happened instead of returning to READY as if nothing had.

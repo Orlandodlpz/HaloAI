@@ -327,9 +327,13 @@ HALO_TEST(messages_every_decision_screen_maps_to_its_event) {
     CHECK(msg::event_for_screen(State::ExecutionUncertain, State::Executing, &e));
     CHECK_EVENT(e, EventKind::ExecutionUnknown);
 
+    // The backend can cancel a request on its own: expired there, or replaced by
+    // a newer one (team addition 2026-10-17).
+    CHECK(msg::event_for_screen(State::Cancelled, State::Review, &e));
+    CHECK_EVENT(e, EventKind::ScreenCancelled);
+
     // States the device owns, or that the V1 table has no event for.
     CHECK(!msg::event_for_screen(State::Ready, State::Review, &e));
-    CHECK(!msg::event_for_screen(State::Cancelled, State::Review, &e));
     CHECK(!msg::event_for_screen(State::Executing, State::Review, &e));
 }
 
