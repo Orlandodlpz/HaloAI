@@ -31,7 +31,7 @@ Entry: Nebius x NVIDIA Global AI Hackathon, **Personal AI track**. Submission de
 ## Hard Constraints (never violate, never soften)
 
 **System wide**
-- The only LLM is an NVIDIA open model on Nebius Token Factory, currently Nemotron 3 Ultra (switched from Nemotron 3 Nano on 2026-10-14 after the B2 eval). No Claude API, no OpenAI models, no other providers. Hackathon eligibility depends on this: the rules require at least one NVIDIA open model on Token Factory or Nebius AI Cloud (from secondhand sources on 2026-10-14; confirm on the official Devpost rules).
+- The only LLM is an NVIDIA open model on Nebius Token Factory, currently Nemotron 3 Ultra (switched from Nemotron 3 Nano on 2026-10-14 after the B2 eval). No Claude API, no OpenAI models, no other providers. Hackathon eligibility depends on this: the official rules (read 2026-10-19, see BRIEFING section 5) require a runtime call to Token Factory (or Nebius AI Cloud) and at least one NVIDIA open source model, and they suggest Nemotron 3 Ultra for serious reasoning, so Ultra is confirmed allowed.
 - Nothing irreversible happens without approval on the device: only a single press in REVIEW dispatches sending email or creating, moving or deleting events. Read-only results never execute.
 - Raw audio never leaves the phone. The cloud receives text only.
 - Bluetooth Low Energy only between device and phone. Never Bluetooth Classic: iPhones block it for uncertified accessories, which would rule out iOS later.

@@ -540,9 +540,26 @@ Target dates for I1 to I4: _to be set by the team_.
 
 ## 5. Submission Checklist (due October 30, 2026, 10:00 AM PDT, 12:00 PM in Edinburg, TX)
 
-- [ ] Make the repo public before submitting (it is private until then; MIT license file already in the repo), with a README with setup steps for backend, phone app and firmware
-- [ ] Demo site live in sample data mode
-- [ ] YouTube video under 3 minutes showing the real device, the demo site and one search then act moment (a bilingual moment only if Spanish is ready)
-- [ ] Written description of features, naming Nemotron, Parakeet, Nebius Token Factory and Tavily
+**From the official rules** (Devpost, `nebiusglobalaihackathon.devpost.com/rules`, read 2026-10-19 from Orlando's PDF copy; the page blocks automated reads).
+
+- **Dates:** submissions close **Friday October 30, 2026, 10:00 AM Pacific**. Judging runs **December 1, 9:00 AM to December 15, 12:00 PM Pacific**. Winners are announced around January 11, 2027.
+- **Required technology:** a working application that makes a runtime call to the Nebius Token Factory inference API (or runs on Nebius AI Cloud) and uses **at least one NVIDIA open source model**. We meet it with Nemotron 3 Ultra on Token Factory and Parakeet v3 on the phone. **Ultra is allowed:** the rules themselves suggest "Nemotron 3 Ultra when you need serious reasoning".
+- **Personal AI track:** "an always-on, private assistant that works for you while keeping your data under your control. Give it persistent memory, reusable skills, access to the tools and information you choose, and the ability to carry out tasks across your daily workflows." NVIDIA NemoClaw, OpenShell, Hermes Agent and Nebius Serverless are named as examples ("such as"), not required. Our gap was "reusable skills": routines are planned after the demo site (decided 2026-10-19).
+- **Judging:** stage one is pass or fail (a genuine attempt at the track, using the required APIs). Stage two scores four **equally weighted** criteria: **Technological Implementation** (how well it is built and how well it uses Token Factory and NVIDIA models), **Design** (a complete, coherent product, not just a technical proof of concept), **Potential Impact** (a credible, specific case for a real problem and a real audience, shown by what is demonstrated), **Quality of the Idea** (a creative, non-obvious use of the models, and real understanding of the problem). Ties go to the higher Technological Implementation score, then down the list.
+- **Judges are not required to test the project** and may judge only on the description, images and video. The video and the written description carry the most weight.
+- **Prizes we can reach:** an Overall award ($20,000, $10,000, $6,000) or the Personal AI track award (NVIDIA Jetson Orin Nano), plus one bonus award: **Best Use of Tavily, $3,000**, for projects with a functional runtime call to the Tavily API (we have one). Separately, **Most Valuable Feedback**: 10 prizes of $100 and an NVIDIA swag pack, for the feedback section.
+- **Hardware:** for devices that are not widely available, the sponsor may ask for physical access to the hardware. Keep one working badge until the winners are announced.
+
+**Checklist:**
+
+- [ ] Repo public before submitting (private until then), open source license visible in the repo's About section (MIT, already detected by GitHub), with all source code, assets and instructions needed to run it
+- [ ] README with setup instructions and clear guidance for running backend, phone app and firmware, **highlighting how we use Nemotron and Parakeet, where Token Factory sped up our work (for example comparing four Nemotron models on the same eval in one afternoon), and any other Nebius tools**
+- [ ] URL to a working demo: the demo site, free and without restriction, **kept working until December 15, 12:00 PM Pacific**
+- [ ] Written description of features and functionality, naming Nemotron, Parakeet, Nebius Token Factory and Tavily, and making a specific case for a real audience
+- [ ] YouTube video, public, **under 3 minutes**, with footage of HaloAI working on the device it was built for (the badge and the phone), the demo site and one search then act moment. **No third party trademarks or copyrighted music without permission**: no sports teams or leagues in the examples, keep other companies' logos (Google included) off screen as much as possible, no unlicensed music. A bilingual moment only if Spanish is ready
 - [ ] Track selected: Personal AI
-- [ ] Google demo account re-authorized before judging, December 1 to 15
+- [ ] Feedback on Nebius Token Factory, AI Cloud and the NVIDIA models and tools we used (required; also eligible for Most Valuable Feedback)
+- [ ] All materials in English
+- [ ] Google demo account reconnected every week (testing mode tokens last 7 days), before the video, and before and during judging (December 1 to 15). The demo site runs on sample data and does not need it
+- [ ] One working badge kept available for a possible physical access request until January 11, 2027
+- [ ] Open, team: the target audience for the description and the video. Open, Orlando: real Tavily search on the demo site (read only; calendar and email stay sample data)
