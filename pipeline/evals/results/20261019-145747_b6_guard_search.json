@@ -1,0 +1,395 @@
+{
+ "label": "b6_guard_search",
+ "only": "search",
+ "repeat": 3,
+ "git_sha": "0e76589",
+ "model": "nvidia/Nemotron-3-Ultra-550b-a55b",
+ "reasoning": false,
+ "max_turns": 4,
+ "summary": {
+  "n": 12,
+  "correct": 12,
+  "within_turns": 11,
+  "traps_correct": 0,
+  "traps_n": 0,
+  "median_ms": 1965.0,
+  "p90_ms": 2245,
+  "median_ms_one_turn": null,
+  "turns": {
+   "2": 11,
+   "4": 1
+  },
+  "tokens_in": 71762,
+  "tokens_out": 4063,
+  "cost_usd_estimate": 0.084,
+  "by_category": {
+   "search_then_act": {
+    "n": 12,
+    "correct": 12,
+    "within_turns": 11
+   }
+  }
+ },
+ "cases": [
+  {
+   "id": "search_01",
+   "category": "search_then_act",
+   "correct": true,
+   "within_turns": true,
+   "turns": 2,
+   "ms": 2245,
+   "tokens_in": 5506,
+   "tokens_out": 300,
+   "state": "conflict_schedule",
+   "draft": {
+    "kind": "create_event",
+    "title": "Spurs game",
+    "start": "2026-10-17T19:00:00-05:00",
+    "end": "2026-10-17T21:30:00-05:00",
+    "timezone": "America/Chicago",
+    "guests": [],
+    "video_call": false,
+    "description": "Spurs vs Lakers at Frost Bank Center"
+   },
+   "screen_lines": [
+    "You already have Dinner with Maria then",
+    "Sat Oct 17, 6:00 PM to 8:00 PM",
+    "What would you like to do?",
+    "Press: book it anyway",
+    "Hold: say a new time",
+    "Double press: cancel"
+   ],
+   "statuses": [
+    "Searching the web"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 1
+  },
+  {
+   "id": "search_02",
+   "category": "search_then_act",
+   "correct": true,
+   "within_turns": true,
+   "turns": 2,
+   "ms": 1711,
+   "tokens_in": 5481,
+   "tokens_out": 172,
+   "state": "read_only_result",
+   "draft": null,
+   "screen_lines": [
+    "Based on a web search, the Edinburg Farmers Market opens Saturdays at 8:00 AM (runs until 12:00 PM). If you meant a different market, let me know the town or name."
+   ],
+   "statuses": [
+    "Searching the web"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 1
+  },
+  {
+   "id": "search_03",
+   "category": "search_then_act",
+   "correct": true,
+   "within_turns": true,
+   "turns": 2,
+   "ms": 2014,
+   "tokens_in": 5495,
+   "tokens_out": 230,
+   "state": "review",
+   "draft": {
+    "kind": "create_event",
+    "title": "Farmers Market",
+    "start": "2026-10-17T08:00:00-05:00",
+    "end": "2026-10-17T12:00:00-05:00",
+    "timezone": "America/Chicago",
+    "guests": [],
+    "video_call": false,
+    "description": ""
+   },
+   "screen_lines": [
+    "New event",
+    "Farmers Market",
+    "Sat Oct 17",
+    "8:00 AM to 12:00 PM"
+   ],
+   "statuses": [
+    "Searching the web"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 1
+  },
+  {
+   "id": "search_04",
+   "category": "search_then_act",
+   "correct": true,
+   "within_turns": true,
+   "turns": 2,
+   "ms": 1906,
+   "tokens_in": 5504,
+   "tokens_out": 168,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "victor.morales@example.com",
+    "to_name": "Victor Morales",
+    "subject": "Spurs game Saturday time",
+    "body": "The Spurs play Saturday at 7:00 PM CT at Frost Bank Center."
+   },
+   "screen_lines": [
+    "To: victor.morales@example.com",
+    "Re: Spurs game Saturday time",
+    "The Spurs play Saturday at 7:00 PM CT at Frost Bank Center."
+   ],
+   "statuses": [
+    "Searching the web",
+    "Email to Victor Morales"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 1
+  },
+  {
+   "id": "search_01",
+   "category": "search_then_act",
+   "correct": true,
+   "within_turns": true,
+   "turns": 2,
+   "ms": 1919,
+   "tokens_in": 5506,
+   "tokens_out": 290,
+   "state": "conflict_schedule",
+   "draft": {
+    "kind": "create_event",
+    "title": "Spurs vs Lakers",
+    "start": "2026-10-17T19:00:00-05:00",
+    "end": "2026-10-17T21:30:00-05:00",
+    "timezone": "America/Chicago",
+    "guests": [],
+    "video_call": false,
+    "description": "Spurs game at Frost Bank Center"
+   },
+   "screen_lines": [
+    "You already have Dinner with Maria then",
+    "Sat Oct 17, 6:00 PM to 8:00 PM",
+    "What would you like to do?",
+    "Press: book it anyway",
+    "Hold: say a new time",
+    "Double press: cancel"
+   ],
+   "statuses": [
+    "Searching the web"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 2
+  },
+  {
+   "id": "search_02",
+   "category": "search_then_act",
+   "correct": true,
+   "within_turns": true,
+   "turns": 2,
+   "ms": 1487,
+   "tokens_in": 5481,
+   "tokens_out": 98,
+   "state": "read_only_result",
+   "draft": null,
+   "screen_lines": [
+    "The Edinburg Farmers Market opens Saturdays at 8:00 AM (runs until 12:00 PM at the city square)."
+   ],
+   "statuses": [
+    "Searching the web"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 2
+  },
+  {
+   "id": "search_03",
+   "category": "search_then_act",
+   "correct": true,
+   "within_turns": true,
+   "turns": 2,
+   "ms": 3134,
+   "tokens_in": 5495,
+   "tokens_out": 699,
+   "state": "review",
+   "draft": {
+    "kind": "create_event",
+    "title": "Farmers Market",
+    "start": "2026-10-17T08:00:00-05:00",
+    "end": "2026-10-17T12:00:00-05:00",
+    "timezone": "America/Chicago",
+    "guests": [],
+    "video_call": false,
+    "description": "At city square"
+   },
+   "screen_lines": [
+    "New event",
+    "Farmers Market",
+    "Sat Oct 17",
+    "8:00 AM to 12:00 PM",
+    "About: At city square"
+   ],
+   "statuses": [
+    "Searching the web"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 2
+  },
+  {
+   "id": "search_04",
+   "category": "search_then_act",
+   "correct": true,
+   "within_turns": true,
+   "turns": 2,
+   "ms": 2011,
+   "tokens_in": 5504,
+   "tokens_out": 228,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "victor.morales@example.com",
+    "to_name": "Victor Morales",
+    "subject": "Spurs game Saturday",
+    "body": "The Spurs play the Lakers this Saturday, October 17 at 7:00 PM CT at Frost Bank Center in San Antonio."
+   },
+   "screen_lines": [
+    "To: victor.morales@example.com",
+    "Re: Spurs game Saturday",
+    "The Spurs play the Lakers this Saturday, October 17 at 7:00 PM CT at Frost Bank Center in San Antonio."
+   ],
+   "statuses": [
+    "Searching the web",
+    "Email to Victor Morales"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 2
+  },
+  {
+   "id": "search_01",
+   "category": "search_then_act",
+   "correct": true,
+   "within_turns": true,
+   "turns": 2,
+   "ms": 2214,
+   "tokens_in": 5506,
+   "tokens_out": 348,
+   "state": "conflict_schedule",
+   "draft": {
+    "kind": "create_event",
+    "title": "Spurs vs Lakers",
+    "start": "2026-10-17T19:00:00-05:00",
+    "end": "2026-10-17T21:30:00-05:00",
+    "timezone": "America/Chicago",
+    "guests": [],
+    "video_call": false,
+    "description": "vs Lakers at Frost Bank Center"
+   },
+   "screen_lines": [
+    "You already have Dinner with Maria then",
+    "Sat Oct 17, 6:00 PM to 8:00 PM",
+    "What would you like to do?",
+    "Press: book it anyway",
+    "Hold: say a new time",
+    "Double press: cancel"
+   ],
+   "statuses": [
+    "Searching the web"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 3
+  },
+  {
+   "id": "search_02",
+   "category": "search_then_act",
+   "correct": true,
+   "within_turns": true,
+   "turns": 2,
+   "ms": 1703,
+   "tokens_in": 5481,
+   "tokens_out": 179,
+   "state": "read_only_result",
+   "draft": null,
+   "screen_lines": [
+    "The Edinburg Farmers Market opens at 8:00 AM on Saturdays (runs until 12:00 PM)."
+   ],
+   "statuses": [
+    "Searching the web"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 3
+  },
+  {
+   "id": "search_03",
+   "category": "search_then_act",
+   "correct": true,
+   "within_turns": false,
+   "turns": 4,
+   "ms": 5898,
+   "tokens_in": 11299,
+   "tokens_out": 1145,
+   "state": "review",
+   "draft": {
+    "kind": "create_event",
+    "title": "Farmers Market",
+    "start": "2026-10-17T08:00:00-05:00",
+    "end": "2026-10-17T12:00:00-05:00",
+    "timezone": "America/Chicago",
+    "guests": [],
+    "video_call": false,
+    "description": "Open Saturdays 8 AM to 12 PM"
+   },
+   "screen_lines": [
+    "New event",
+    "Farmers Market",
+    "Sat Oct 17",
+    "8:00 AM to 12:00 PM",
+    "About: Open Saturdays 8 AM to 12 PM"
+   ],
+   "statuses": [
+    "Searching the web",
+    "Searching the web"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 3
+  },
+  {
+   "id": "search_04",
+   "category": "search_then_act",
+   "correct": true,
+   "within_turns": true,
+   "turns": 2,
+   "ms": 1777,
+   "tokens_in": 5504,
+   "tokens_out": 206,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "victor.morales@example.com",
+    "to_name": "Victor Morales",
+    "subject": "Spurs game Saturday",
+    "body": "The Spurs play the Lakers on Saturday, October 17 at 7:00 PM CT at Frost Bank Center."
+   },
+   "screen_lines": [
+    "To: victor.morales@example.com",
+    "Re: Spurs game Saturday",
+    "The Spurs play the Lakers on Saturday, October 17 at 7:00 PM CT at Frost Bank Center."
+   ],
+   "statuses": [
+    "Searching the web",
+    "Email to Victor Morales"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 3
+  }
+ ]
+}

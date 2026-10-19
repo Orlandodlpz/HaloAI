@@ -421,3 +421,10 @@ async def test_conflict_states_expire_after_60_s(lc, user, clock, text, call):
     with pytest.raises(ApiError) as e:
         await call(lc, user, rid)
     assert e.value.code == "expired" and e.value.current["state"] == "cancelled"
+
+
+async def test_a_slow_model_says_so(lc, user, processor):
+    processor.delay_s = 2  # longer than the test processing deadline (0.5 s)
+    _, r = await new_review(lc, user)
+    assert r["state"] == "failure" and r["failure_stage"] == "processing"
+    assert r["screen_lines"] == ["That took too long", "Please try again"]

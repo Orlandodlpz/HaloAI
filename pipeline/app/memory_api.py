@@ -16,7 +16,7 @@ router = APIRouter()
 
 class MemoryAdd(BaseModel):
     call_id: UUID
-    kind: Literal["contact", "preference", "fact"]
+    kind: Literal["contact", "preference", "fact", "routine"]
     label: str = Field(min_length=1, max_length=100)
     value: str = Field(min_length=1, max_length=300)
 

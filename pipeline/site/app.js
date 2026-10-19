@@ -20,6 +20,8 @@ const EXAMPLES = [
   ["Search, then act", ["what time does the UTRGV library in Edinburg close on Saturday?",
                         "when does the Edinburg farmers market open on Saturday? add it to my calendar"]],
   ["Memory", ["remember that I prefer meetings after 10 am", "what do you remember about me?"]],
+  ["Routines (reusable skills)", ["save a routine called gym: block 7 to 8 am for the gym", "do my gym routine tomorrow",
+                                  "do my gym routine on friday but at 6"]],
 ];
 
 const $ = (id) => document.getElementById(id);
@@ -374,6 +376,18 @@ function refreshPanels(flash = false) {
   return Promise.all([refreshCalendar(flash), refreshOutbox(flash), refreshMemory(flash)]);
 }
 
+// ---------- theme: Auto follows the system; Light or Dark is remembered on this browser ----------
+
+const THEMES = ["auto", "light", "dark"];
+function applyTheme(theme) {
+  if (theme === "auto") delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = theme;
+  const label = theme[0].toUpperCase() + theme.slice(1);
+  $("theme").textContent = `Theme: ${label}`;
+  $("theme").setAttribute("aria-label", theme === "auto" ? "Color theme: follows your system" : `Color theme: ${label}`);
+  render(); // the badge is drawn on a canvas, so redraw it with the new colors
+}
+
 // ---------- start ----------
 
 function chips() {
@@ -393,7 +407,12 @@ function chips() {
 
 async function main() {
   chips();
-  render();
+  applyTheme(THEMES.includes(load("halo.theme")) ? load("halo.theme") : "auto");
+  $("theme").addEventListener("click", () => {
+    const next = THEMES[(THEMES.indexOf(document.documentElement.dataset.theme || "auto") + 1) % THEMES.length];
+    store("halo.theme", next === "auto" ? null : next);
+    applyTheme(next);
+  });
   $("command").addEventListener("submit", (e) => {
     e.preventDefault();
     const input = $("command-input");
