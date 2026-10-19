@@ -123,7 +123,10 @@ class NemotronProcessor(Processor):
                     messages += [{"role": "assistant", "content": msg.content or ""},
                                  {"role": "user", "content": ACT_DIRECTLY}]
                     continue
-                return ProcessorOutput("read_only_result", [text], timings=timings)
+                # One screen line per line of the answer: a list of events keeps its line breaks on the
+                # badge (the wrapper flattens whitespace inside a line). Runs of blank lines become one.
+                lines = re.sub(r"\n{3,}", "\n\n", text).split("\n")
+                return ProcessorOutput("read_only_result", lines, timings=timings)
 
             messages.append({"role": "assistant", "content": msg.content or "", "tool_calls": [
                 {"id": c.id, "type": "function", "function": {"name": c.function.name, "arguments": c.function.arguments}}
