@@ -534,7 +534,7 @@ Each phase ends with a gate. The gate must pass before the next phase in that tr
 - **I4: Latency measured end to end** on real hardware against the 5 s budget, with per-hop timings filled into section 2.
 - **I5: Submission.** See section 5.
 
-Target dates for I1 to I4: _to be set by the team_.
+Target dates (agreed by the team 2026-10-19): **I1 by October 22** (Carlos; `pipeline/scripts/phone_sim.py` is the reference for every call and every Screen write), **I2 by October 25**. If the Waveshare badge has not arrived by October 25, the fallback for I2 and the video is the phone's microphone test button plus the CrowPanel development board as the screen and buttons: real hardware, real Parakeet, the real backend, not the final board. I3 and I4: to be set once I2 passes.
 
 ## 4. Open Risks
 
