@@ -845,3 +845,36 @@ HALO_TEST(any_input_dismisses_the_cancellation_notice) {
         CHECK_STATE(r.sm, State::Ready);
     }
 }
+
+HALO_TEST(an_authoritative_outcome_resolves_execution_uncertain) {
+    // The phone polls the status endpoint while the device waits, so an answer
+    // can arrive without the user asking for it. Section 2, 2026-10-19: the key
+    // is cleared on an outcome in this state too. Ignoring one would leave a key
+    // in flash for something the backend has already settled.
+    {
+        Rig r;
+        drive_to(r, State::ExecutionUncertain);
+        CHECK(r.sm.has_pending_execution());
+        const Transition t = r.send(EventKind::ExecutionApplied);
+        CHECK_STATE(r.sm, State::Success);
+        CHECK(t.actions.has(Action::ClearExecutionKey));
+        CHECK(!r.sm.has_pending_execution());
+    }
+    {
+        Rig r;
+        drive_to(r, State::ExecutionUncertain);
+        const Transition t = r.send(EventKind::ExecutionRejected);
+        CHECK_STATE(r.sm, State::Failure);
+        CHECK(t.actions.has(Action::ClearExecutionKey));
+        CHECK(!r.sm.has_pending_execution());
+    }
+    // Still dismissable, and dismissing still keeps the key.
+    {
+        Rig r;
+        drive_to(r, State::ExecutionUncertain);
+        const Transition t = r.send(EventKind::DoublePress);
+        CHECK_STATE(r.sm, State::Ready);
+        CHECK(!t.actions.has(Action::ClearExecutionKey));
+        CHECK(r.sm.has_pending_execution());
+    }
+}

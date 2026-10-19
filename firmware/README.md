@@ -19,7 +19,7 @@ closes a phase gate for the product.
 | BLE audio throughput | 158 kbit/s, 2.25x realtime |
 | Clip delivered, clean link | 233 chunks, 2.21 s, 2.10x realtime, 0 bad CRC |
 | Final marker resend | verified: 2 dropped on purpose, resent, segment completed |
-| Host tests | 162, about 20 ms |
+| Host tests | 163, about 20 ms |
 
 ## Layout
 

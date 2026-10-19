@@ -390,6 +390,21 @@ Transition StateMachine::handle(const Event& e) {
             return stay(e, "", false);
 
         case State::ExecutionUncertain:
+            // An authoritative answer can arrive here without being asked for:
+            // the phone polls the status endpoint while the device waits. Section
+            // 2 (2026-10-19) says the key is cleared on an outcome in this state
+            // too, and ignoring one would leave a key in flash for an action the
+            // backend has already settled.
+            if (e.kind == EventKind::ExecutionApplied) {
+                pending_execution_ = false;
+                return go(State::Success, e, "authoritative success while uncertain",
+                          {Action::ClearExecutionKey});
+            }
+            if (e.kind == EventKind::ExecutionRejected) {
+                pending_execution_ = false;
+                return go(State::Failure, e, "authoritative rejection while uncertain",
+                          {Action::ClearExecutionKey});
+            }
             if (e.kind == EventKind::SinglePress || e.kind == EventKind::StatusQueryDue)
                 return go(State::ReconcileStatus, e, "query the same execution key",
                           {Action::SendStatusQuery});

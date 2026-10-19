@@ -298,7 +298,7 @@ HALO_TEST(messages_a_line_longer_than_the_budget_is_cut_not_overflowed) {
     CHECK(std::strlen(s.lines[0]) == msg::kMaxLineChars);
 }
 
-HALO_TEST(messages_a_failure_screen_means_different_things_while_executing) {
+HALO_TEST(messages_a_failure_screen_falls_back_when_the_stage_is_missing) {
     // Both land in FAILURE, but only one of them is an authoritative "no effect",
     // and that decides whether the pending execution key may be cleared.
     EventKind e = EventKind::Tick;
