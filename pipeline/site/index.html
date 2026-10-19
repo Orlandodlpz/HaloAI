@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HaloAI Demo</title>
+  <meta name="description" content="Try HaloAI, a voice assistant badge that never acts without your press. Sample data, nothing real is sent.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='4' y='7' width='24' height='18' rx='3' fill='%23e9e6dc' stroke='%23222' stroke-width='2'/%3E%3Crect x='8' y='11' width='12' height='2' fill='%23222'/%3E%3Crect x='8' y='16' width='16' height='2' fill='%23222'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="styles.css">
+  <script src="config.js"></script>
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <span class="logo" aria-hidden="true"></span>
+      <div>
+        <h1>HaloAI</h1>
+        <p class="tagline">A clip-on e-ink voice assistant that never acts without your press.</p>
+      </div>
+    </div>
+    <p class="sample-note">Sample data: nothing real is created or sent.</p>
+  </header>
+
+  <section class="how" aria-label="How it works">
+    <ol>
+      <li><b>Speak.</b> Hold the badge button and talk. NVIDIA Parakeet turns it into text on your phone; only text leaves it. <span class="muted">Here, you type.</span></li>
+      <li><b>Propose.</b> NVIDIA Nemotron 3 Ultra on Nebius Token Factory reads your calendar, contacts, memory and the web (Tavily), and proposes one action.</li>
+      <li><b>Review.</b> The e-ink screen shows exactly what will happen.</li>
+      <li><b>Press.</b> Nothing is created or sent until you press. A double press cancels.</li>
+    </ol>
+  </section>
+
+  <main class="layout">
+    <section class="device-col" aria-label="The badge">
+      <div class="badge">
+        <div class="badge-frame">
+          <canvas id="screen" width="800" height="480" role="img" aria-label="Badge screen"></canvas>
+        </div>
+        <div class="screen-text" id="screen-text" aria-live="polite"></div>
+      </div>
+
+      <div class="controls" aria-label="Badge buttons">
+        <button id="btn-press" class="ctl primary" title="Single press: approve or select">Press</button>
+        <button id="btn-double" class="ctl" title="Double press: cancel or dismiss">Double press</button>
+        <button id="btn-hold" class="ctl" title="Hold: add to this request">Hold to add</button>
+        <div class="rotary" aria-label="Rotary knob">
+          <button id="btn-up" class="ctl small" title="Rotate up" aria-label="Rotate up">&#9650;</button>
+          <button id="btn-down" class="ctl small" title="Rotate down" aria-label="Rotate down">&#9660;</button>
+        </div>
+      </div>
+
+      <form id="command" class="command" autocomplete="off">
+        <label for="command-input" id="command-label">Say it (type it here)</label>
+        <div class="command-row">
+          <input id="command-input" type="text" maxlength="300" placeholder="block 3 to 4 tomorrow for the gym">
+          <button type="submit" class="ctl primary" id="command-send">Send</button>
+        </div>
+      </form>
+
+      <div class="chips" id="chips" aria-label="Examples"></div>
+
+      <details class="scenes" id="scenes" open>
+        <summary>Behind the scenes</summary>
+        <div id="scenes-body" class="muted">Each command shows its steps and timings here.</div>
+      </details>
+    </section>
+
+    <section class="panels" aria-label="Your sample world">
+      <article class="panel">
+        <h2>Calendar <span class="muted">next 7 days</span></h2>
+        <ul id="calendar" class="list"><li class="muted">Loading...</li></ul>
+      </article>
+      <article class="panel">
+        <h2>Sent email <span class="muted">sample outbox</span></h2>
+        <ul id="outbox" class="list"><li class="muted">Nothing sent yet.</li></ul>
+      </article>
+      <article class="panel">
+        <h2>Memory <span class="muted">yours to edit</span></h2>
+        <ul id="memory" class="list"><li class="muted">Loading...</li></ul>
+        <p class="hint muted">Learned only from actions you approved, or when you say "remember that...". Never from web pages or email text.</p>
+      </article>
+      <article class="panel">
+        <h2>Contacts <span class="muted">sample address book</span></h2>
+        <ul id="contacts" class="list compact"><li class="muted">Loading...</li></ul>
+      </article>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <p>HaloAI by team COV (Carlos, Orlando, Victor) for the Nebius x NVIDIA Global AI Hackathon, Personal AI track.
+      The real badge runs on an ESP32-S3 e-paper board, talks to an Android phone over Bluetooth Low Energy, and uses the same backend you are using now.
+      <a href="https://github.com/Orlandodlpz/HaloAI">Source code</a>. Screen font: Spleen by Frederic Cambus (<a href="LICENSE.spleen">BSD 2-Clause</a>).</p>
+  </footer>
+</body>
+</html>

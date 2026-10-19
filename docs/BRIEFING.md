@@ -574,4 +574,5 @@ Target dates for I1 to I4: _to be set by the team_.
 - [ ] All materials in English
 - [ ] Google demo account reconnected every week (testing mode tokens last 7 days), before the video, and before and during judging (December 1 to 15). The demo site runs on sample data and does not need it
 - [ ] One working badge kept available for a possible physical access request until January 11, 2027
-- [ ] Open, team: the target audience for the description and the video. Open, Orlando: real Tavily search on the demo site (read only; calendar and email stay sample data)
+- [ ] Open, team: the target audience for the description and the video
+- Decided 2026-10-19 (Orlando): the demo site searches the real web with Tavily (read only; calendar and email stay sample data), capped at 100 searches a day so the Tavily credit lasts through judging

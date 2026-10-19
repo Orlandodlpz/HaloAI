@@ -33,7 +33,7 @@ from app.processing import FakeExecutor, FakeProcessor, Processor, uses_real_too
 from app.streams import Streams
 from app.streams import router as stream_router
 from app.timing import hop, request_id_var
-from app.web_search import TavilySearch
+from app.web_search import DailyCap, TavilySearch
 
 log = logging.getLogger("haloai")
 
@@ -51,28 +51,34 @@ class Services:
     demo_sessions: SessionLimiter = field(default_factory=SessionLimiter)
 
 
-def world_source(settings: Settings, store: MockStore, memory: MemoryStore, google: GoogleWorld):
+def world_source(settings: Settings, store: MockStore, memory: MemoryStore, google: GoogleWorld, demo_web=None):
     """Where a request's calendar and contacts come from. Real keys with real tools switched on
     read the connected Google account; everything else (the demo site, real tools off) reads
-    the user's stored sample world. Same rule as the executor choice (uses_real_tools)."""
+    the user's stored sample world. Same rule as the executor choice (uses_real_tools).
+    The sample world can search the real web (demo_web, capped per day); then the recipient rule
+    of the real world applies too, so an address found only on a web page is refused."""
     async def user_world(ctx, now, tz):
         if uses_real_tools(settings, ctx.scope):
             world = await google.world(ctx.user_id, now, tz)
         else:
             world = await store.world(ctx.user_id, now, tz)  # each user's stored mock calendar
+            if settings.demo_real_search and demo_web is not None and demo_web.configured():
+                world.web = demo_web.search
+                world.allowed = frozenset()  # turns on the "said out loud or a contact" check
         snapshot = await memory.load(ctx.user_id)            # and what the assistant remembers
         world.memory_items, world.actions = snapshot.items, snapshot.actions
         return world
     return user_world
 
 
-def make_processor(settings: Settings, store: MockStore, memory: MemoryStore, google: GoogleWorld) -> Processor:
+def make_processor(settings: Settings, store: MockStore, memory: MemoryStore, google: GoogleWorld,
+                   demo_web=None) -> Processor:
     """'fake' (B1 keyword script) or 'nemotron' (the real loop), from the PROCESSOR setting."""
     if settings.processor == "nemotron":
         from app.agent import NemotronProcessor
         from app.llm import get_async_client
         return NemotronProcessor(get_async_client(), settings,
-                                 world_factory=world_source(settings, store, memory, google))
+                                 world_factory=world_source(settings, store, memory, google, demo_web))
     if settings.processor == "fake":
         return FakeProcessor()
     raise ValueError(f"unknown PROCESSOR {settings.processor!r}; use 'fake' or 'nemotron'")
@@ -90,12 +96,18 @@ async def build_services(settings: Settings) -> Services:
     # drafts, so it keeps the fake executor. Drafts made from the real calendar go to Google.
     mock_exec = MockExecutor(store) if settings.processor == "nemotron" else FakeExecutor("mock")
     real_exec = GoogleExecutor(google, settings, pool, clock)  # drafts from the real calendar (B4 step 3)
-    world = GoogleWorld(google, settings, web=TavilySearch(settings))
-    lc = Lifecycle(pool, settings, clock, make_processor(settings, store, memory, world),
+    tavily = TavilySearch(settings)
+    world = GoogleWorld(google, settings, web=tavily)
+    demo_web = DailyCap(tavily, settings.demo_daily_searches)
+    lc = Lifecycle(pool, settings, clock, make_processor(settings, store, memory, world, demo_web),
                    {"mock": mock_exec, "real": real_exec}, memory=memory)
     user_id = await lc.ensure_user("demo")
     # The phone key from .env, so the existing key keeps working. More keys: scripts/create_key.py
     await create_key(pool, user_id, "phone", "real", key=settings.backend_api_key.get_secret_value())
+    if settings.demo_site_key:  # the demo site (B6): sample mode only, its own sandbox user
+        demo_user = await lc.ensure_user("demo-site", sandbox=True)
+        await create_key(pool, demo_user, "demo-site", "mock", rate_per_min=30,
+                         key=settings.demo_site_key.get_secret_value())
     await lc.recover_on_startup()
     return Services(settings, pool, lc, Calls(pool, clock, settings), RateLimiter(), Streams(), google, store)
 
