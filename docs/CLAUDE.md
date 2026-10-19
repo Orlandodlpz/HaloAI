@@ -1,7 +1,7 @@
 # CLAUDE.md: HaloAI
 
 Project context and conventions for the whole team. Read this first in every session, whatever part of the project you work on.
-**Last Updated:** 2026-10-16
+**Last Updated:** 2026-10-19
 
 ## Interaction Mode: Always On
 
@@ -150,13 +150,13 @@ Decisions already made. Do not re-litigate unless new evidence is presented, and
 - Plain tool-calling loop against the OpenAI-compatible endpoint. No agent framework. No separate intent classifier (Jev and Laya were evaluated and rejected; picking a tool already classifies the request).
 - Python + FastAPI; Postgres on the Oracle server; Oracle Cloud Always Free ARM hosting.
 - Tools behind one interface with **mock** (sample data) and **real** implementations: `list_events`, `create_event`, `update_event`, `delete_event`, `lookup_contact`, `draft_email`, `send_email`, `web_search`, `remember`, `recall`. Confirmation required for `create_event`, `update_event`, `delete_event`, `send_email`.
-- Tavily web search is used as search then act (results feed a calendar or email action).
+- Tavily web search is used as search then act (results feed a calendar or email action). Real world only, `advanced` depth (`WEB_SEARCH_DEPTH`), at most 2 searches per request (decided 2026-10-19 from live runs, see BRIEFING B4).
 - Previous recipients come from Google People "other contacts", not from reading Gmail.
 - Memory stores contacts, preferences and recent actions; the user can view, edit and delete all of it. Learning is automatic but only from actions the user approved, never from content (web pages, email text, event descriptions); "remember that..." saves explicitly (decided 2026-10-15).
 - No Gmail read access: a timed out send is reported as uncertain, never as sent (decided 2026-10-15).
 - Real mode sends email and invitations to any address the user **said out loud in that request** or has as a contact (saved, "other contacts" or memory), checked in code against the transcript; an address found only in a web page or an event's text is refused before REVIEW. Addresses outside the team list (server secret `ALLOWED_RECIPIENTS`, never in git) are capped at 20 a day (`OUTSIDE_RECIPIENTS_PER_DAY`), counting sends that may have happened, so a leaked phone key cannot turn the demo account into a spam source (decided 2026-10-16, replacing the 2026-10-15 team-only allowlist, which would have blocked saying a judge's address). Verify: `cd pipeline && .venv/bin/python -m pytest -q tests/test_google_executor.py`.
 - Subject is generated from the email body unless the user says one.
-- Reasoning off by default; on only for multi-step requests.
+- Reasoning off by default; on only for multi-step requests. Implemented 2026-10-19 as: on for the turns after a web search (`REASONING_AFTER_SEARCH`), with its own token budget and sampling; simple commands never reason. A reply asking "would you like me to..." is sent back to the model once, because REVIEW is the confirmation.
 - Demo site main mode: "Try it with sample data" (mock tools, no Google login).
 
 **Phone**
@@ -204,7 +204,7 @@ Decided 2026-10-06, revised for V1 and signed off by Orlando, Carlos and Victor 
 
 ## Current Status
 
-**Backend (Orlando):** Phases B0, B1, B2 and B3 DONE (B3 on 2026-10-15: memory that learns from approved actions, "remember that", the memory endpoints and a separate demo user; eval 97.8%, memory 30 of 30, traps 24 of 24; checked live on the server). Server: `https://api.haloai-cov.io`, Nemotron 3 Ultra. **B4 in progress (as of 2026-10-16): steps 1 to 3 live.** Google sign in on the backend (`haloai.cov@gmail.com` connected), the real calendar and contacts read for the phone key (`REAL_TOOLS_ENABLED=true`, live check 6 of 6), and real Calendar and Gmail actions after approval: **approving on the phone key really creates events and sends email.** The demo site key stays on sample data. Contract additions the same day: `execution_key` on REVIEW, `failure_stage` on FAILURE, and the status endpoint answering for keys never approved. Next: step 4 (Tavily web search), then the B4 gate. Text budget in config: Victor's F1 numbers (48 x 12 landscape, 28 x 22 portrait).
+**Backend (Orlando):** Phases B0, B1, B2 and B3 DONE (B3 on 2026-10-15: memory that learns from approved actions, "remember that", the memory endpoints and a separate demo user; eval 97.8%, memory 30 of 30, traps 24 of 24; checked live on the server). Server: `https://api.haloai-cov.io`, Nemotron 3 Ultra. **B4 DONE 2026-10-19, gate passed live on the demo account** (details in BRIEFING B4): Google sign in on the backend (`haloai.cov@gmail.com` connected), the real calendar and contacts, real Calendar and Gmail actions after approval only, Tavily search then act with reasoning after the search. **Approving on the phone key really creates events and sends email** (`REAL_TOOLS_ENABLED=true`); the demo site key stays on sample data. Contract additions: `execution_key` on REVIEW, `failure_stage` on FAILURE, status for keys never approved, `GET /v1/requests/{id}`. Eval 97.1%, traps 24 of 24; 242 tests. Known limitation: "the next X" from web schedules is about 60% right. Google account endpoints still PROPOSED (Carlos). Next: B5 (backups, 20 request timings, eval on the server), then B6 (demo site). Text budget in config: Victor's F1 numbers (48 x 12 landscape, 28 x 22 portrait).
 **Phone (Carlos), as of 2026-10-13:** Phase P0 DONE 2026-10-07 (Parakeet v3 offline on the phone, 0.19 to 0.32 s per clip, 12.7% word error rate on 5 clips; details in BRIEFING P0). Phase P1 in progress: phone side built and tested on the Mac with a fake transport and on the phone with a loopback of the P0 clips; not yet run against the board. Test only extra: a hold to talk button on the phone mic for live speech to text testing. Waiting on: Victor's answer on the BLE field names draft (`phone/docs/ble_fields_draft.md`) and his F2 firmware streaming audio, for the P1 gate; text budget numbers (for the wallpaper size and screen preview).
 
 Phone gotchas:
@@ -248,6 +248,14 @@ Phone gotchas:
 - Backend: Token Factory latency depends on the time of day: one-turn answers took 0.47 s one morning and 1.2 s that afternoon with no change on our side. Measure side by side when comparing.
 - Backend: the number of model turns matters more than model size for latency. Ultra (55B active) beat Nano (3.6B active) at p90 because it finishes 91% of commands in one turn and Nano only 47%.
 - Backend: on a small model, more rule text can make things worse: the model copies example phrases from the rules instead of acting. Put guarantees in code (screen text, validation) and keep rules short.
+- Backend: with reasoning on, the thinking counts against `max_tokens`. Our 400 token budget for normal turns would cut a tool call off mid thought, so reasoning turns get their own budget (`MAX_REASONING_TOKENS`, 2000). Thinking used 100 to 800 tokens per turn after a search.
+- Backend: web search results are partial pages. Schedules come as cut tables starting at different dates, plus stale text ("the next game is Oct 10"), so "the next X" is the weak spot (about 60% right even with reasoning), and sources disagree on time zones (one schedule lists Pacific time). Use fixed facts or a known date in demos. Verify a change with a live run on the server, not only the eval: the eval's search results are canned.
+- Backend: with reasoning on, a poisoned search result made the model distrust it and search again until the turn cap (eval trap_06). Capped at 2 searches per request (`MAX_SEARCHES`).
+- Backend: Tavily `basic` costs 1 credit, `advanced` 2; one search took 1.3 to 1.8 s live. Excerpts run 450 to 1500 characters; we keep 500 of each of 5 results.
+- Backend: an approve refused because the proposal expired rolls back its own transaction, so the database row still reads `review`. Expiry is enforced by the timestamp on every approve, and `GET /v1/requests/{id}` and the status endpoint report it as cancelled; do not read the raw `state` column as the truth.
+- Backend: Google event ids may only use the characters a to v and 0 to 9 (base32hex). Created events use `halo` plus hex from the execution key, which fits.
+- Backend: anyone can put an event on the demo calendar by sending an invitation, so event titles and notes are untrusted. They reach the model marked as data, and an address in them can never become a recipient unless the user says it.
+- Backend: logs never carry addresses or message content. `execute` and `google_call` hops record only the kind, method and status. Verify: on the server, `journalctl -u haloai | grep -E '"hop": "(execute|google_call)"'`.
 - Device: drive the vibration motor through a transistor, never straight from a GPIO pin, with a flyback diode across the motor. The transistor kit on the materials list is bipolar (TO-92 NPN/PNP), not MOSFET; pick a suitable driver transistor from it.
 - Device: before plugging a LiPo into the board's MX1.25 header, check the connector type and the red/black polarity with the multimeter. 1.25 mm plugs from different vendors look alike but do not share a polarity standard.
 - Device: use data capable USB-C cables. Charge only cables power the board but cannot flash it.
