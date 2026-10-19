@@ -25,6 +25,7 @@ from sse_starlette import EventSourceResponse, ServerSentEvent
 
 from app.api import error_payload
 from app.auth import Caller, require_caller
+from app.demo_api import check_demo_budget
 from app.lifecycle import ApiError
 from app.timing import hop, request_id_var
 
@@ -216,6 +217,7 @@ async def stream_call(request: Request, caller: Caller, name: str, body: BaseMod
 
 @router.post("/v1/requests")
 async def start_request(body: StartBody, request: Request, caller: Caller = Depends(require_caller)):
+    await check_demo_budget(request, caller)
     lc = request.app.state.services.lc
     payload = body.model_dump(mode="json")
     return await stream_call(request, caller, "start", body, str(body.request_id),
@@ -225,6 +227,7 @@ async def start_request(body: StartBody, request: Request, caller: Caller = Depe
 @router.post("/v1/requests/{request_id}/additions")
 async def add_to_request(request_id: UUID, body: AdditionBody, request: Request,
                          caller: Caller = Depends(require_caller)):
+    await check_demo_budget(request, caller)
     lc = request.app.state.services.lc
     payload = body.model_dump(mode="json")
     return await stream_call(request, caller, "addition", body, str(request_id),
@@ -234,6 +237,7 @@ async def add_to_request(request_id: UUID, body: AdditionBody, request: Request,
 @router.post("/v1/requests/{request_id}/select")
 async def select_candidate(request_id: UUID, body: SelectBody, request: Request,
                            caller: Caller = Depends(require_caller)):
+    await check_demo_budget(request, caller)
     lc = request.app.state.services.lc
     payload = body.model_dump(mode="json")
     return await stream_call(request, caller, "select", body, str(request_id),
