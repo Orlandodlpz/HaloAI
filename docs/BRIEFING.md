@@ -441,6 +441,13 @@ Each phase ends with a gate. The gate must pass before the next phase in that tr
 - **Results (if DONE):**
   - Progress 2026-10-13 (not DONE, gate needs the real board with Victor's firmware): phone side built in `phone/lib/ble/` (chunk parser with CRC, IMA ADPCM decoder, segment assembler with cumulative acks and `resend_from`, ID and `sid` maps, JSON messages and fragments, BLE link over flutter_blue_plus, device session). **Tested on the Mac only** with a fake transport: 37 of 37 tests, including byte for byte agreement with a Python reference encoder (golden vectors for the firmware) and a real P0 clip through the full audio path with lost chunks. Deliberate breaks (nibble order, duplicate check, final ack) were each caught. Not yet run on the phone against a device. Field names and UUIDs are a draft for Victor in `phone/docs/ble_fields_draft.md`.
   - On the phone 2026-10-13 (Z Flip7, release build): loopback of the 5 P0 clips through the full audio path (encode, chunks with every 9th lost on purpose, receiver, decode) in 9 to 22 ms per clip; all lost chunks (25 to 47 per clip) recovered by `resend_from`. 4 of 5 transcripts identical to the original WAV's. The fifth is the P0 "12 p.m." clip: the original still reads "2 p.m.", the ADPCM version read "12 p.m." (correct). ADPCM's small changes can flip a borderline word either way; REVIEW stays the safety net. No radio involved yet.
+  - Update 2026-10-17: the BLE field names were agreed with Victor on 2026-10-13 and are in section 2; the phone accepts the `battery` event and logs the `cancel` reason (38 of 38 tests).
+  - **Phone against Victor's firmware on the CrowPanel, 2026-10-19 (Z Flip7, release build; firmware `f2-dev`, build `dfce7bf-dirty`, not on GitHub).** First real BLE link between the phone and an ESP32. Not DONE: the audio is the P0 clip `delete_meetings_thursday` streamed from flash, because the CrowPanel has no microphone.
+    - Link: scan found the board in 1.6 s with the service UUID in the scan response; **MTU 256 on Android** (above 179); `hello` on Events subscribe and Settings with `phone_ready` both ways.
+    - Audio, 5 runs: **5 of 5 transcripts correct** ("Delete all my meetings on Thursday."), 233 of 233 chunks every time, 0 resends, 0 CRC failures, **176 to 180 kbit/s, about 2.5 times realtime** (Victor's Mac measurement was 158). Parakeet 185 to 259 ms, release to text 193 to 271 ms. Release to complete was 1 to 17 ms, which says little: a flash clip streams faster than speech, so the audio was already there when `record_end` arrived. The real BLE number needs a hold on the badge.
+    - Reconnect after a board restart: 6 of 6, about 6 to 7 s from reset to `hello`, almost all of it the board booting; the phone saw each new `boot` and started fresh.
+    - `battery` event at 4% and 80% received and logged. REVIEW screen accepted in PROCESSING, drawn in 495 ms, confirm guard started; a single press 28 s later sent `approve`, and the phone mapped its `sid` back to request, revision and hash.
+    - Not run: walking out of range. Found on the firmware side and sent to Victor: a hold never reaches RECORDING because PHONE / BLUETOOTH CHECK ignores the stored `phone_ready` (worked around by injecting it); one stall in FINALIZE AUDIO after an addition; a screen that does not fit the current state is ignored without a log line; the `A` clip reuses its IDs, so each run needed a board reset. A partly drawn panel was USB port power, not the driver. Phone side: Settings does not send `tz` yet (P2).
 
 #### Phase P2: Backend client (PLANNED)
 - **Goal:** the phone talks to the backend with the agreed contract.
@@ -534,7 +541,7 @@ Each phase ends with a gate. The gate must pass before the next phase in that tr
 - **I4: Latency measured end to end** on real hardware against the 5 s budget, with per-hop timings filled into section 2.
 - **I5: Submission.** See section 5.
 
-Target dates for I1 to I4: _to be set by the team_.
+Target dates (agreed by the team 2026-10-19): **I1 by October 22** (Carlos; `pipeline/scripts/phone_sim.py` is the reference for every call and every Screen write), **I2 by October 25**. If the Waveshare badge has not arrived by October 25, the fallback for I2 and the video is the phone's microphone test button plus the CrowPanel development board as the screen and buttons: real hardware, real Parakeet, the real backend, not the final board. I3 and I4: to be set once I2 passes.
 
 ## 4. Open Risks
 
@@ -577,5 +584,5 @@ Target dates for I1 to I4: _to be set by the team_.
 - [ ] All materials in English
 - [ ] Google demo account reconnected every week (testing mode tokens last 7 days), before the video, and before and during judging (December 1 to 15). The demo site runs on sample data and does not need it
 - [ ] One working badge kept available for a possible physical access request until January 11, 2027
-- [ ] Open, team: the target audience for the description and the video
+- Decided 2026-10-19 (team): **target audience.** Lead with **college students who juggle classes, work and group projects** (the team is exactly that, at UTRGV, which is the "genuine understanding of the problem space" the judges score): in class, in a lab or between classes, pulling out a phone is slow or rude, and a press to confirm badge captures "move my study group to Thursday" or "email the TA I will be late" in seconds and never acts by mistake. Then widen in one sentence to entrepreneurs and professionals on the move, anyone who needs small tasks out of the way fast. The video shows a real student moment.
 - Decided 2026-10-19 (Orlando): the demo site searches the real web with Tavily (read only; calendar and email stay sample data), capped at 100 searches a day so the Tavily credit lasts through judging

@@ -20,7 +20,7 @@ from pydantic import BaseModel
 from app.api import json_call
 from app.auth import Caller, create_key, require_caller
 from app.lifecycle import ApiError
-from app.mockdata import CONTACTS
+from app.mockdata import DEMO_CONTACTS
 
 router = APIRouter()
 VISITOR_CLIENT = "visitor"
@@ -138,5 +138,5 @@ async def contacts(request: Request, caller: Caller = Depends(require_caller)):
     """The sample address book, so visitors know who they can email ('email Victor ...')."""
     async def handler():
         _demo_only(caller)
-        return {"contacts": [{"name": c["name"], "email": c["email"]} for c in CONTACTS]}
+        return {"contacts": [{"name": c["name"], "email": c["email"]} for c in DEMO_CONTACTS]}
     return await json_call(request, caller, "demo_contacts", None, handler)

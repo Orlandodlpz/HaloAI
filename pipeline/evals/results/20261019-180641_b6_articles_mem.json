@@ -1,0 +1,827 @@
+{
+ "label": "b6_articles_mem",
+ "only": "mem",
+ "repeat": 3,
+ "git_sha": "786a030",
+ "model": "nvidia/Nemotron-3-Ultra-550b-a55b",
+ "reasoning": false,
+ "max_turns": 4,
+ "summary": {
+  "n": 30,
+  "correct": 30,
+  "within_turns": 30,
+  "traps_correct": 0,
+  "traps_n": 0,
+  "median_ms": 801.5,
+  "p90_ms": 1732,
+  "median_ms_one_turn": 775.0,
+  "turns": {
+   "1": 24,
+   "2": 6
+  },
+  "tokens_in": 97806,
+  "tokens_out": 2163,
+  "cost_usd_estimate": 0.1043,
+  "by_category": {
+   "memory": {
+    "n": 30,
+    "correct": 30,
+    "within_turns": 30
+   }
+  }
+ },
+ "cases": [
+  {
+   "id": "mem_01",
+   "category": "memory",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 1086,
+   "tokens_in": 2701,
+   "tokens_out": 51,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "victor@example.com",
+    "to_name": "Victor",
+    "subject": "Demo is ready",
+    "body": "The demo is ready."
+   },
+   "screen_lines": [
+    "To: victor@example.com",
+    "Re: Demo is ready",
+    "The demo is ready."
+   ],
+   "statuses": [
+    "Email to Victor"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 1
+  },
+  {
+   "id": "mem_02",
+   "category": "memory",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 819,
+   "tokens_in": 2707,
+   "tokens_out": 54,
+   "state": "conflict_ambiguous",
+   "draft": {
+    "kind": "send_email",
+    "subject": "Lunch at noon",
+    "body": "Lunch is at noon."
+   },
+   "screen_lines": [
+    "Which Alex?"
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 1
+  },
+  {
+   "id": "mem_03",
+   "category": "memory",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 841,
+   "tokens_in": 2698,
+   "tokens_out": 76,
+   "state": "review",
+   "draft": {
+    "kind": "create_event",
+    "title": "Focus time",
+    "start": "2026-10-14T09:00:00-05:00",
+    "end": "2026-10-14T09:30:00-05:00",
+    "timezone": "America/Chicago",
+    "guests": [],
+    "video_call": false,
+    "description": ""
+   },
+   "screen_lines": [
+    "New event",
+    "Focus time",
+    "Wed Oct 14",
+    "9:00 AM to 9:30 AM"
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 1
+  },
+  {
+   "id": "mem_04",
+   "category": "memory",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 596,
+   "tokens_in": 2753,
+   "tokens_out": 58,
+   "state": "review",
+   "draft": {
+    "kind": "update_event",
+    "event_id": "ev_ab12cd34",
+    "before": {
+     "event_id": "ev_ab12cd34",
+     "title": "Gym",
+     "start": "2026-10-14T15:00:00-05:00",
+     "end": "2026-10-14T16:00:00-05:00"
+    },
+    "after": {
+     "title": "Gym",
+     "start": "2026-10-14T17:00:00-05:00",
+     "end": "2026-10-14T18:00:00-05:00"
+    },
+    "timezone": "America/Chicago"
+   },
+   "screen_lines": [
+    "Change event",
+    "Gym",
+    "Was Wed Oct 14 3:00 PM",
+    "Now Wed Oct 14 5:00 PM to 6:00 PM"
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 1
+  },
+  {
+   "id": "mem_05",
+   "category": "memory",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 819,
+   "tokens_in": 2711,
+   "tokens_out": 52,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "victor.morales@example.com",
+    "to_name": "Victor Morales",
+    "subject": "Numbers are final",
+    "body": "The numbers are final."
+   },
+   "screen_lines": [
+    "To: victor.morales@example.com",
+    "Re: Numbers are final",
+    "The numbers are final."
+   ],
+   "statuses": [
+    "Email to Victor Morales"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 1
+  },
+  {
+   "id": "mem_06",
+   "category": "memory",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 773,
+   "tokens_in": 2680,
+   "tokens_out": 47,
+   "state": "read_only_result",
+   "draft": null,
+   "screen_lines": [
+    "Saved",
+    "Maria: maria@gmail.com"
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [
+    {
+     "kind": "contact",
+     "label": "Maria",
+     "value": "maria@gmail.com"
+    }
+   ],
+   "run": 1
+  },
+  {
+   "id": "mem_07",
+   "category": "memory",
+   "correct": true,
+   "within_turns": true,
+   "turns": 2,
+   "ms": 1732,
+   "tokens_in": 5475,
+   "tokens_out": 138,
+   "state": "read_only_result",
+   "draft": null,
+   "screen_lines": [
+    "I found Sweet Bites Bakery - it opens at 6:00 AM."
+   ],
+   "statuses": [
+    "Searching the web"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 1
+  },
+  {
+   "id": "mem_08",
+   "category": "memory",
+   "correct": true,
+   "within_turns": true,
+   "turns": 2,
+   "ms": 1923,
+   "tokens_in": 5481,
+   "tokens_out": 234,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "victor.morales@example.com",
+    "to_name": "Victor Morales",
+    "subject": "Bakery recommendation",
+    "body": "Sweet Bites Bakery opens at 6:00 AM."
+   },
+   "screen_lines": [
+    "To: victor.morales@example.com",
+    "Re: Bakery recommendation",
+    "Sweet Bites Bakery opens at 6:00 AM."
+   ],
+   "statuses": [
+    "Searching the web",
+    "Email to Victor Morales"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 1
+  },
+  {
+   "id": "mem_09",
+   "category": "memory",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 729,
+   "tokens_in": 2697,
+   "tokens_out": 12,
+   "state": "read_only_result",
+   "draft": null,
+   "screen_lines": [
+    "Your office is Room 2.110."
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 1
+  },
+  {
+   "id": "mem_10",
+   "category": "memory",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 734,
+   "tokens_in": 2699,
+   "tokens_out": 9,
+   "state": "read_only_result",
+   "draft": null,
+   "screen_lines": [
+    "Victor's email is victor@example.com."
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 1
+  },
+  {
+   "id": "mem_01",
+   "category": "memory",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 574,
+   "tokens_in": 2701,
+   "tokens_out": 51,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "victor@example.com",
+    "to_name": "Victor",
+    "subject": "Demo is ready",
+    "body": "The demo is ready."
+   },
+   "screen_lines": [
+    "To: victor@example.com",
+    "Re: Demo is ready",
+    "The demo is ready."
+   ],
+   "statuses": [
+    "Email to Victor"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 2
+  },
+  {
+   "id": "mem_02",
+   "category": "memory",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 808,
+   "tokens_in": 2707,
+   "tokens_out": 54,
+   "state": "conflict_ambiguous",
+   "draft": {
+    "kind": "send_email",
+    "subject": "Lunch at noon",
+    "body": "Lunch is at noon."
+   },
+   "screen_lines": [
+    "Which Alex?"
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 2
+  },
+  {
+   "id": "mem_03",
+   "category": "memory",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 816,
+   "tokens_in": 2698,
+   "tokens_out": 76,
+   "state": "review",
+   "draft": {
+    "kind": "create_event",
+    "title": "Focus time",
+    "start": "2026-10-14T09:00:00-05:00",
+    "end": "2026-10-14T09:30:00-05:00",
+    "timezone": "America/Chicago",
+    "guests": [],
+    "video_call": false,
+    "description": ""
+   },
+   "screen_lines": [
+    "New event",
+    "Focus time",
+    "Wed Oct 14",
+    "9:00 AM to 9:30 AM"
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 2
+  },
+  {
+   "id": "mem_04",
+   "category": "memory",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 795,
+   "tokens_in": 2753,
+   "tokens_out": 58,
+   "state": "review",
+   "draft": {
+    "kind": "update_event",
+    "event_id": "ev_ab12cd34",
+    "before": {
+     "event_id": "ev_ab12cd34",
+     "title": "Gym",
+     "start": "2026-10-14T15:00:00-05:00",
+     "end": "2026-10-14T16:00:00-05:00"
+    },
+    "after": {
+     "title": "Gym",
+     "start": "2026-10-14T17:00:00-05:00",
+     "end": "2026-10-14T18:00:00-05:00"
+    },
+    "timezone": "America/Chicago"
+   },
+   "screen_lines": [
+    "Change event",
+    "Gym",
+    "Was Wed Oct 14 3:00 PM",
+    "Now Wed Oct 14 5:00 PM to 6:00 PM"
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 2
+  },
+  {
+   "id": "mem_05",
+   "category": "memory",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 585,
+   "tokens_in": 2711,
+   "tokens_out": 52,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "victor.morales@example.com",
+    "to_name": "Victor Morales",
+    "subject": "Numbers are final",
+    "body": "The numbers are final."
+   },
+   "screen_lines": [
+    "To: victor.morales@example.com",
+    "Re: Numbers are final",
+    "The numbers are final."
+   ],
+   "statuses": [
+    "Email to Victor Morales"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 2
+  },
+  {
+   "id": "mem_06",
+   "category": "memory",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 777,
+   "tokens_in": 2680,
+   "tokens_out": 47,
+   "state": "read_only_result",
+   "draft": null,
+   "screen_lines": [
+    "Saved",
+    "Maria: maria@gmail.com"
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [
+    {
+     "kind": "contact",
+     "label": "Maria",
+     "value": "maria@gmail.com"
+    }
+   ],
+   "run": 2
+  },
+  {
+   "id": "mem_07",
+   "category": "memory",
+   "correct": true,
+   "within_turns": true,
+   "turns": 2,
+   "ms": 1650,
+   "tokens_in": 5475,
+   "tokens_out": 106,
+   "state": "read_only_result",
+   "draft": null,
+   "screen_lines": [
+    "Sweet Bites Bakery opens at 6:00 AM."
+   ],
+   "statuses": [
+    "Searching the web"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 2
+  },
+  {
+   "id": "mem_08",
+   "category": "memory",
+   "correct": true,
+   "within_turns": true,
+   "turns": 2,
+   "ms": 1764,
+   "tokens_in": 5481,
+   "tokens_out": 167,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "victor.morales@example.com",
+    "to_name": "Victor Morales",
+    "subject": "Bakery recommendation",
+    "body": "Sweet Bites Bakery"
+   },
+   "screen_lines": [
+    "To: victor.morales@example.com",
+    "Re: Bakery recommendation",
+    "Sweet Bites Bakery"
+   ],
+   "statuses": [
+    "Searching the web",
+    "Email to Victor Morales"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 2
+  },
+  {
+   "id": "mem_09",
+   "category": "memory",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 510,
+   "tokens_in": 2697,
+   "tokens_out": 12,
+   "state": "read_only_result",
+   "draft": null,
+   "screen_lines": [
+    "Your office is Room 2.110."
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 2
+  },
+  {
+   "id": "mem_10",
+   "category": "memory",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 704,
+   "tokens_in": 2699,
+   "tokens_out": 9,
+   "state": "read_only_result",
+   "draft": null,
+   "screen_lines": [
+    "Victor's email is victor@example.com."
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 2
+  },
+  {
+   "id": "mem_01",
+   "category": "memory",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 572,
+   "tokens_in": 2701,
+   "tokens_out": 51,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "victor@example.com",
+    "to_name": "Victor",
+    "subject": "Demo is ready",
+    "body": "The demo is ready."
+   },
+   "screen_lines": [
+    "To: victor@example.com",
+    "Re: Demo is ready",
+    "The demo is ready."
+   ],
+   "statuses": [
+    "Email to Victor"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 3
+  },
+  {
+   "id": "mem_02",
+   "category": "memory",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 814,
+   "tokens_in": 2707,
+   "tokens_out": 54,
+   "state": "conflict_ambiguous",
+   "draft": {
+    "kind": "send_email",
+    "subject": "Lunch at noon",
+    "body": "Lunch is at noon."
+   },
+   "screen_lines": [
+    "Which Alex?"
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 3
+  },
+  {
+   "id": "mem_03",
+   "category": "memory",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 841,
+   "tokens_in": 2698,
+   "tokens_out": 76,
+   "state": "review",
+   "draft": {
+    "kind": "create_event",
+    "title": "Focus time",
+    "start": "2026-10-14T09:00:00-05:00",
+    "end": "2026-10-14T09:30:00-05:00",
+    "timezone": "America/Chicago",
+    "guests": [],
+    "video_call": false,
+    "description": ""
+   },
+   "screen_lines": [
+    "New event",
+    "Focus time",
+    "Wed Oct 14",
+    "9:00 AM to 9:30 AM"
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 3
+  },
+  {
+   "id": "mem_04",
+   "category": "memory",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 591,
+   "tokens_in": 2753,
+   "tokens_out": 58,
+   "state": "review",
+   "draft": {
+    "kind": "update_event",
+    "event_id": "ev_ab12cd34",
+    "before": {
+     "event_id": "ev_ab12cd34",
+     "title": "Gym",
+     "start": "2026-10-14T15:00:00-05:00",
+     "end": "2026-10-14T16:00:00-05:00"
+    },
+    "after": {
+     "title": "Gym",
+     "start": "2026-10-14T17:00:00-05:00",
+     "end": "2026-10-14T18:00:00-05:00"
+    },
+    "timezone": "America/Chicago"
+   },
+   "screen_lines": [
+    "Change event",
+    "Gym",
+    "Was Wed Oct 14 3:00 PM",
+    "Now Wed Oct 14 5:00 PM to 6:00 PM"
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 3
+  },
+  {
+   "id": "mem_05",
+   "category": "memory",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 829,
+   "tokens_in": 2711,
+   "tokens_out": 52,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "victor.morales@example.com",
+    "to_name": "Victor Morales",
+    "subject": "Numbers are final",
+    "body": "The numbers are final."
+   },
+   "screen_lines": [
+    "To: victor.morales@example.com",
+    "Re: Numbers are final",
+    "The numbers are final."
+   ],
+   "statuses": [
+    "Email to Victor Morales"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 3
+  },
+  {
+   "id": "mem_06",
+   "category": "memory",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 792,
+   "tokens_in": 2680,
+   "tokens_out": 47,
+   "state": "read_only_result",
+   "draft": null,
+   "screen_lines": [
+    "Saved",
+    "Maria: maria@gmail.com"
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [
+    {
+     "kind": "contact",
+     "label": "Maria",
+     "value": "maria@gmail.com"
+    }
+   ],
+   "run": 3
+  },
+  {
+   "id": "mem_07",
+   "category": "memory",
+   "correct": true,
+   "within_turns": true,
+   "turns": 2,
+   "ms": 1587,
+   "tokens_in": 5475,
+   "tokens_out": 142,
+   "state": "read_only_result",
+   "draft": null,
+   "screen_lines": [
+    "Sweet Bites Bakery opens at 6:00 AM."
+   ],
+   "statuses": [
+    "Searching the web"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 3
+  },
+  {
+   "id": "mem_08",
+   "category": "memory",
+   "correct": true,
+   "within_turns": true,
+   "turns": 2,
+   "ms": 2135,
+   "tokens_in": 5481,
+   "tokens_out": 299,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "victor.morales@example.com",
+    "to_name": "Victor Morales",
+    "subject": "Bakery recommendation",
+    "body": "I found a bakery called Sweet Bites Bakery. It opens at 6:00 AM."
+   },
+   "screen_lines": [
+    "To: victor.morales@example.com",
+    "Re: Bakery recommendation",
+    "I found a bakery called Sweet Bites Bakery. It opens at 6:00 AM."
+   ],
+   "statuses": [
+    "Searching the web",
+    "Email to Victor Morales"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 3
+  },
+  {
+   "id": "mem_09",
+   "category": "memory",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 757,
+   "tokens_in": 2697,
+   "tokens_out": 12,
+   "state": "read_only_result",
+   "draft": null,
+   "screen_lines": [
+    "Your office is Room 2.110."
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 3
+  },
+  {
+   "id": "mem_10",
+   "category": "memory",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 496,
+   "tokens_in": 2699,
+   "tokens_out": 9,
+   "state": "read_only_result",
+   "draft": null,
+   "screen_lines": [
+    "Victor's email is victor@example.com."
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 3
+  }
+ ]
+}

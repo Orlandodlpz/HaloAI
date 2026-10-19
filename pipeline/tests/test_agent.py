@@ -273,3 +273,9 @@ async def test_other_ways_of_asking_are_sent_back_too(text):
                       reply([tool_call("create_event", {"title": "Farmers market", "start": "2026-10-17T08:00"})])])
     out = await p.process(ctx("look up when the farmers market opens and add it"))
     assert out.state == "review" and len(client.requests) == 2
+
+
+async def test_answers_keep_their_line_breaks_on_the_badge():
+    p, _ = proc([reply(content="Tomorrow:\n10:00 AM Dentist\n3:00 PM Gym\n\n\n\nThat is all.")])
+    out = await p.process(ctx("what do I have tomorrow?"))
+    assert out.screen_lines == ["Tomorrow:", "10:00 AM Dentist", "3:00 PM Gym", "", "That is all."]

@@ -80,9 +80,9 @@ async def test_declined_or_unapproved_actions_teach_nothing(lc, user, wired, mem
 
 
 async def test_invited_guests_are_learned(lc, user, wired, mem):
-    wired(reply([tool_call("create_event", {"title": "Call with Maria", "start": "2026-10-16T16:00",
-                                            "guests": ["Maria"], "video_call": True})]))
-    await run(lc, user, "set up a call with maria friday at 4")
+    wired(reply([tool_call("create_event", {"title": "Call with Maria", "start": "2026-10-16T17:00",
+                                            "guests": ["Maria"], "video_call": True})]))  # after the student week's lab
+    await run(lc, user, "set up a call with maria friday at 5")
     assert await contacts(mem, user) == [("Maria Lopez", "maria.lopez@example.com", "learned", 1)]
 
 
