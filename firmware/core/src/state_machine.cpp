@@ -27,6 +27,26 @@ bool is_capturing(State s) {
     return s == State::Recording || s == State::RecordAddition;
 }
 
+// Work on a request that has NOT been dispatched yet. The backend can still
+// cancel these. Once approve has gone out (EXECUTING onwards) it cannot: the
+// effect may already exist, and those are reconciled by execution key instead.
+bool is_before_dispatch(State s) {
+    switch (s) {
+        case State::PhoneCheck:
+        case State::Recording:
+        case State::FinalizeAudio:
+        case State::Processing:
+        case State::ProcessingSlow:
+        case State::RecordAddition:
+        case State::ConflictAmbiguous:
+        case State::ConflictSchedule:
+        case State::Review:
+            return true;
+        default:
+            return false;
+    }
+}
+
 }  // namespace
 
 Transition StateMachine::stay(const Event& e, const char* note, bool handled) {
@@ -171,6 +191,29 @@ Transition StateMachine::handle(const Event& e) {
             }
         }
         return stay(e, "", false);
+    }
+
+    // ---- The backend cancelled this request (team addition 2026-10-17) ----
+    //
+    // Two different things wear the same screen. In RECONCILE STATUS the phone
+    // only sends it after the status endpoint confirmed the key was never
+    // approved and the cancel went through, so the device knows nothing happened
+    // and may drop the key. Everywhere else it is the ordinary case: the request
+    // expired on the backend, or a newer one replaced it.
+    if (e.kind == EventKind::ScreenCancelled) {
+        if (state_ == State::ReconcileStatus) {
+            pending_execution_ = false;
+            return go(State::Cancelled, e, "never approved, request cancelled",
+                      {Action::ClearExecutionKey});
+        }
+        if (is_before_dispatch(state_)) {
+            if (is_capturing(state_))
+                return go(State::Cancelled, e, "cancelled upstream", {Action::StopCapture});
+            return go(State::Cancelled, e, "cancelled upstream");
+        }
+        // Nothing of ours is in flight, or it is already dispatched and cannot be
+        // cancelled. Never acted on, so a stray one cannot throw away a key.
+        return stay(e, "nothing to cancel here", false);
     }
 
     // ---- Per state ----
@@ -347,6 +390,21 @@ Transition StateMachine::handle(const Event& e) {
             return stay(e, "", false);
 
         case State::ExecutionUncertain:
+            // An authoritative answer can arrive here without being asked for:
+            // the phone polls the status endpoint while the device waits. Section
+            // 2 (2026-10-19) says the key is cleared on an outcome in this state
+            // too, and ignoring one would leave a key in flash for an action the
+            // backend has already settled.
+            if (e.kind == EventKind::ExecutionApplied) {
+                pending_execution_ = false;
+                return go(State::Success, e, "authoritative success while uncertain",
+                          {Action::ClearExecutionKey});
+            }
+            if (e.kind == EventKind::ExecutionRejected) {
+                pending_execution_ = false;
+                return go(State::Failure, e, "authoritative rejection while uncertain",
+                          {Action::ClearExecutionKey});
+            }
             if (e.kind == EventKind::SinglePress || e.kind == EventKind::StatusQueryDue)
                 return go(State::ReconcileStatus, e, "query the same execution key",
                           {Action::SendStatusQuery});
@@ -375,6 +433,9 @@ Transition StateMachine::handle(const Event& e) {
         case State::Cancelled:
             if (e.kind == EventKind::CancelAck)
                 return go(State::Ready, e, "cancellation notice complete");
+            // Any input dismisses the notice, like SUCCESS and FAILURE (team
+            // addition 2026-10-17). Waiting out the timer is not the only way.
+            if (is_input(e.kind)) return go(State::Ready, e, "acknowledged");
             return stay(e, "", false);
 
         default:

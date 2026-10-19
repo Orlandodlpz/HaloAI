@@ -180,13 +180,23 @@ struct Screen {
 // does not know). A screen that fails to parse is dropped, never half applied.
 bool parse_screen(const char* doc, size_t len, Screen* out);
 
-// The state machine event a screen implies, if any. `current` matters for one
-// case: a FAILURE screen means the execution was rejected if the device was
-// executing, and that processing failed otherwise. The two differ in whether a
-// pending execution key may be cleared, so they cannot be collapsed.
+// The state machine event a screen implies, if any.
 //
-// READY, CANCELLED, EXECUTING and the device's own local states imply nothing:
-// either the device is already there or the V1 table has no event for it.
+// FAILURE is the only ambiguous one: it means the execution was rejected if it
+// came after an approve, and that processing failed otherwise, and the two differ
+// in whether a pending execution key may be cleared. `current` settles it.
+//
+// The backend has a `failure_stage` field that says which, and section 2 (Carlos,
+// 2026-10-19) deliberately does NOT carry it over BLE: a device holding a saved
+// key comes up in RECONCILE STATUS, and there a FAILURE can only be the answer
+// for that key, because a key that was never approved answers `review` or
+// `cancelled` and never `failure`. So the device's own state is the single
+// mechanism, and reading the field as well would be a second source of truth for
+// the same fact.
+//
+// READY, EXECUTING and the device's own local states imply nothing: either the
+// device is already there, or the V1 table has no event for it. CANCELLED does
+// imply one, since 2026-10-17: the backend can cancel a request on its own.
 bool event_for_screen(State screen, State current, EventKind* out);
 
 struct Settings {

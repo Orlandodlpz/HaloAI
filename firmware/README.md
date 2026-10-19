@@ -19,7 +19,7 @@ closes a phase gate for the product.
 | BLE audio throughput | 158 kbit/s, 2.25x realtime |
 | Clip delivered, clean link | 233 chunks, 2.21 s, 2.10x realtime, 0 bad CRC |
 | Final marker resend | verified: 2 dropped on purpose, resent, segment completed |
-| Host tests | 156, about 20 ms |
+| Host tests | 171, about 20 ms |
 
 ## Layout
 
@@ -61,8 +61,10 @@ idf.py -p /dev/cu.usbserial-210 flash monitor
 ```
 
 The serial port number is not stable across replugs: check `ls /dev/cu.usbserial-*`.
-In the bench build, `?` lists the keys that inject phone events and gestures, `T`
-draws a text probe and `C` deep cleans the panel. `-DHALO_BENCH_INJECT=1` is a CMake
+`?` lists the console keys. `C` deep cleans the panel and `T` draws the full panel
+probe: 8 rows labelled A to H, each starting and ending with its own letter, and a
+black block inside each of the four corners. Anything missing can then be named.
+In the bench build, `?` also lists the keys that inject gestures. `-DHALO_BENCH_INJECT=1` is a CMake
 cache variable and therefore **sticky**: once passed, later plain builds stay bench
 builds until `idf.py fullclean`. The boot log names the build it is running.
 
@@ -76,6 +78,7 @@ tools/phone_sim.py        # clean run
 tools/phone_sim.py 9      # drop every 9th chunk, exercising resend_from
 tools/phone_sim.py 0 2    # drop the first two final markers, exercising the 300 ms resend
 tools/screen_sim.py       # fragmented Screen and Settings writes, and a broken sequence
+tools/screen_tour.py      # walk the nine screens the device owns, to look at them
 tools/flow_sim.py         # a whole request to an approve, then power cycle and reconcile
 ```
 
@@ -109,6 +112,9 @@ Two rules the tests exist to defend:
 - A Screen write that cannot be fully understood is dropped whole and the previous
   screen stays on the glass. Drawing the half that parsed would show a screen nobody
   designed, and the user confirms what is on the glass.
+- The backend may cancel a request it owns, and the device follows. But a CANCELLED
+  screen is ignored once approve has gone out: EXECUTING onwards is reconciled by
+  execution key, never cancelled.
 - A dispatched action outlives a reboot. The execution key is written to flash as the
   device leaves REVIEW, so BOOT / RECOVERY comes up in RECONCILE STATUS and asks what
   happened instead of returning to READY as if nothing had.
@@ -117,6 +123,23 @@ Two rules the tests exist to defend:
 - Once `approve` has gone out the device never reports that request as cancelled, in any
   state, for any reason. EXECUTING onwards is reconciled by execution key. The effect may
   already exist, and "cancelled" is a claim the device cannot make.
+
+## The screens the device owns
+
+Twelve of the 21 states get their words from the backend, which owns the request
+and therefore the wording. The other nine are the device's own: BOOT / RECOVERY,
+READY, WALLPAPER, PHONE / BLUETOOTH CHECK, PHONE DISCONNECTED, RECORDING, RECORD
+ADDITION, FINALIZE AUDIO and CRITICAL BATTERY. Nothing sends text for those, so
+`core/src/screens.cpp` is where their words live.
+
+In `core/` rather than the board glue for the usual reason: the backend checks its
+`screen_lines` against the text budget before sending them, and nothing would
+check ours. The tests hold every local line to **28 characters**, the narrower
+portrait budget, so one set of words fits both orientations, and lay every screen
+out against all three panel shapes to prove nothing falls off the bottom.
+
+`local_screen()` returns false for the twelve the phone owns. Inventing words for
+those would put text on the glass that the backend never wrote and never checked.
 
 ## The confirm guard
 

@@ -298,7 +298,7 @@ HALO_TEST(messages_a_line_longer_than_the_budget_is_cut_not_overflowed) {
     CHECK(std::strlen(s.lines[0]) == msg::kMaxLineChars);
 }
 
-HALO_TEST(messages_a_failure_screen_means_different_things_while_executing) {
+HALO_TEST(messages_a_failure_screen_falls_back_when_the_stage_is_missing) {
     // Both land in FAILURE, but only one of them is an authoritative "no effect",
     // and that decides whether the pending execution key may be cleared.
     EventKind e = EventKind::Tick;
@@ -327,9 +327,13 @@ HALO_TEST(messages_every_decision_screen_maps_to_its_event) {
     CHECK(msg::event_for_screen(State::ExecutionUncertain, State::Executing, &e));
     CHECK_EVENT(e, EventKind::ExecutionUnknown);
 
+    // The backend can cancel a request on its own: expired there, or replaced by
+    // a newer one (team addition 2026-10-17).
+    CHECK(msg::event_for_screen(State::Cancelled, State::Review, &e));
+    CHECK_EVENT(e, EventKind::ScreenCancelled);
+
     // States the device owns, or that the V1 table has no event for.
     CHECK(!msg::event_for_screen(State::Ready, State::Review, &e));
-    CHECK(!msg::event_for_screen(State::Cancelled, State::Review, &e));
     CHECK(!msg::event_for_screen(State::Executing, State::Review, &e));
 }
 
