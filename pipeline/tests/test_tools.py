@@ -231,3 +231,15 @@ def test_screen_lines_fit_budget_after_wrap(world):
                body="word " * 200)
     for orientation in ("landscape", "portrait"):
         assert fits(wrap(out.output.screen_lines, settings, orientation), settings, orientation)
+
+
+@pytest.mark.parametrize("said", ["TA", "the TA", "my TA", "The T.A."])
+def test_articles_do_not_hide_a_contact(said):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from app.mockdata import DEMO_CONTACTS, build_world
+    from app.tools import resolve_contacts
+    w = build_world(datetime(2026, 10, 13, 15, 0, tzinfo=ZoneInfo("America/Chicago")), ZoneInfo("America/Chicago"))
+    w.contacts = [dict(c) for c in DEMO_CONTACTS]
+    assert [c["email"] for c in resolve_contacts(w, said)] == ["jordan.lee@example.com"]

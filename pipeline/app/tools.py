@@ -188,7 +188,9 @@ def memory_contacts(world: MockWorld) -> list[dict]:
 
 
 def _norm(name: str) -> str:
-    return re.sub(r"[^a-z ]", "", name.lower().replace(".", "")).strip()
+    """'The TA', 'my TA' and 'TA' are the same person: leading articles and possessives are dropped."""
+    name = re.sub(r"[^a-z ]", "", name.lower().replace(".", "")).strip()
+    return re.sub(r"^((the|my|our)\s+)+", "", name).strip()
 
 
 def resolve_contacts(world: MockWorld, spoken: str) -> list[dict]:
