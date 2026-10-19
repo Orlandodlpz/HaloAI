@@ -6,7 +6,8 @@
 # Overrides: HALOAI_HOST (default ubuntu@api.haloai-cov.io), HALOAI_SSH_KEY (default ~/.ssh/haloai_oracle)
 #
 # What it does: copies pipeline/ from origin/main, swaps it in at /opt/haloai/app, installs
-# dependencies into /opt/haloai/venv, runs migrations, installs the systemd unit and Caddyfile,
+# dependencies into /opt/haloai/venv, runs migrations, installs the systemd units (backend and
+# nightly backup timer) and Caddyfile,
 # restarts the backend and checks /health. Secrets stay in /opt/haloai/env/haloai.env on the server.
 set -euo pipefail
 
@@ -50,8 +51,11 @@ sudo -u haloai /opt/haloai/venv/bin/pip install -q -e "$APP/pipeline"
 sudo -u haloai bash -c "set -a; . $ENV; set +a; cd $APP/pipeline && /opt/haloai/venv/bin/python scripts/migrate.py"
 
 install -m 644 "$APP/pipeline/deploy/haloai.service" /etc/systemd/system/haloai.service
+install -m 644 "$APP/pipeline/deploy/haloai-backup.service" /etc/systemd/system/haloai-backup.service
+install -m 644 "$APP/pipeline/deploy/haloai-backup.timer" /etc/systemd/system/haloai-backup.timer
 systemctl daemon-reload
 systemctl enable -q haloai
+systemctl enable -q --now haloai-backup.timer  # nightly encrypted backup (B5)
 systemctl restart haloai
 
 if ! cmp -s "$APP/pipeline/deploy/Caddyfile" /etc/caddy/Caddyfile; then

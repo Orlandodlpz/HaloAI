@@ -1,0 +1,11 @@
+# Runs haloai-backup.service every night at 3 AM Chicago time. Persistent: a night missed while
+# the server was down runs at the next boot. Check: systemctl list-timers haloai-backup.timer
+[Unit]
+Description=Nightly HaloAI database backup
+
+[Timer]
+OnCalendar=*-*-* 03:00:00 America/Chicago
+Persistent=true
+
+[Install]
+WantedBy=timers.target
