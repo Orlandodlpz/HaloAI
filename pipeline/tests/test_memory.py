@@ -99,15 +99,15 @@ async def test_usual_event_length_is_learned_after_three(lc, user, wired, mem):
 
 async def test_remember_that_saves_and_then_wins_over_the_address_book(lc, user, wired, mem):
     client = wired(
-        reply([tool_call("remember", {"kind": "contact", "label": "Victor", "value": "victor at utrgv dot edu"})]),
+        reply([tool_call("remember", {"kind": "contact", "label": "Victor", "value": "victor at example dot com"})]),
         email("Victor"),
     )
-    _, saved = await run(lc, user, "remember that victor's email is victor at utrgv dot edu", 0)
-    assert saved["state"] == "read_only_result" and saved["screen_lines"] == ["Saved", "Victor: victor@utrgv.edu"]
-    assert await contacts(mem, user) == [("Victor", "victor@utrgv.edu", "user", 0)]
+    _, saved = await run(lc, user, "remember that victor's email is victor at example dot com", 0)
+    assert saved["state"] == "read_only_result" and saved["screen_lines"] == ["Saved", "Victor: victor@example.com"]
+    assert await contacts(mem, user) == [("Victor", "victor@example.com", "user", 0)]
     _, sent = await run(lc, user, "email victor saying hi", 1)
     assert sent["state"] == "success"
-    assert "contact Victor: victor@utrgv.edu" in client.requests[1]["messages"][0]["content"]
+    assert "contact Victor: victor@example.com" in client.requests[1]["messages"][0]["content"]
 
 
 async def test_nothing_saved_for_a_cancelled_request(lc, user, wired, mem):
@@ -150,8 +150,8 @@ def world_with(*items):
 
 
 def test_exact_memory_name_beats_the_address_book():
-    w = world_with(("contact", "Victor", "victor@utrgv.edu", 0))
-    assert [c["email"] for c in resolve_contacts(w, "Victor")] == ["victor@utrgv.edu"]
+    w = world_with(("contact", "Victor", "victor@example.com", 0))
+    assert [c["email"] for c in resolve_contacts(w, "Victor")] == ["victor@example.com"]
 
 
 def test_partial_name_still_asks_most_contacted_first():
@@ -166,12 +166,12 @@ def test_learned_full_name_and_address_book_are_one_person():
 
 
 def test_prompt_gets_only_relevant_memory():
-    w = world_with(("contact", "Victor", "victor@utrgv.edu", 2), ("contact", "Maria Lopez", "maria.lopez@example.com", 5),
+    w = world_with(("contact", "Victor", "victor@example.com", 2), ("contact", "Maria Lopez", "maria.lopez@example.com", 5),
                    ("preference", "usual event length", "30 minutes", 0))
     w.actions = [{"draft": {"kind": "create_event", "title": "Gym", "start": "2026-10-14T15:00:00-05:00",
                             "end": "2026-10-14T16:00:00-05:00"}, "detail": {"event_id": "ev_ab12cd34"}}]
     ctx = memory_context(w, "email victor saying hi")
-    assert "contact Victor: victor@utrgv.edu" in ctx and "Maria" not in ctx
+    assert "contact Victor: victor@example.com" in ctx and "Maria" not in ctx
     assert "usual event length: 30 minutes" in ctx
     assert 'recent: created event ev_ab12cd34 "Gym" Wed Oct 14 3:00 PM to 4:00 PM' in ctx
 

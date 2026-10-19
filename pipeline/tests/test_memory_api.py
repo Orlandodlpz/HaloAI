@@ -12,7 +12,7 @@ def cid():
     return str(uuid.uuid4())
 
 
-async def add(client, key, kind="contact", label="Victor", value="victor at utrgv dot edu"):
+async def add(client, key, kind="contact", label="Victor", value="victor at example dot com"):
     return await client.post("/v1/memory", headers=auth(key), json={"call_id": cid(), "kind": kind, "label": label, "value": value})
 
 
@@ -20,12 +20,12 @@ async def test_add_list_edit_delete(client, keys):
     assert (await client.get("/v1/memory", headers=auth(keys["phone"]))).json() == {"items": []}
     r = await add(client, keys["phone"])
     item = r.json()
-    assert r.status_code == 200 and item["value"] == "victor@utrgv.edu" and item["source"] == "user"
+    assert r.status_code == 200 and item["value"] == "victor@example.com" and item["source"] == "user"
     listed = (await client.get("/v1/memory", headers=auth(keys["phone"]))).json()["items"]
     assert [i["memory_id"] for i in listed] == [item["memory_id"]]
     r = await client.patch(f"/v1/memory/{item['memory_id']}", headers=auth(keys["phone"]),
-                           json={"call_id": cid(), "value": "victor.new@utrgv.edu"})
-    assert r.status_code == 200 and r.json()["value"] == "victor.new@utrgv.edu"
+                           json={"call_id": cid(), "value": "victor.new@example.com"})
+    assert r.status_code == 200 and r.json()["value"] == "victor.new@example.com"
     call = cid()
     r1 = await client.request("DELETE", f"/v1/memory/{item['memory_id']}", headers=auth(keys["phone"]), json={"call_id": call})
     r2 = await client.request("DELETE", f"/v1/memory/{item['memory_id']}", headers=auth(keys["phone"]), json={"call_id": call})
@@ -112,9 +112,9 @@ async def test_edited_or_deleted_memory_changes_the_next_answer(client, keys, lc
         return (await lc.process(body["request_id"], 1))["draft"]["to"]
 
     item = (await add(client, keys["phone"])).json()
-    assert await email_victor() == "victor@utrgv.edu"
+    assert await email_victor() == "victor@example.com"
     await client.patch(f"/v1/memory/{item['memory_id']}", headers=auth(keys["phone"]),
-                       json={"call_id": cid(), "value": "victor.new@utrgv.edu"})
-    assert await email_victor() == "victor.new@utrgv.edu"
+                       json={"call_id": cid(), "value": "victor.new@example.com"})
+    assert await email_victor() == "victor.new@example.com"
     await client.request("DELETE", f"/v1/memory/{item['memory_id']}", headers=auth(keys["phone"]), json={"call_id": cid()})
     assert await email_victor() == "victor.morales@example.com"  # back to the address book

@@ -2454,13 +2454,13 @@
    "state": "review",
    "draft": {
     "kind": "send_email",
-    "to": "victor@utrgv.edu",
+    "to": "victor@example.com",
     "to_name": "Victor",
     "subject": "Demo ready",
     "body": "The demo is ready."
    },
    "screen_lines": [
-    "To: victor@utrgv.edu",
+    "To: victor@example.com",
     "Re: Demo ready",
     "The demo is ready."
    ],
@@ -2699,7 +2699,7 @@
    "state": "read_only_result",
    "draft": null,
    "screen_lines": [
-    "Victor's email is victor@utrgv.edu."
+    "Victor's email is victor@example.com."
    ],
    "statuses": [],
    "why": [],
@@ -5066,13 +5066,13 @@
    "state": "review",
    "draft": {
     "kind": "send_email",
-    "to": "victor@utrgv.edu",
+    "to": "victor@example.com",
     "to_name": "Victor",
     "subject": "Demo ready",
     "body": "The demo is ready."
    },
    "screen_lines": [
-    "To: victor@utrgv.edu",
+    "To: victor@example.com",
     "Re: Demo ready",
     "The demo is ready."
    ],
@@ -5311,7 +5311,7 @@
    "state": "read_only_result",
    "draft": null,
    "screen_lines": [
-    "Victor's email is victor@utrgv.edu."
+    "Victor's email is victor@example.com."
    ],
    "statuses": [],
    "why": [],
@@ -7679,13 +7679,13 @@
    "state": "review",
    "draft": {
     "kind": "send_email",
-    "to": "victor@utrgv.edu",
+    "to": "victor@example.com",
     "to_name": "Victor",
     "subject": "Demo ready",
     "body": "The demo is ready."
    },
    "screen_lines": [
-    "To: victor@utrgv.edu",
+    "To: victor@example.com",
     "Re: Demo ready",
     "The demo is ready."
    ],
@@ -7924,7 +7924,7 @@
    "state": "read_only_result",
    "draft": null,
    "screen_lines": [
-    "Victor's email is victor@utrgv.edu."
+    "Victor's email is victor@example.com."
    ],
    "statuses": [],
    "why": [],
