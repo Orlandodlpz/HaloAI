@@ -7,7 +7,7 @@ keep state in this process; a second worker would not see it.
 import logging
 import uuid
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -20,11 +20,13 @@ from app.clock import SystemClock
 from app.config import Settings, get_settings
 from app.db import migrate, open_pool
 from app.lifecycle import ApiError, Lifecycle
-from app.memory import MemoryStore
+from app.demo_api import SessionLimiter
+from app.demo_api import router as demo_router
 from app.google_api import router as google_router
 from app.google_auth import GoogleAuth
 from app.google_executor import GoogleExecutor
 from app.google_world import GoogleWorld
+from app.memory import MemoryStore
 from app.memory_api import router as memory_router
 from app.mockstore import MockExecutor, MockStore
 from app.processing import FakeExecutor, FakeProcessor, Processor, uses_real_tools
@@ -45,6 +47,8 @@ class Services:
     limiter: RateLimiter
     streams: Streams
     google: object = None  # GoogleAuth (B4)
+    store: object = None  # MockStore: the demo site's calendar panel (B6)
+    demo_sessions: SessionLimiter = field(default_factory=SessionLimiter)
 
 
 def world_source(settings: Settings, store: MockStore, memory: MemoryStore, google: GoogleWorld):
@@ -93,7 +97,7 @@ async def build_services(settings: Settings) -> Services:
     # The phone key from .env, so the existing key keeps working. More keys: scripts/create_key.py
     await create_key(pool, user_id, "phone", "real", key=settings.backend_api_key.get_secret_value())
     await lc.recover_on_startup()
-    return Services(settings, pool, lc, Calls(pool, clock, settings), RateLimiter(), Streams(), google)
+    return Services(settings, pool, lc, Calls(pool, clock, settings), RateLimiter(), Streams(), google, store)
 
 
 def create_app(services: Services | None = None) -> FastAPI:
@@ -135,6 +139,7 @@ def create_app(services: Services | None = None) -> FastAPI:
     app.include_router(stream_router)
     app.include_router(memory_router)
     app.include_router(google_router)
+    app.include_router(demo_router)
     return app
 
 

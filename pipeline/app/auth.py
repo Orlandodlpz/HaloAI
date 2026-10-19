@@ -20,7 +20,7 @@ class Caller:
 
 
 async def create_key(pool, user_id: str, client: str, scope: str, rate_per_min: int = 60,
-                     key: str | None = None) -> str:
+                     key: str | None = None, expires_at=None) -> str:
     """Store a key's hash and return the key. The plain key is never stored.
 
     A demo ('mock') key may only belong to a sandbox user and a phone ('real') key never, so the
@@ -32,9 +32,9 @@ async def create_key(pool, user_id: str, client: str, scope: str, rate_per_min: 
         if row is None or row["sandbox"] != (scope == "mock"):
             raise ValueError("mock keys need a sandbox user and real keys a normal user")
         await conn.execute(
-            "INSERT INTO api_keys (user_id, client, scope, key_hash, rate_per_min) VALUES (%s, %s, %s, %s, %s)"
-            " ON CONFLICT (key_hash) DO NOTHING",
-            (user_id, client, scope, ids.key_hash(key), rate_per_min))
+            "INSERT INTO api_keys (user_id, client, scope, key_hash, rate_per_min, expires_at)"
+            " VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT (key_hash) DO NOTHING",
+            (user_id, client, scope, ids.key_hash(key), rate_per_min, expires_at))
     return key
 
 
@@ -48,7 +48,8 @@ async def require_caller(request: Request) -> Caller:
     async with services.pool.connection() as conn:
         cur = await conn.execute(
             "SELECT id, user_id, client, scope, rate_per_min FROM api_keys"
-            " WHERE key_hash = %s AND revoked_at IS NULL", (ids.key_hash(token),))
+            " WHERE key_hash = %s AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > %s)",
+            (ids.key_hash(token), services.lc.clock.now()))
         row = await cur.fetchone()
     if row is None:
         raise ApiError("unauthorized", 401, "invalid API key")

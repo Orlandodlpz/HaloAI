@@ -43,6 +43,7 @@ async def json_call(request: Request, caller: Caller, name: str, body: BaseModel
     """Run a JSON call once per call_id: repeats get the stored answer."""
     services = request.app.state.services
     t0 = time.perf_counter()
+    headers: dict = {}
     data = body.model_dump(mode="json") if body is not None else {}
     call_id = data.get("call_id")
     if call_id:
@@ -58,7 +59,7 @@ async def json_call(request: Request, caller: Caller, name: str, body: BaseModel
                                          "backend_total_ms": round((time.perf_counter() - t0) * 1000)}
                 status, payload = 200, result
             except ApiError as err:
-                status, payload = err.http_status, error_payload(err)
+                status, payload, headers = err.http_status, error_payload(err), err.headers or {}
             f["status"] = status
     except Exception:
         if call_id:
@@ -66,7 +67,7 @@ async def json_call(request: Request, caller: Caller, name: str, body: BaseModel
         raise
     if call_id:
         await services.calls.finish(call_id, status, payload)
-    return JSONResponse(payload, status_code=status)
+    return JSONResponse(payload, status_code=status, headers=headers)  # e.g. Retry-After on a 429
 
 
 @router.get("/health")
