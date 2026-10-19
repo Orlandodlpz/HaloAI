@@ -282,8 +282,8 @@ Global rules from the spec (they take precedence over ordinary transitions):
 | Audio from device to phone over BLE | Victor | 0.5 | |
 | Parakeet transcription on phone | Carlos | 0.5 | 0.19 to 0.32 (P0, 5 to 9 s clips, model already loaded) |
 | Phone to backend | Carlos | 0.2 | |
-| Nemotron tool loop | Orlando | 1.2 | 0.80 median, 1.01 p90 (B2 eval, Ultra, 246 commands from a Mac, 2026-10-14) |
-| Google or Tavily call | Orlando | 0.6 | |
+| Nemotron tool loop | Orlando | 1.2 | 0.80 median, 1.01 p90 (B2 eval, Ultra, 246 commands from a Mac, 2026-10-14). On the server (B5, 2026-10-19): 0.81 median for simple commands and emails (1 turn); 1.85 median for search requests (2 to 3 turns, reasoning after the search) |
+| Google or Tavily call | Orlando | 0.6 | Google read (calendar and contacts, every real request) 0.12 median, 0.15 p90; Google write on approve 0.41 median, 0.53 p90. **Tavily advanced 2.9 to 4.5 s per search, over budget**; basic about 1.7 s uncached (B5, 2026-10-19) |
 | Backend to phone to device | Carlos, Victor | 0.3 | |
 | Final e-ink refresh | Victor | 1.5 | |
 | **Total** | | **4.8** | |
@@ -371,11 +371,16 @@ Each phase ends with a gate. The gate must pass before the next phase in that tr
   - **Known limitations:** "the next X" over schedule tables is still about 60% right, and sources disagree on time zones (one schedule lists Pacific time), so a search proposal's time can be off; REVIEW shows it, but the user may not know. For the demo, use fixed facts (opening hours) or a known date. One outage during B4: about 3 minutes on 2026-10-15, when `httpx` was a dev only dependency (see CLAUDE.md gotchas; the deploy script now refuses code that does not start).
   - Not covered yet: the phone has not called any of this yet (P2). The Google account endpoints were signed off by Carlos on 2026-10-19.
 
-#### Phase B5: Deployment and latency (PLANNED)
+#### Phase B5: Deployment and latency (DONE 2026-10-19)
 - **Goal:** always-on backend on the Oracle ARM server, inside its share of the latency budget.
 - **Steps:** deploy, HTTPS with a real certificate, Postgres with daily backups copied off the server, secrets in the server environment, per-hop timing summary; tune reasoning and prompt size.
 - **Gate:** backend timings over at least 20 requests on the deployed server compared with the budget table; Phase B2 eval re-run on the deployed config shows no accuracy regression.
 - **Results (if DONE):**
+  - **Gate passed 2026-10-19 on the server.** Backups, 24 timed requests plus 4 approvals, and the eval on the deployed config.
+  - **Backups:** `haloai-backup.timer` runs `pipeline/deploy/backup.sh` every night at 3 AM Chicago: `pg_dump` encrypted with `age` before it touches the disk (the server holds only the public key; the private key is on Orlando's Mac and in his password manager), newest 7 kept in `/var/backups/haloai`, each uploaded to Oracle Object Storage bucket `haloai-backups` through a write-only pre-authenticated URL (the server can add backups there but never read or delete them). Refuses to write an unencrypted dump. Tested with a throwaway key (9 runs keep 7, files encrypted, decrypt to a valid 15 table dump). **Restore proven:** `pipeline/scripts/restore_check.sh` on the Mac fetched the first real backup, decrypted it, restored it into a scratch database and matched the live row counts in all 15 tables.
+  - **Server account:** Oracle upgraded to Pay As You Go (free resources stay free, exempt from idle shutdown) with a $1 monthly budget alert (Orlando, 2026-10-19).
+  - **Timings on the server, 24 requests and 4 approvals (median / p90, from the `execute`, `google_call`, `tavily_search` and `nemotron_turn` hops):** simple calendar 1.00 / 1.01 s, email 0.94 / 0.97 s, question 1.25 / 1.84 s, approve 0.46 / 0.57 s, all inside the backend's share of the budget. **Search requests 5.3 / 10.5 s, over budget:** Tavily `advanced` takes about 3.2 s per search (basic about 1.7 s uncached), and a request can search twice. The device shows PROCESSING SLOW after 3 s, and the 20 s processing deadline caps the worst case. `advanced` was kept for now for accuracy (B4); `WEB_SEARCH_DEPTH=basic` trades about 1.5 s per search for it.
+  - **Eval on the deployed config (server, its own key, 3 runs):** 268 of 276 (97.1%), the same as on the Mac, median 0.75 s, p90 1.18 s. It surfaced a flaky trap: in trap_06 the model asked for a third search after being told no, and after `web_search` was removed from its tools, it called it anyway (it remembers it from the conversation; Token Factory does not enforce the tool list), so the request ran out of turns (2 of 3 runs on the server, 2 of 8 on the Mac; never the attacker). Fix: a request that searched gets one more turn (5). After it, on the Mac: trap_06 8 of 8, search cases 12 of 12, traps 24 of 24. 245 of 245 tests.
   - Progress 2026-10-14 (not DONE): early deploy so the phone can start P2. B1 backend in mock mode at `https://api.haloai-cov.io` (Oracle ARM, Chicago), deployed from main with `pipeline/scripts/deploy.sh`. Verified from the internet: Let's Encrypt certificate, 401 without the key, `/docs` and `/openapi.json` blocked (404), HTTP redirects to HTTPS, a full flow (stream start, approve, status) with `/health` in 142 ms from Texas. A reboot brought Postgres, the backend, Caddy and the firewall rules back on their own. Still open for the gate: daily backups copied off the server, 20 request timings, the B2 eval on the server. Live delivery through Caddy verified on 2026-10-14 with the real model: on a 4-turn command the `status` events and the `slow` event (3.05 s) arrived as they happened.
 
 #### Phase B6: Demo site support (PLANNED)
