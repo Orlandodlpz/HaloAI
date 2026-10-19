@@ -14,6 +14,7 @@ add_library(halo_core
     core/src/state_machine.cpp
     core/src/names.cpp
     core/src/layout.cpp
+    core/src/screens.cpp
     core/src/audio.cpp
     core/src/json.cpp
     core/src/messages.cpp
@@ -27,6 +28,7 @@ add_executable(halo_tests
     test/test_gestures.cpp
     test/test_state_machine.cpp
     test/test_layout.cpp
+    test/test_screens.cpp
     test/test_audio.cpp
     test/test_json.cpp
     test/test_messages.cpp

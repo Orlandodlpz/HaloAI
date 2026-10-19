@@ -26,6 +26,7 @@
 #include "halo/json.hpp"
 #include "halo/layout.hpp"
 #include "halo/messages.hpp"
+#include "halo/screens.hpp"
 #include "halo/state_machine.hpp"
 
 using namespace halo;
@@ -123,9 +124,18 @@ void draw_screen(State to, bool status_only) {
     static DisplayList list;
     ScreenModel m;
     m.state = to;
-    m.status_line = name(to);
 
-    if (g_screen.has_state && g_screen.state == to) {
+    // Nine of the 21 states are the device's own and nothing sends text for them.
+    // The other twelve belong to the backend, and their words arrive over BLE.
+    DeviceStatus st;
+    st.battery_pct = g_battery_pct;
+    st.phone_linked = ble::connected() && g_settings.phone_ready;
+    st.pending_execution = g_machine.has_pending_execution();
+    const bool ours = local_screen(to, st, m);
+
+    if (!ours) m.status_line = name(to);
+
+    if (!ours && g_screen.has_state && g_screen.state == to) {
         if (g_screen.has_status) m.status_line = g_screen.status_line;
         if (g_screen.line_count > 0) {
             m.lines = g_screen.line_ptrs;
