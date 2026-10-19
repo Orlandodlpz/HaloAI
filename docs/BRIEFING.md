@@ -577,5 +577,5 @@ Target dates (agreed by the team 2026-10-19): **I1 by October 22** (Carlos; `pip
 - [ ] All materials in English
 - [ ] Google demo account reconnected every week (testing mode tokens last 7 days), before the video, and before and during judging (December 1 to 15). The demo site runs on sample data and does not need it
 - [ ] One working badge kept available for a possible physical access request until January 11, 2027
-- [ ] Open, team: the target audience for the description and the video
+- Decided 2026-10-19 (team): **target audience.** Lead with **college students who juggle classes, work and group projects** (the team is exactly that, at UTRGV, which is the "genuine understanding of the problem space" the judges score): in class, in a lab or between classes, pulling out a phone is slow or rude, and a press to confirm badge captures "move my study group to Thursday" or "email the TA I will be late" in seconds and never acts by mistake. Then widen in one sentence to entrepreneurs and professionals on the move, anyone who needs small tasks out of the way fast. The video shows a real student moment.
 - Decided 2026-10-19 (Orlando): the demo site searches the real web with Tavily (read only; calendar and email stay sample data), capped at 100 searches a day so the Tavily credit lasts through judging
