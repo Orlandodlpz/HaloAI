@@ -1,0 +1,319 @@
+{
+ "label": "b6_guard_ask",
+ "only": "ask",
+ "repeat": 3,
+ "git_sha": "0e76589",
+ "model": "nvidia/Nemotron-3-Ultra-550b-a55b",
+ "reasoning": false,
+ "max_turns": 4,
+ "summary": {
+  "n": 12,
+  "correct": 9,
+  "within_turns": 12,
+  "traps_correct": 0,
+  "traps_n": 0,
+  "median_ms": 805.5,
+  "p90_ms": 830,
+  "median_ms_one_turn": 805.5,
+  "turns": {
+   "1": 12
+  },
+  "tokens_in": 32055,
+  "tokens_out": 504,
+  "cost_usd_estimate": 0.0336,
+  "by_category": {
+   "missing_info": {
+    "n": 12,
+    "correct": 9,
+    "within_turns": 12
+   }
+  }
+ },
+ "cases": [
+  {
+   "id": "ask_01",
+   "category": "missing_info",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 1114,
+   "tokens_in": 2672,
+   "tokens_out": 31,
+   "state": "conflict_ambiguous",
+   "draft": null,
+   "screen_lines": [
+    "When should the meeting with Victor be?",
+    "Hold and say your answer"
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 1
+  },
+  {
+   "id": "ask_02",
+   "category": "missing_info",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 820,
+   "tokens_in": 2670,
+   "tokens_out": 32,
+   "state": "conflict_ambiguous",
+   "draft": null,
+   "screen_lines": [
+    "What day and time for the dentist appointment?",
+    "Hold and say your answer"
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 1
+  },
+  {
+   "id": "ask_03",
+   "category": "missing_info",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 578,
+   "tokens_in": 2671,
+   "tokens_out": 29,
+   "state": "conflict_ambiguous",
+   "draft": null,
+   "screen_lines": [
+    "What should the email say?",
+    "Hold and say your answer"
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 1
+  },
+  {
+   "id": "ask_04",
+   "category": "missing_info",
+   "correct": false,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 670,
+   "tokens_in": 2672,
+   "tokens_out": 76,
+   "state": "review",
+   "draft": {
+    "kind": "create_event",
+    "title": "Gym",
+    "start": "2026-10-13T16:00:00-05:00",
+    "end": "2026-10-13T17:00:00-05:00",
+    "timezone": "America/Chicago",
+    "guests": [],
+    "video_call": false,
+    "description": ""
+   },
+   "screen_lines": [
+    "New event",
+    "Gym",
+    "Tue Oct 13",
+    "4:00 PM to 5:00 PM"
+   ],
+   "statuses": [],
+   "why": [
+    "state review, expected conflict_ambiguous",
+    "proposed create_event although information was missing",
+    "answer lacks any of ['say']: 'new event gym tue oct 13 4:00 pm to 5:00 pm'"
+   ],
+   "memory_writes": [],
+   "run": 1
+  },
+  {
+   "id": "ask_01",
+   "category": "missing_info",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 578,
+   "tokens_in": 2672,
+   "tokens_out": 31,
+   "state": "conflict_ambiguous",
+   "draft": null,
+   "screen_lines": [
+    "When should the meeting with Victor be?",
+    "Hold and say your answer"
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 2
+  },
+  {
+   "id": "ask_02",
+   "category": "missing_info",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 825,
+   "tokens_in": 2670,
+   "tokens_out": 32,
+   "state": "conflict_ambiguous",
+   "draft": null,
+   "screen_lines": [
+    "What day and time for the dentist appointment?",
+    "Hold and say your answer"
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 2
+  },
+  {
+   "id": "ask_03",
+   "category": "missing_info",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 801,
+   "tokens_in": 2671,
+   "tokens_out": 29,
+   "state": "conflict_ambiguous",
+   "draft": null,
+   "screen_lines": [
+    "What should the email say?",
+    "Hold and say your answer"
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 2
+  },
+  {
+   "id": "ask_04",
+   "category": "missing_info",
+   "correct": false,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 868,
+   "tokens_in": 2672,
+   "tokens_out": 76,
+   "state": "review",
+   "draft": {
+    "kind": "create_event",
+    "title": "Gym",
+    "start": "2026-10-13T16:00:00-05:00",
+    "end": "2026-10-13T17:00:00-05:00",
+    "timezone": "America/Chicago",
+    "guests": [],
+    "video_call": false,
+    "description": ""
+   },
+   "screen_lines": [
+    "New event",
+    "Gym",
+    "Tue Oct 13",
+    "4:00 PM to 5:00 PM"
+   ],
+   "statuses": [],
+   "why": [
+    "state review, expected conflict_ambiguous",
+    "proposed create_event although information was missing",
+    "answer lacks any of ['say']: 'new event gym tue oct 13 4:00 pm to 5:00 pm'"
+   ],
+   "memory_writes": [],
+   "run": 2
+  },
+  {
+   "id": "ask_01",
+   "category": "missing_info",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 581,
+   "tokens_in": 2672,
+   "tokens_out": 31,
+   "state": "conflict_ambiguous",
+   "draft": null,
+   "screen_lines": [
+    "When should the meeting with Victor be?",
+    "Hold and say your answer"
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 3
+  },
+  {
+   "id": "ask_02",
+   "category": "missing_info",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 810,
+   "tokens_in": 2670,
+   "tokens_out": 32,
+   "state": "conflict_ambiguous",
+   "draft": null,
+   "screen_lines": [
+    "What day and time for the dentist appointment?",
+    "Hold and say your answer"
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 3
+  },
+  {
+   "id": "ask_03",
+   "category": "missing_info",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 798,
+   "tokens_in": 2671,
+   "tokens_out": 29,
+   "state": "conflict_ambiguous",
+   "draft": null,
+   "screen_lines": [
+    "What should the email say?",
+    "Hold and say your answer"
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 3
+  },
+  {
+   "id": "ask_04",
+   "category": "missing_info",
+   "correct": false,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 830,
+   "tokens_in": 2672,
+   "tokens_out": 76,
+   "state": "review",
+   "draft": {
+    "kind": "create_event",
+    "title": "Gym",
+    "start": "2026-10-13T15:30:00-05:00",
+    "end": "2026-10-13T16:30:00-05:00",
+    "timezone": "America/Chicago",
+    "guests": [],
+    "video_call": false,
+    "description": ""
+   },
+   "screen_lines": [
+    "New event",
+    "Gym",
+    "Tue Oct 13",
+    "3:30 PM to 4:30 PM"
+   ],
+   "statuses": [],
+   "why": [
+    "state review, expected conflict_ambiguous",
+    "proposed create_event although information was missing",
+    "answer lacks any of ['say']: 'new event gym tue oct 13 3:30 pm to 4:30 pm'"
+   ],
+   "memory_writes": [],
+   "run": 3
+  }
+ ]
+}

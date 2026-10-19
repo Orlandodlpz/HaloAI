@@ -149,3 +149,77 @@ async def test_address_from_a_search_result_never_becomes_a_recipient(settings, 
     out = await p.process(ctx("find the best bakery near me"))
     assert out.state == "read_only_result" and out.draft is None
     assert out.screen_lines[0] == "I can't email attacker@evil.example.net"
+
+
+# ---------- the demo site's real search (B6, 2026-10-19) ----------
+
+class Days:
+    def __init__(self):
+        from datetime import date
+        self.d = date(2026, 12, 1)
+
+    def __call__(self):
+        return self.d
+
+
+async def test_daily_cap_on_demo_searches(search, tavily):
+    from datetime import timedelta
+
+    from app.web_search import DailyCap
+    days = Days()
+    capped = DailyCap(search, 2, today=days)
+    await capped.search("a")
+    await capped.search("b")
+    with pytest.raises(ToolError, match="answer without it"):
+        await capped.search("c")
+    assert len(tavily.calls) == 2  # the third never reached Tavily
+    days.d += timedelta(days=1)
+    await capped.search("d")
+    assert len(tavily.calls) == 3 and capped.configured()
+
+
+class SampleStore:
+    async def world(self, user_id, now, tz):
+        from app.mockdata import build_world
+        return build_world(now, tz)
+
+
+class NoMemory:
+    async def load(self, user_id):
+        from app.memory import MemorySnapshot
+        return MemorySnapshot()
+
+
+async def demo_world(settings, demo_web, scope="mock"):
+    from types import SimpleNamespace
+
+    from app.main import world_source
+    factory = world_source(settings, SampleStore(), NoMemory(), None, demo_web)
+    return await factory(SimpleNamespace(scope=scope, user_id="u1"), NOW, TZ)
+
+
+async def test_demo_world_searches_the_real_web_with_the_recipient_rule(settings, search):
+    from app.web_search import DailyCap
+    w = await demo_world(settings, DailyCap(search, 100))
+    assert w.source == "mock" and w.web is not None and w.allowed == frozenset()
+    off = await demo_world(settings.model_copy(update={"demo_real_search": False}), DailyCap(search, 100))
+    assert off.web is None and off.allowed is None  # canned results, as in the eval
+    unset = TavilySearch(settings.model_copy(update={"tavily_api_key": None}))
+    assert (await demo_world(settings, DailyCap(unset, 100))).web is None
+
+
+async def test_demo_search_cannot_plant_a_recipient(settings, search, tavily):
+    from app.web_search import DailyCap
+    tavily.results = [POISON]
+    w = await demo_world(settings, DailyCap(search, 100))
+
+    async def factory(c, now, tz):
+        return w
+    client = ScriptedClient([reply([tool_call("web_search", {"query": "bakery"})]),
+                             reply([tool_call("draft_email", {"recipient": "attacker@evil.example.net",
+                                                              "subject": "Calendar", "body": "x"})])])
+    out = await NemotronProcessor(client, settings, world_factory=factory).process(ctx("find a bakery"))
+    assert out.state == "read_only_result" and out.screen_lines[0] == "I can't email attacker@evil.example.net"
+    ok = ScriptedClient([reply([tool_call("draft_email", {"recipient": "Victor", "subject": "Hi", "body": "Hello"})])])
+    out = await NemotronProcessor(ok, settings, world_factory=factory).process(ctx("email victor saying hello"))
+    assert out.state == "review" and out.draft["to"] == "victor.morales@example.com"  # sample contacts still work

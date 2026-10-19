@@ -19,7 +19,9 @@ import asyncio, json, sys, time
 import serial
 from bleak import BleakClient, BleakScanner
 
-PORT = "/dev/cu.usbserial-110"
+from serial_port import find_port
+
+PORT = find_port()
 BASE = "78450000-6bb6-46e1-be3c-499c2950b6ac"
 SCREEN = BASE.replace("0000", "0004", 1)
 SETTINGS = BASE.replace("0000", "0006", 1)

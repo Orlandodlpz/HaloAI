@@ -1,0 +1,503 @@
+{
+ "label": "b6_guard_read",
+ "only": "read",
+ "repeat": 3,
+ "git_sha": "0e76589",
+ "model": "nvidia/Nemotron-3-Ultra-550b-a55b",
+ "reasoning": false,
+ "max_turns": 4,
+ "summary": {
+  "n": 24,
+  "correct": 21,
+  "within_turns": 24,
+  "traps_correct": 0,
+  "traps_n": 0,
+  "median_ms": 819.0,
+  "p90_ms": 1101,
+  "median_ms_one_turn": 807,
+  "turns": {
+   "1": 21,
+   "2": 3
+  },
+  "tokens_in": 72423,
+  "tokens_out": 726,
+  "cost_usd_estimate": 0.0746,
+  "by_category": {
+   "read_only": {
+    "n": 24,
+    "correct": 21,
+    "within_turns": 24
+   }
+  }
+ },
+ "cases": [
+  {
+   "id": "read_01",
+   "category": "read_only",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 1101,
+   "tokens_in": 2671,
+   "tokens_out": 29,
+   "state": "read_only_result",
+   "draft": null,
+   "screen_lines": [
+    "Tomorrow (Wed Oct 14): Dentist at 10:00 AM - 11:00 AM."
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 1
+  },
+  {
+   "id": "read_02",
+   "category": "read_only",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 610,
+   "tokens_in": 2673,
+   "tokens_out": 28,
+   "state": "read_only_result",
+   "draft": null,
+   "screen_lines": [
+    "Yes, you're free Friday afternoon. Your only event is a vendor call 9:00-9:45 AM."
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 1
+  },
+  {
+   "id": "read_03",
+   "category": "read_only",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 807,
+   "tokens_in": 2673,
+   "tokens_out": 31,
+   "state": "read_only_result",
+   "draft": null,
+   "screen_lines": [
+    "Your lunch with Carlos is on Thursday, October 15th at 12:00 PM to 1:00 PM."
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 1
+  },
+  {
+   "id": "read_04",
+   "category": "read_only",
+   "correct": false,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 839,
+   "tokens_in": 2671,
+   "tokens_out": 30,
+   "state": "read_only_result",
+   "draft": null,
+   "screen_lines": [
+    "Your next meeting is Team sync today at 2:00 PM - 3:00 PM (event e2)."
+   ],
+   "statuses": [],
+   "why": [
+    "answer lacks any of ['dentist']: 'your next meeting is team sync today at 2:00 pm - 3:00 pm (event e2).'"
+   ],
+   "memory_writes": [],
+   "run": 1
+  },
+  {
+   "id": "read_05",
+   "category": "read_only",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 806,
+   "tokens_in": 2673,
+   "tokens_out": 28,
+   "state": "read_only_result",
+   "draft": null,
+   "screen_lines": [
+    "Yes - Dinner with Maria on Saturday, Oct 17 from 6:00 PM to 8:00 PM."
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 1
+  },
+  {
+   "id": "read_06",
+   "category": "read_only",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 819,
+   "tokens_in": 2672,
+   "tokens_out": 27,
+   "state": "read_only_result",
+   "draft": null,
+   "screen_lines": [
+    "The vendor call is on Friday, October 16 at 9:00 AM to 9:45 AM."
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 1
+  },
+  {
+   "id": "read_07",
+   "category": "read_only",
+   "correct": true,
+   "within_turns": true,
+   "turns": 2,
+   "ms": 1333,
+   "tokens_in": 5434,
+   "tokens_out": 35,
+   "state": "read_only_result",
+   "draft": null,
+   "screen_lines": [
+    "Victor Morales: victor.morales@example.com"
+   ],
+   "statuses": [
+    "Looking up contact"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 1
+  },
+  {
+   "id": "read_08",
+   "category": "read_only",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 835,
+   "tokens_in": 2674,
+   "tokens_out": 34,
+   "state": "read_only_result",
+   "draft": null,
+   "screen_lines": [
+    "On Monday, October 19th, you have:\n11:00 AM - 12:00 PM: Hackathon check-in"
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 1
+  },
+  {
+   "id": "read_01",
+   "category": "read_only",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 870,
+   "tokens_in": 2671,
+   "tokens_out": 29,
+   "state": "read_only_result",
+   "draft": null,
+   "screen_lines": [
+    "Tomorrow (Wed Oct 14): Dentist at 10:00 AM - 11:00 AM."
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 2
+  },
+  {
+   "id": "read_02",
+   "category": "read_only",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 619,
+   "tokens_in": 2673,
+   "tokens_out": 28,
+   "state": "read_only_result",
+   "draft": null,
+   "screen_lines": [
+    "Yes, you're free Friday afternoon. Your only event is a vendor call 9:00-9:45 AM."
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 2
+  },
+  {
+   "id": "read_03",
+   "category": "read_only",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 820,
+   "tokens_in": 2673,
+   "tokens_out": 31,
+   "state": "read_only_result",
+   "draft": null,
+   "screen_lines": [
+    "Your lunch with Carlos is on Thursday, October 15th at 12:00 PM to 1:00 PM."
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 2
+  },
+  {
+   "id": "read_04",
+   "category": "read_only",
+   "correct": false,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 819,
+   "tokens_in": 2671,
+   "tokens_out": 30,
+   "state": "read_only_result",
+   "draft": null,
+   "screen_lines": [
+    "Your next meeting is Team sync today at 2:00 PM - 3:00 PM (event e2)."
+   ],
+   "statuses": [],
+   "why": [
+    "answer lacks any of ['dentist']: 'your next meeting is team sync today at 2:00 pm - 3:00 pm (event e2).'"
+   ],
+   "memory_writes": [],
+   "run": 2
+  },
+  {
+   "id": "read_05",
+   "category": "read_only",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 610,
+   "tokens_in": 2673,
+   "tokens_out": 28,
+   "state": "read_only_result",
+   "draft": null,
+   "screen_lines": [
+    "Yes - Dinner with Maria on Saturday, Oct 17 from 6:00 PM to 8:00 PM."
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 2
+  },
+  {
+   "id": "read_06",
+   "category": "read_only",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 803,
+   "tokens_in": 2672,
+   "tokens_out": 27,
+   "state": "read_only_result",
+   "draft": null,
+   "screen_lines": [
+    "The vendor call is on Friday, October 16 at 9:00 AM to 9:45 AM."
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 2
+  },
+  {
+   "id": "read_07",
+   "category": "read_only",
+   "correct": true,
+   "within_turns": true,
+   "turns": 2,
+   "ms": 1586,
+   "tokens_in": 5434,
+   "tokens_out": 35,
+   "state": "read_only_result",
+   "draft": null,
+   "screen_lines": [
+    "Victor Morales: victor.morales@example.com"
+   ],
+   "statuses": [
+    "Looking up contact"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 2
+  },
+  {
+   "id": "read_08",
+   "category": "read_only",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 670,
+   "tokens_in": 2674,
+   "tokens_out": 34,
+   "state": "read_only_result",
+   "draft": null,
+   "screen_lines": [
+    "On Monday, October 19th, you have:\n11:00 AM - 12:00 PM: Hackathon check-in"
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 2
+  },
+  {
+   "id": "read_01",
+   "category": "read_only",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 832,
+   "tokens_in": 2671,
+   "tokens_out": 29,
+   "state": "read_only_result",
+   "draft": null,
+   "screen_lines": [
+    "Tomorrow (Wed Oct 14): Dentist at 10:00 AM - 11:00 AM."
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 3
+  },
+  {
+   "id": "read_02",
+   "category": "read_only",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 833,
+   "tokens_in": 2673,
+   "tokens_out": 28,
+   "state": "read_only_result",
+   "draft": null,
+   "screen_lines": [
+    "Yes, you're free Friday afternoon. Your only event is a vendor call 9:00-9:45 AM."
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 3
+  },
+  {
+   "id": "read_03",
+   "category": "read_only",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 618,
+   "tokens_in": 2673,
+   "tokens_out": 31,
+   "state": "read_only_result",
+   "draft": null,
+   "screen_lines": [
+    "Your lunch with Carlos is on Thursday, October 15th at 12:00 PM to 1:00 PM."
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 3
+  },
+  {
+   "id": "read_04",
+   "category": "read_only",
+   "correct": false,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 612,
+   "tokens_in": 2671,
+   "tokens_out": 30,
+   "state": "read_only_result",
+   "draft": null,
+   "screen_lines": [
+    "Your next meeting is Team sync today at 2:00 PM - 3:00 PM (event e2)."
+   ],
+   "statuses": [],
+   "why": [
+    "answer lacks any of ['dentist']: 'your next meeting is team sync today at 2:00 pm - 3:00 pm (event e2).'"
+   ],
+   "memory_writes": [],
+   "run": 3
+  },
+  {
+   "id": "read_05",
+   "category": "read_only",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 617,
+   "tokens_in": 2673,
+   "tokens_out": 28,
+   "state": "read_only_result",
+   "draft": null,
+   "screen_lines": [
+    "Yes - Dinner with Maria on Saturday, Oct 17 from 6:00 PM to 8:00 PM."
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 3
+  },
+  {
+   "id": "read_06",
+   "category": "read_only",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 599,
+   "tokens_in": 2672,
+   "tokens_out": 27,
+   "state": "read_only_result",
+   "draft": null,
+   "screen_lines": [
+    "The vendor call is on Friday, October 16 at 9:00 AM to 9:45 AM."
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 3
+  },
+  {
+   "id": "read_07",
+   "category": "read_only",
+   "correct": true,
+   "within_turns": true,
+   "turns": 2,
+   "ms": 1128,
+   "tokens_in": 5434,
+   "tokens_out": 35,
+   "state": "read_only_result",
+   "draft": null,
+   "screen_lines": [
+    "Victor Morales: victor.morales@example.com"
+   ],
+   "statuses": [
+    "Looking up contact"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 3
+  },
+  {
+   "id": "read_08",
+   "category": "read_only",
+   "correct": true,
+   "within_turns": true,
+   "turns": 1,
+   "ms": 827,
+   "tokens_in": 2674,
+   "tokens_out": 34,
+   "state": "read_only_result",
+   "draft": null,
+   "screen_lines": [
+    "On Monday, October 19th, you have:\n11:00 AM - 12:00 PM: Hackathon check-in"
+   ],
+   "statuses": [],
+   "why": [],
+   "memory_writes": [],
+   "run": 3
+  }
+ ]
+}

@@ -271,14 +271,65 @@ Two things worth knowing from that session:
 
 You were right that it does not block P1 and needed to be in before P2. It is in now.
 
+## The backend cancelling on its own, agreed 2026-10-19
+
+Both rows proposed for the Team additions table are agreed and implemented on the device.
+
+**Orlando's row.** A CANCELLED screen from the phone now moves the device to CANCELLED, from any
+state where work is in flight and has not been dispatched: PHONE / BLUETOOTH CHECK, RECORDING,
+FINALIZE AUDIO, PROCESSING, PROCESSING SLOW, RECORD ADDITION, both conflict states and REVIEW.
+Recording stops the microphone on the way. Any input then dismisses the notice to READY, which
+also closes a smaller gap: CANCELLED previously only left on its own timer.
+
+**Carlos's row.** In RECONCILE STATUS the same screen means something sharper, so it is handled
+separately: the saved key was never approved and the cancel was confirmed, so the device goes to
+CANCELLED **and clears the execution key**. Without it that answer matched no event at all, the
+device would have waited out its timeout into EXECUTION UNCERTAIN, and it would have told the
+user an action might have happened immediately after the backend said with certainty that it
+never did. Good catch.
+
+**Where the device refuses to act on it**, and this is the part worth checking on your side: a
+CANCELLED screen arriving in EXECUTING or EXECUTION UNCERTAIN is **ignored**. After approve has
+gone out the effect may already exist, so nothing may claim it was cancelled and nothing may
+throw the key away. Those two states are reconciled by execution key or not at all. A test pins
+it from both states.
+
+Six host tests cover the two rows. The hardware check is written and waiting
+(`tools/flow_sim.py cancel`); the development board is unplugged as of 2026-10-19, so it has not
+been run on real hardware yet.
+
+## Reviewed Carlos's section 2 entry, 2026-10-19
+
+Agreed, all of it, and it settles the two things I was about to ask for. Two notes.
+
+**`failure_stage` is not carried over BLE, and that is the right call.** I had written a reader
+for it that morning, before the entry landed, so the device could take the backend's word
+instead of inferring. Carlos's argument is better: a device holding a saved key comes up in
+RECONCILE STATUS, and there a FAILURE can only be the answer for that key, because a key that
+was never approved answers `review` or `cancelled` and never `failure`. The device's own state
+is therefore sufficient, including after a reboot. I have removed the reader: two sources of
+truth for one fact is how they drift apart. The backend keeps the field and the phone uses it
+for its own logic and logs.
+
+**The key is `pending_key` on BLE.** Settled, matching `hello`. I had the device accepting
+`execution_key` as well while the name was open; that is gone too.
+
+**One thing in the entry did not match the firmware, now fixed.** The paragraph says the key is
+cleared "on FAILURE in EXECUTING, EXECUTION UNCERTAIN or RECONCILE STATUS". EXECUTION UNCERTAIN
+did not do that: the state machine only accepted an outcome in EXECUTING and RECONCILE STATUS,
+so a result the phone pushed while the device sat uncertain was ignored and the key stayed in
+flash for something the backend had already settled. An authoritative outcome now resolves that
+state too, success or failure, clearing the key. A double press there still dismisses without
+clearing, which is unchanged and deliberate.
+
 ## Still open, and not mine to close
 
 - `pending_key` on the Screen write: **agreed with Carlos 2026-10-16**, optional on the Screen
   write, and it must be on **REVIEW** (see the correction above). The device side is finished and
   verified: the key is written to flash as the device leaves REVIEW, survives a power cycle, and
   brings the device up in RECONCILE STATUS instead of READY. It needs the backend to send one.
-- The FAILURE ambiguity (5d) is with Orlando: the backend decides whether a FAILURE screen can
-  follow an approve. Until it is answered the device infers it from its own state.
+- ~~The FAILURE ambiguity (5d)~~ answered by `failure_stage` in B4; see above. What is left is
+  carrying it over BLE, which is Carlos's.
 - The ring buffer size stays provisional until F2 runs on the badge with a real microphone.
 - MTU and throughput on Android are still unmeasured. Everything here was exercised against a
   Mac acting as the central; CoreBluetooth is not Android's stack.

@@ -29,7 +29,8 @@ NO_SEARCH_TOOLS = [t for t in TOOL_SPECS if t["function"]["name"] != "web_search
 
 # The model asking "would you like me to add it?" instead of acting (seen live after a web search,
 # 2026-10-19). The device's REVIEW screen is the confirmation, so the code sends it back once.
-ASKS_TO_CONFIRM = re.compile(r"\b(would you like me to|do you want me to|shall i|should i)\b", re.IGNORECASE)
+ASKS_TO_CONFIRM = re.compile(r"\b(would you like me to|do you want me to|shall i|should i|if you want|if you'd like"
+                             r"|i can (propose|add|create|set up|book|schedule|send|draft))\b", re.IGNORECASE)
 ACT_DIRECTLY = ("Do not ask for confirmation: the device shows every proposal for approval. If the request "
                 "asks for an action, call the tool now. Otherwise answer briefly.")
 
@@ -122,7 +123,10 @@ class NemotronProcessor(Processor):
                     messages += [{"role": "assistant", "content": msg.content or ""},
                                  {"role": "user", "content": ACT_DIRECTLY}]
                     continue
-                return ProcessorOutput("read_only_result", [text], timings=timings)
+                # One screen line per line of the answer: a list of events keeps its line breaks on the
+                # badge (the wrapper flattens whitespace inside a line). Runs of blank lines become one.
+                lines = re.sub(r"\n{3,}", "\n\n", text).split("\n")
+                return ProcessorOutput("read_only_result", lines, timings=timings)
 
             messages.append({"role": "assistant", "content": msg.content or "", "tool_calls": [
                 {"id": c.id, "type": "function", "function": {"name": c.function.name, "arguments": c.function.arguments}}

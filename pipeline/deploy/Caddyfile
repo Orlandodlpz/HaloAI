@@ -11,3 +11,26 @@ api.haloai-cov.io {
 		flush_interval -1
 	}
 }
+
+# The demo site (B6). Static files from /srv/haloai-site (published by scripts/deploy.sh, with
+# config.js written from the DEMO_SITE_KEY secret), and the API on the same origin, so the
+# browser needs no CORS. Only /v1/ reaches the backend; its docs pages stay unreachable.
+haloai-cov.io {
+	encode gzip
+	header {
+		Content-Security-Policy "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+	}
+	handle /v1/* {
+		reverse_proxy 127.0.0.1:8000 {
+			flush_interval -1
+		}
+	}
+	handle {
+		root * /srv/haloai-site
+		header Cache-Control "no-cache"
+		file_server
+	}
+}

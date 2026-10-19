@@ -262,7 +262,10 @@ class Lifecycle:
         except ScreenError as exc:  # something the user can fix, e.g. reconnect Google
             failure_reason = "ScreenError"
             output = ProcessorOutput("failure", exc.lines)
-        except Exception as exc:  # model error or deadline: FAILURE, never a guess
+        except TimeoutError:  # the model was too slow (seen when the Nebius account was busy, 2026-10-19)
+            failure_reason = "TimeoutError"
+            output = ProcessorOutput("failure", ["That took too long", "Please try again"])
+        except Exception as exc:  # model error: FAILURE, never a guess
             failure_reason = type(exc).__name__
             output = ProcessorOutput("failure", OUTCOME_LINES["failure"])
 

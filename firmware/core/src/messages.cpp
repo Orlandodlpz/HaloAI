@@ -371,9 +371,11 @@ bool event_for_screen(State screen, State current, EventKind* out) {
         case State::Processing: *out = EventKind::ProcessingProgress; return true;
         case State::Success: *out = EventKind::ExecutionApplied; return true;
         case State::ExecutionUncertain: *out = EventKind::ExecutionUnknown; return true;
+        case State::Cancelled: *out = EventKind::ScreenCancelled; return true;
         case State::Failure:
             // The same screen name means two different things, and they differ in
-            // whether a pending execution key may be cleared.
+            // whether a pending execution key may be cleared. The backend says
+            // which; the device only guesses when it did not.
             *out = (current == State::Executing || current == State::ExecutionUncertain ||
                     current == State::ReconcileStatus)
                        ? EventKind::ExecutionRejected
