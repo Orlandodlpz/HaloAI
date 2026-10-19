@@ -22,6 +22,7 @@ from app.config import Settings
 from app.processing import (Executor, ProcessContext, Processor, ProcessorOutput, RefusingExecutor, ScreenError,
                             Segment, uses_real_tools)
 from app.screens import OUTCOME_LINES, uncertain_lines, wrap
+from app.timing import hop
 
 OPEN_STATES = ("processing", "conflict_ambiguous", "conflict_schedule", "review", "executing")
 DECISION_STATES = ("conflict_ambiguous", "conflict_schedule", "review")
@@ -358,14 +359,18 @@ class Lifecycle:
 
     async def _run_execution(self, user_id: str, request_id: str, key: str, draft: dict, executor: Executor):
         screen_lines, detail = None, {"executor": executor.name}
-        try:
-            outcome = await asyncio.wait_for(executor.execute(draft, key, str(user_id)),
-                                             self.settings.execution_deadline_s)
-            status, screen_lines = ("applied" if outcome.applied else "not_applied"), outcome.screen_lines
-            detail.update(outcome.detail)
-        except Exception as exc:  # timeout or error: we cannot know if it happened
-            status = "unknown"
-            detail["error"] = type(exc).__name__
+        # Logged so the order is visible: an execution (and so any Gmail or Calendar call) only ever
+        # follows an approve for the same request.
+        with hop("execute", executor=executor.name, kind=(draft or {}).get("kind")) as f:
+            try:
+                outcome = await asyncio.wait_for(executor.execute(draft, key, str(user_id)),
+                                                 self.settings.execution_deadline_s)
+                status, screen_lines = ("applied" if outcome.applied else "not_applied"), outcome.screen_lines
+                detail.update(outcome.detail)
+            except Exception as exc:  # timeout or error: we cannot know if it happened
+                status = "unknown"
+                detail["error"] = type(exc).__name__
+            f["status"] = status
         async with self.pool.connection() as conn, conn.transaction():
             await self._lock_user(conn, user_id)
             await conn.execute(
