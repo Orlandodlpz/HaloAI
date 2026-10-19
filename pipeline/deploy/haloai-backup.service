@@ -1,0 +1,12 @@
+# Nightly encrypted database backup (B5). Started by haloai-backup.timer.
+# Installed by scripts/deploy.sh. Run now: sudo systemctl start haloai-backup
+# Logs: journalctl -u haloai-backup -n 20
+[Unit]
+Description=HaloAI database backup (encrypted, copied off the server)
+After=postgresql.service network-online.target
+Requires=postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /opt/haloai/app/pipeline/deploy/backup.sh

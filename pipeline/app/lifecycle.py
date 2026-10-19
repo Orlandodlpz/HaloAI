@@ -19,8 +19,10 @@ from psycopg_pool import AsyncConnectionPool
 
 from app import ids
 from app.config import Settings
-from app.processing import Executor, ProcessContext, Processor, ProcessorOutput, Segment
-from app.screens import OUTCOME_LINES, wrap
+from app.processing import (Executor, ProcessContext, Processor, ProcessorOutput, RefusingExecutor, ScreenError,
+                            Segment, uses_real_tools)
+from app.screens import OUTCOME_LINES, uncertain_lines, wrap
+from app.timing import hop
 
 OPEN_STATES = ("processing", "conflict_ambiguous", "conflict_schedule", "review", "executing")
 DECISION_STATES = ("conflict_ambiguous", "conflict_schedule", "review")
@@ -59,11 +61,15 @@ class Lifecycle:
 
     # ---------- helpers ----------
 
-    def executor_for(self, scope: str) -> Executor:
-        """Demo keys ('mock') never reach real tools; real tools stay off until B4."""
-        if scope == "real" and self.settings.real_tools_enabled:
+    def executor_for(self, scope: str, draft: dict | None) -> Executor:
+        """The draft records which world it was made from, so a proposal made from the real
+        calendar is never applied to the sample one, or the other way round. Demo keys ('mock')
+        never reach real tools. If the rule changed since the proposal, nothing runs."""
+        if (draft or {}).get("source") != "google":
+            return self.executors["mock"]
+        if uses_real_tools(self.settings, scope):
             return self.executors["real"]
-        return self.executors["mock"]
+        return RefusingExecutor(["Not done", "Real Google actions are switched off"])
 
     async def ensure_user(self, name: str, sandbox: bool = False) -> str:
         async with self.pool.connection() as conn:
@@ -136,6 +142,8 @@ class Lifecycle:
             lines = exe["screen_lines"]
         elif state == "failure" and rev and rev["state"] == "failure":
             lines = rev["screen_lines"]
+        elif state == "execution_uncertain":  # also after a restart, which records no lines
+            lines = uncertain_lines(rev["draft"] if rev else None)
         else:
             lines = OUTCOME_LINES.get(state, [state])
         expires_at = req.get("expires_at") if state in DECISION_STATES else None
@@ -147,7 +155,15 @@ class Lifecycle:
             "screen_lines": wrap(lines, self.settings, req["orientation"]),
             "candidates": (rev["candidates"] if rev else None) if state == "conflict_ambiguous" else None,
             "proposal_hash": rev["proposal_hash"] if rev and show_proposal else None,
-            "execution_key": exe["execution_key"] if exe else None,
+            # REVIEW already carries the key approve will use, so the device saves it before it
+            # approves (2026-10-16, Victor). After approve it is the execution's own key.
+            "execution_key": exe["execution_key"] if exe else (rev.get("execution_key") if rev and state == "review"
+                                                               else None),
+            # Which FAILURE this is (2026-10-16, asked by Carlos and Victor). 'execution': approved and
+            # confirmed not done, so the device may clear its saved key. 'processing': never approved.
+            # A failure can only come from execution once a request is approved, so the executions row
+            # decides it, whatever state the device happens to be in (after a reboot, for example).
+            "failure_stage": ("execution" if exe else "processing") if state == "failure" else None,
             "draft": rev["draft"] if rev and state not in ("processing", "cancelled") else None,
             "expires_at": expires_at.isoformat() if expires_at else None,
             "expires_in_s": max(0, round((expires_at - now).total_seconds())) if expires_at else None,
@@ -243,15 +259,19 @@ class Lifecycle:
         failure_reason = None
         try:
             output = await asyncio.wait_for(self.processor.process(ctx), self.settings.processing_deadline_s)
+        except ScreenError as exc:  # something the user can fix, e.g. reconnect Google
+            failure_reason = "ScreenError"
+            output = ProcessorOutput("failure", exc.lines)
         except Exception as exc:  # model error or deadline: FAILURE, never a guess
             failure_reason = type(exc).__name__
             output = ProcessorOutput("failure", OUTCOME_LINES["failure"])
 
         proposal = ids.proposal_hash(output.draft) if output.draft is not None else None
+        key = ids.execution_key(str(request_id), revision, proposal) if proposal else None
         rev_row = {
             "state": output.state, "screen_lines": output.screen_lines,
             "review_screen_lines": output.review_screen_lines, "candidates": output.candidates,
-            "draft": output.draft, "proposal_hash": proposal, "timings": output.timings,
+            "draft": output.draft, "proposal_hash": proposal, "execution_key": key, "timings": output.timings,
         }
         async with self.pool.connection() as conn, conn.transaction():
             await self._lock_user(conn, req["user_id"])
@@ -265,13 +285,13 @@ class Lifecycle:
                 return self.build_result(req, output.state, revision, rev_row, None)
             await conn.execute(
                 "INSERT INTO revisions (request_id, revision, state, screen_lines, review_screen_lines,"
-                " candidates, draft, proposal_hash, timings, created_at)"
-                " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                " candidates, draft, proposal_hash, execution_key, timings, created_at)"
+                " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
                 (request_id, revision, output.state, Jsonb(output.screen_lines),
                  Jsonb(output.review_screen_lines) if output.review_screen_lines is not None else None,
                  Jsonb(output.candidates) if output.candidates is not None else None,
                  Jsonb(output.draft) if output.draft is not None else None,
-                 proposal, Jsonb(output.timings), self.clock.now()))
+                 proposal, key, Jsonb(output.timings), self.clock.now()))
             expires = self._new_expiry() if output.state in DECISION_STATES else None
             req = await self._set_state(conn, req, state=output.state, expires_at=expires,
                                         failure_reason=failure_reason)
@@ -331,7 +351,7 @@ class Lifecycle:
         # Outside the transaction: run the action in the background and wait a bounded time.
         # If the wait runs out, the phone gets 'executing' and polls the status endpoint;
         # the action itself keeps running and records its outcome when done.
-        task = asyncio.create_task(self._run_execution(user_id, request_id, key, draft, self.executor_for(scope)))
+        task = asyncio.create_task(self._run_execution(user_id, request_id, key, draft, self.executor_for(scope, draft)))
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
         await asyncio.wait({task}, timeout=self.settings.approve_wait_s)
@@ -339,14 +359,18 @@ class Lifecycle:
 
     async def _run_execution(self, user_id: str, request_id: str, key: str, draft: dict, executor: Executor):
         screen_lines, detail = None, {"executor": executor.name}
-        try:
-            outcome = await asyncio.wait_for(executor.execute(draft, key, str(user_id)),
-                                             self.settings.execution_deadline_s)
-            status, screen_lines = ("applied" if outcome.applied else "not_applied"), outcome.screen_lines
-            detail.update(outcome.detail)
-        except Exception as exc:  # timeout or error: we cannot know if it happened
-            status = "unknown"
-            detail["error"] = type(exc).__name__
+        # Logged so the order is visible: an execution (and so any Gmail or Calendar call) only ever
+        # follows an approve for the same request.
+        with hop("execute", executor=executor.name, kind=(draft or {}).get("kind")) as f:
+            try:
+                outcome = await asyncio.wait_for(executor.execute(draft, key, str(user_id)),
+                                                 self.settings.execution_deadline_s)
+                status, screen_lines = ("applied" if outcome.applied else "not_applied"), outcome.screen_lines
+                detail.update(outcome.detail)
+            except Exception as exc:  # timeout or error: we cannot know if it happened
+                status = "unknown"
+                detail["error"] = type(exc).__name__
+            f["status"] = status
         async with self.pool.connection() as conn, conn.transaction():
             await self._lock_user(conn, user_id)
             await conn.execute(
@@ -381,14 +405,35 @@ class Lifecycle:
             req = await self._set_state(conn, req, expires_at=self._new_expiry())
             return await self._result(conn, req)
 
+    async def request_status(self, user_id: str, request_id: str) -> dict:
+        """A request's current result by its id, whatever its state: processing, a decision, cancelled,
+        approved or done. Covers requests that never reached REVIEW, so never had an execution key.
+        An expired decision reads as cancelled. Changes nothing else."""
+        async with self.pool.connection() as conn, conn.transaction():
+            await self._lock_user(conn, user_id)
+            req = await self._expire_if_due(conn, await self._load(conn, user_id, request_id))
+            return await self._result(conn, req)
+
     async def execution_status(self, user_id: str, key: str) -> dict:
-        async with self.pool.connection() as conn:
+        """Status by execution key. A key from a REVIEW that was never approved still answers, with
+        the request's current state (review, cancelled, ...): approved only if the state is executing,
+        success, failure or execution_uncertain. If it is still open, the device cancels it, and the
+        cancel reply is final, because approve and cancel take the same user lock: either
+        'cancelled' (nothing happened) or 'already_executing' (the approve won)."""
+        async with self.pool.connection() as conn, conn.transaction():
             cur = await conn.execute(
                 "SELECT r.* FROM executions e JOIN requests r ON r.id = e.request_id"
                 " WHERE e.execution_key = %s AND r.user_id = %s", (key, user_id))
             req = await cur.fetchone()
             if req is None:
-                raise ApiError("not_found", 404, "unknown execution key")
+                await self._lock_user(conn, user_id)  # read the state after any approve or cancel in flight
+                cur = await conn.execute(
+                    "SELECT r.* FROM revisions v JOIN requests r ON r.id = v.request_id"
+                    " WHERE v.execution_key = %s AND r.user_id = %s", (key, user_id))
+                req = await cur.fetchone()
+                if req is None:
+                    raise ApiError("not_found", 404, "unknown execution key")
+                req = await self._expire_if_due(conn, req)  # an expired REVIEW reads as cancelled
             return await self._result(conn, req)
 
     # ---------- startup and tests ----------

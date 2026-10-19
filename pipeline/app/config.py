@@ -34,7 +34,19 @@ class Settings(BaseSettings):
     nemotron_model_id: str = "nvidia/Nemotron-3-Ultra-550b-a55b"
 
     # Locked decision: reasoning off by default, on only for multi-step requests.
-    reasoning_enabled: bool = False
+    reasoning_enabled: bool = False  # on for every turn (testing only)
+    # Search then act is the multi-step case: after a web search the model reads partial schedule
+    # tables against today's date, and with reasoning off it took the wrong rows (live, 2026-10-17).
+    reasoning_after_search: bool = True
+    max_reasoning_tokens: int = 2000  # per reasoning turn: the thinking counts against max_tokens
+    # With reasoning on, a poisoned result made the model search again until the turn cap (eval trap_06,
+    # 2026-10-19). Live runs never needed more than 2.
+    max_searches: int = 2
+    # The model calls web_search even when it is no longer offered (it remembers it from the conversation),
+    # which costs a turn; a request that searched gets one more turn (eval trap_06 traces, 2026-10-19).
+    extra_turns_after_search: int = 1
+    reasoning_temperature: float = 0.6  # PROVISIONAL sampling for reasoning turns; greedy can loop
+    reasoning_top_p: float = 0.95
     llm_timeout_s: float = 20.0
     # Which processor turns text into results: 'fake' (B1 keyword script) or 'nemotron' (B2 loop).
     # Stays 'fake' on the server until the B2 eval passes.
@@ -62,6 +74,7 @@ class Settings(BaseSettings):
     sse_ping_s: float = 10.0  # keepalive comment interval on streams
     call_retention_h: int = 24  # how long call_id results are kept for retries
     # Off until B4: 'real' scoped keys fall back to mock tools. 'mock' keys always do.
+    # On: 'real' keys read the connected Google account (app/google_world.py).
     real_tools_enabled: bool = False
 
     # B4: Google and Tavily. Secrets only in the server's secrets file (set-secret), never in git.
@@ -70,9 +83,25 @@ class Settings(BaseSettings):
     google_redirect_uri: str = "https://api.haloai-cov.io/v1/google/callback"
     token_encryption_key: SecretStr | None = None  # Fernet key for stored Google refresh tokens
     tavily_api_key: SecretStr | None = None
-    # Real mode sends email and invitations only to these addresses (comma separated, server secret).
+    web_search_timeout_s: float = 6.0  # PROVISIONAL: past this the model answers without the search
+    # Tavily: 'basic' (1 credit) or 'advanced' (2 credits). Live, 5 runs each (2026-10-19): advanced found the
+    # right next game 5/5 against 3/5, same speed; its answers were terser.
+    web_search_depth: str = "advanced"
+    # The team's addresses (comma separated, server secret). Real mode sends to any address the user
+    # said or has as a contact; sends to addresses outside this list count against a daily cap.
     allowed_recipients: SecretStr | None = None
+    outside_recipients_per_day: int = 20  # if the phone key leaks, this bounds what it can send
     oauth_state_minutes: int = 10
+
+    # B6 demo site (decided 2026-10-19). The demo key sits in a public page, so its cost is capped.
+    demo_daily_requests: int = 1000  # model requests (starts, additions, selections) by all visitors per 24 h
+    demo_session_hours: int = 24  # a visitor's own sample world and key last this long
+    demo_sessions_per_ip_hour: int = 10
+    visitor_rate_per_min: int = 12  # per visitor key, every call
+    # The part of the real calendar read for each request: conflicts are only checked inside it.
+    calendar_past_days: int = 7
+    calendar_ahead_days: int = 60
+    contacts_cache_s: int = 600  # contacts change rarely; the calendar is read fresh every request
 
 
 @lru_cache

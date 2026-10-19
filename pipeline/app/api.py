@@ -43,6 +43,7 @@ async def json_call(request: Request, caller: Caller, name: str, body: BaseModel
     """Run a JSON call once per call_id: repeats get the stored answer."""
     services = request.app.state.services
     t0 = time.perf_counter()
+    headers: dict = {}
     data = body.model_dump(mode="json") if body is not None else {}
     call_id = data.get("call_id")
     if call_id:
@@ -58,7 +59,7 @@ async def json_call(request: Request, caller: Caller, name: str, body: BaseModel
                                          "backend_total_ms": round((time.perf_counter() - t0) * 1000)}
                 status, payload = 200, result
             except ApiError as err:
-                status, payload = err.http_status, error_payload(err)
+                status, payload, headers = err.http_status, error_payload(err), err.headers or {}
             f["status"] = status
     except Exception:
         if call_id:
@@ -66,7 +67,7 @@ async def json_call(request: Request, caller: Caller, name: str, body: BaseModel
         raise
     if call_id:
         await services.calls.finish(call_id, status, payload)
-    return JSONResponse(payload, status_code=status)
+    return JSONResponse(payload, status_code=status, headers=headers)  # e.g. Retry-After on a 429
 
 
 @router.get("/health")
@@ -108,6 +109,14 @@ async def touch_request(request_id: UUID, body: TouchBody, request: Request,
     lc = request.app.state.services.lc
     return await json_call(request, caller, "touch", None,
                            lambda: lc.touch(caller.user_id, str(request_id), body.revision))
+
+
+@router.get("/v1/requests/{request_id}")
+async def request_status(request_id: UUID, request: Request, caller: Caller = Depends(require_caller)):
+    """Any request's current result, in any state (asked by Victor, 2026-10-17): read only."""
+    lc = request.app.state.services.lc
+    return await json_call(request, caller, "request_status", None,
+                           lambda: lc.request_status(caller.user_id, str(request_id)))
 
 
 @router.get("/v1/executions/{execution_key}")

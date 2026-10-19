@@ -108,6 +108,10 @@ def fmt_range(start: datetime, end: datetime) -> str:
     return f"{fmt_time(start)} to {fmt_time(end)}"
 
 
+def fmt_when(e: dict) -> str:
+    return "all day" if e.get("all_day") else fmt_range(e["start"], e["end"])
+
+
 def untrusted(data) -> str:
     """Tool output as the model sees it: clearly marked as data, never instructions."""
     return json.dumps({"untrusted_data": data,
@@ -142,7 +146,20 @@ def _check_span(start: datetime, end: datetime, now: datetime) -> None:
 
 
 def overlaps(world: MockWorld, start: datetime, end: datetime, skip_id: str | None = None) -> list[dict]:
-    return [e for e in world.events if e["event_id"] != skip_id and e["start"] < end and start < e["end"]]
+    """Events that block the time. Google's own rule: events shown as free (most all day events)
+    and invitations the user declined never block it."""
+    return [e for e in world.events if e["event_id"] != skip_id and e.get("busy", True)
+            and e["start"] < end and start < e["end"]]
+
+
+def _beyond_window(world: MockWorld, start: datetime, timings: dict) -> Final | None:
+    """Real calendar: only a window of days is read, so a time past it cannot be checked for
+    conflicts. Say so instead of wrongly calling it free."""
+    if world.window is None or start.date() <= world.window[1]:
+        return None
+    return Final(ProcessorOutput("read_only_result", [f"I can only plan up to {fmt_day(world.window[1])}",
+                                                      "Hold and say it again with an earlier date"],
+                                 timings=timings))
 
 
 # ---------- contacts ----------
@@ -197,8 +214,47 @@ def resolve_contacts(world: MockWorld, spoken: str) -> list[dict]:
 # ---------- proposals ----------
 
 def _event_view(e: dict) -> dict:
-    return {"event_id": e["event_id"], "title": e["title"], "start": e["start"].isoformat(),
+    view = {"event_id": e["event_id"], "title": e["title"], "start": e["start"].isoformat(),
             "end": e["end"].isoformat()}
+    if e.get("all_day"):
+        view["all_day"] = True
+    if not e.get("busy", True):
+        view["shows_as"] = "free"
+    return view
+
+
+def _google_id(e: dict) -> dict:
+    """What the executor needs about a real event: Google's own id (the model only ever sees the
+    short alias), its version, so a move or delete is refused if it changed since REVIEW, and its
+    guests, who are told about the change."""
+    if not e.get("google_id"):
+        return {}
+    return {"google_id": e["google_id"], "etag": e.get("etag", ""), "guest_emails": list(e.get("guests", []))}
+
+
+SAY_IT_HINT = "Say the address out loud to use it"
+
+
+def compact_speech(text: str) -> str:
+    """The user's words with spoken punctuation turned into symbols and spaces removed, so a dictated
+    address is found however it was transcribed: 'Bob at Gmail dot com' and 'bob@gmail.com.' both
+    contain 'bob@gmail.com'."""
+    t = f" {text.lower()} "
+    for word, symbol in (("at", "@"), ("dot", "."), ("period", "."), ("underscore", "_"), ("dash", "-"),
+                         ("hyphen", "-")):
+        t = re.sub(rf"\s+{word}\s+", symbol, t)
+    return re.sub(r"\s+", "", t)
+
+
+def _untraced(world: MockWorld, emails: list[str]) -> list[str]:
+    """Real mode (decided 2026-10-16): email and invitations may go to any address the user said out loud
+    in this request, or that is their contact or a team address. Anything else, such as an address found
+    only in a web page or an event's notes, is refused before REVIEW. Checked in code against the user's
+    own words, never the model's say-so."""
+    if world.allowed is None:  # sample world: example addresses only
+        return []
+    known = world.allowed | {c["email"].lower() for c in world.contacts + memory_contacts(world)}
+    return [e for e in emails if e.lower() not in known and e.lower() not in world.heard]
 
 
 def _event_proposal(world: MockWorld, draft: dict, review_lines: list[str], start: datetime, end: datetime,
@@ -208,7 +264,7 @@ def _event_proposal(world: MockWorld, draft: dict, review_lines: list[str], star
         first = clash[0]
         # The three choices are exactly what the device does in CONFLICT-SCHEDULE.
         lines = [f"You already have {first['title']} then",
-                 f"{fmt_day(first['start'])}, {fmt_range(first['start'], first['end'])}",
+                 f"{fmt_day(first['start'])}, {fmt_when(first)}",
                  "What would you like to do?", f"Press: {verb} anyway", "Hold: say a new time",
                  "Double press: cancel"]
         return ProcessorOutput("conflict_schedule", lines, draft=draft, review_screen_lines=review_lines,
@@ -226,6 +282,8 @@ def run_tool(name: str, args: dict, world: MockWorld, now: datetime, timings: di
         start, end = parse_date(args.get("start_date", "")), parse_date(args.get("end_date", ""))
         if end < start or (end - start).days > 31:
             raise ToolError("date range must be forward and at most 31 days")
+        if world.window and (end < world.window[0] or start > world.window[1]):  # partly inside: the read part
+            raise ToolError(f"the calendar can only be read from {world.window[0]} to {world.window[1]}")
         found = [{**_event_view(e), "notes": e["notes"]} for e in world.events
                  if start <= e["start"].date() <= end]
         return ReadResult({"events": found})
@@ -235,6 +293,8 @@ def run_tool(name: str, args: dict, world: MockWorld, now: datetime, timings: di
                                        for c in resolve_contacts(world, str(args.get("name", "")))]})
 
     if name == "web_search":
+        if world.source != "mock":
+            raise ToolError("web search is not connected yet; answer without it")
         return ReadResult({"results": world.search(str(args.get("query", "")))})
 
     if name == "remember":
@@ -273,6 +333,8 @@ def run_tool(name: str, args: dict, world: MockWorld, now: datetime, timings: di
         start = parse_local(args.get("start", ""), world)
         end = parse_local(args["end"], world) if args.get("end") else start + timedelta(minutes=60)
         _check_span(start, end, now)
+        if (limit := _beyond_window(world, start, timings)) is not None:
+            return limit
         guests_said = args.get("guests") or []
         if not isinstance(guests_said, list):
             raise ToolError("guests must be a list of names")
@@ -297,6 +359,9 @@ def run_tool(name: str, args: dict, world: MockWorld, now: datetime, timings: di
                 return Final(ProcessorOutput("conflict_ambiguous", [f"Which {said[:1].upper() + said[1:]}?"], draft=pending,
                                              candidates=candidates, timings=timings))
             guests.append({"name": matches[0]["name"], "email": matches[0]["email"]})
+        if untraced := _untraced(world, [g["email"] for g in guests]):
+            return Final(ProcessorOutput("read_only_result", [f"I can't invite {untraced[0]}", SAY_IT_HINT],
+                                         timings=timings))
         draft.update({"guests": guests, "video_call": video_call, "description": description})
         review = ["New event", title, fmt_day(start), fmt_range(start, end)]
         review += [f"Invite: {g['email']}" for g in guests]  # approving sends these invitations
@@ -310,6 +375,11 @@ def run_tool(name: str, args: dict, world: MockWorld, now: datetime, timings: di
         event = world.event(str(args.get("event_id", "")))
         if event is None:
             raise ToolError("unknown event_id; use an event_id from the calendar")
+        if event.get("all_day"):
+            raise ToolError("all day events cannot be moved from the badge; tell the user to use the calendar app")
+        if event.get("organizer_self") is False:  # Google only lets the organizer move it
+            return Final(ProcessorOutput("read_only_result", [f"You can't move {event['title']}",
+                                                              "Someone else organizes it"], timings=timings))
         start = parse_local(args["new_start"], world) if args.get("new_start") else event["start"]
         if args.get("new_end"):
             end = parse_local(args["new_end"], world)
@@ -319,9 +389,11 @@ def run_tool(name: str, args: dict, world: MockWorld, now: datetime, timings: di
         if (start, end, title) == (event["start"], event["end"], event["title"]):
             raise ToolError("nothing changes; give new_start, new_end or new_title")
         _check_span(start, end, now)
+        if (limit := _beyond_window(world, start, timings)) is not None:
+            return limit
         after = {"title": title, "start": start.isoformat(), "end": end.isoformat()}
-        draft = {"kind": "update_event", "event_id": event["event_id"], "before": _event_view(event),
-                 "after": after, "timezone": str(world.tz)}
+        draft = {"kind": "update_event", "event_id": event["event_id"], **_google_id(event),
+                 "before": _event_view(event), "after": after, "timezone": str(world.tz)}
         review = ["Change event", title, f"Was {fmt_day(event['start'])} {fmt_time(event['start'])}",
                   f"Now {fmt_day(start)} {fmt_range(start, end)}"]
         return Final(_event_proposal(world, draft, review, start, end, event["event_id"], timings, verb="move it"))
@@ -330,8 +402,9 @@ def run_tool(name: str, args: dict, world: MockWorld, now: datetime, timings: di
         event = world.event(str(args.get("event_id", "")))
         if event is None:
             raise ToolError("unknown event_id; use an event_id from the calendar")
-        draft = {"kind": "delete_event", "event_id": event["event_id"], "event": _event_view(event)}
-        review = ["Delete event", event["title"], f"{fmt_day(event['start'])} {fmt_range(event['start'], event['end'])}"]
+        draft = {"kind": "delete_event", "event_id": event["event_id"], **_google_id(event),
+                 "event": _event_view(event)}
+        review = ["Delete event", event["title"], f"{fmt_day(event['start'])} {fmt_when(event)}"]
         return Final(ProcessorOutput("review", review, draft=draft, timings=timings))
 
     if name == "draft_email":
@@ -357,6 +430,9 @@ def run_tool(name: str, args: dict, world: MockWorld, now: datetime, timings: di
                 return Final(ProcessorOutput("conflict_ambiguous", [f"Which {recipient[:1].upper() + recipient[1:]}?"], draft=draft_base,
                                              candidates=candidates, timings=timings))
             address, to_name = matches[0]["email"], matches[0]["name"]
+        if _untraced(world, [address]):
+            return Final(ProcessorOutput("read_only_result", [f"I can't email {address}", SAY_IT_HINT],
+                                         timings=timings))
         draft = {"kind": "send_email", "to": address, "to_name": to_name, "subject": subject, "body": body}
         return Final(ProcessorOutput("review", [f"To: {address}", f"Re: {subject}", body], draft=draft,
                                      timings=timings))
@@ -369,5 +445,6 @@ def calendar_context(world: MockWorld, days: int = 7) -> str:
     lines = []
     for e in world.events:
         if 0 <= (e["start"].date() - world.today).days < days:
-            lines.append(f"{e['event_id']} | {fmt_day(e['start'])} | {fmt_range(e['start'], e['end'])} | {e['title']}")
+            free = " (free)" if not e.get("busy", True) else ""
+            lines.append(f"{e['event_id']} | {fmt_day(e['start'])} | {fmt_when(e)} | {e['title']}{free}")
     return "\n".join(lines) or "(no events)"

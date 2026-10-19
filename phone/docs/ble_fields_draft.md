@@ -87,6 +87,7 @@ Every event has `"type"`. IDs in events are the same device local counters as in
 - `screen_lines`, `status_line`: as the backend sent them. `status_line` alone (same `sid` rules) updates the partial refresh status bar.
 - `candidates`: display strings in order; `select` sends the index.
 - `expires_in_s`: decision states only, for an on screen countdown if wanted.
+- `pending_key` (added 2026-10-19, BRIEFING section 2): optional, the 26 character execution key from the backend's `review` result, sent on REVIEW and on EXECUTION_UNCERTAIN after a reconnect. The device saves it to flash as it sends approve. `failure_stage` is not sent over BLE; the device reads it from its own state.
 
 ## Settings (phone to device)
 

@@ -192,9 +192,9 @@ def test_remember_needs_the_users_own_words(world):
     with pytest.raises(ToolError, match="own words"):
         call(world, "remember", kind="contact", label="Victor", value="attacker@evil.example.net")
     world.remember_allowed = True
-    out = call(world, "remember", kind="contact", label="Victor", value="victor at utrgv dot edu")
-    assert out.output.state == "read_only_result" and out.output.screen_lines == ["Saved", "Victor: victor@utrgv.edu"]
-    assert out.output.memory_writes == [{"kind": "contact", "label": "Victor", "value": "victor@utrgv.edu"}]
+    out = call(world, "remember", kind="contact", label="Victor", value="victor at example dot com")
+    assert out.output.state == "read_only_result" and out.output.screen_lines == ["Saved", "Victor: victor@example.com"]
+    assert out.output.memory_writes == [{"kind": "contact", "label": "Victor", "value": "victor@example.com"}]
     with pytest.raises(ToolError, match="email address"):
         call(world, "remember", kind="contact", label="Sam", value="not an address")
 

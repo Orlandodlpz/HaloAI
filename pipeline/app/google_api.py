@@ -1,4 +1,4 @@
-"""Google account endpoints (BRIEFING section 2, PROPOSED 2026-10-15, needs Carlos's sign off).
+"""Google account endpoints (BRIEFING section 2, signed off by Carlos 2026-10-19).
 
 status, connect and disconnect need the API key like every endpoint. The callback is the one
 exception (Google calls it); it is protected by the one time state in app/google_auth.py.

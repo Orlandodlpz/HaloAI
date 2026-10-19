@@ -52,6 +52,21 @@ class ExecutionOutcome:
     detail: dict = field(default_factory=dict)
 
 
+def uses_real_tools(settings, scope: str) -> bool:
+    """The one rule for real versus sample data. The world a request reads and the executor that
+    carries out its approval both follow it, so they cannot disagree. Demo keys never pass."""
+    return scope == "real" and settings.real_tools_enabled
+
+
+class ScreenError(Exception):
+    """Processing stopped for a reason the user can fix (Google not connected, sign in expired).
+    The lines go on the FAILURE screen instead of the generic message."""
+
+    def __init__(self, lines: list[str]):
+        super().__init__(" / ".join(lines))
+        self.lines = lines
+
+
 class Processor:
     async def process(self, ctx: ProcessContext) -> ProcessorOutput:
         raise NotImplementedError
@@ -62,6 +77,18 @@ class Executor:
 
     async def execute(self, draft: dict, execution_key: str, user_id: str = "") -> ExecutionOutcome:
         raise NotImplementedError
+
+
+class RefusingExecutor(Executor):
+    """Applies nothing and says why. Used where a draft has no executor that may run it."""
+
+    name = "refuse"
+
+    def __init__(self, lines: list[str]):
+        self.lines = lines
+
+    async def execute(self, draft: dict, execution_key: str, user_id: str = "") -> ExecutionOutcome:
+        return ExecutionOutcome(False, self.lines)
 
 
 class FakeProcessor(Processor):
