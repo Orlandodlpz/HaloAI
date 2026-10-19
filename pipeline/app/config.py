@@ -92,6 +92,12 @@ class Settings(BaseSettings):
     allowed_recipients: SecretStr | None = None
     outside_recipients_per_day: int = 20  # if the phone key leaks, this bounds what it can send
     oauth_state_minutes: int = 10
+
+    # B6 demo site (decided 2026-10-19). The demo key sits in a public page, so its cost is capped.
+    demo_daily_requests: int = 1000  # model requests (starts, additions, selections) by all visitors per 24 h
+    demo_session_hours: int = 24  # a visitor's own sample world and key last this long
+    demo_sessions_per_ip_hour: int = 10
+    visitor_rate_per_min: int = 12  # per visitor key, every call
     # The part of the real calendar read for each request: conflicts are only checked inside it.
     calendar_past_days: int = 7
     calendar_ahead_days: int = 60
