@@ -58,6 +58,16 @@ systemctl enable -q haloai
 systemctl enable -q --now haloai-backup.timer  # nightly encrypted backup (B5)
 systemctl restart haloai
 
+# The demo site (B6): a public copy outside /opt/haloai (which Caddy cannot read), with config.js
+# written from the DEMO_SITE_KEY secret. That key is public by design (it is in the page) but never in git.
+rm -rf /srv/haloai-site.new && cp -r "$APP/pipeline/site" /srv/haloai-site.new
+DEMO_KEY="$(grep '^DEMO_SITE_KEY=' "$ENV" | cut -d= -f2- || true)"
+if [ -n "$DEMO_KEY" ]; then
+  printf 'window.HALO_CONFIG = {"demoKey": "%s"};\n' "$DEMO_KEY" > /srv/haloai-site.new/config.js
+fi
+chmod -R a+rX /srv/haloai-site.new
+rm -rf /srv/haloai-site && mv /srv/haloai-site.new /srv/haloai-site
+
 if ! cmp -s "$APP/pipeline/deploy/Caddyfile" /etc/caddy/Caddyfile; then
   caddy validate --config "$APP/pipeline/deploy/Caddyfile" --adapter caddyfile >/dev/null 2>&1
   install -m 644 "$APP/pipeline/deploy/Caddyfile" /etc/caddy/Caddyfile

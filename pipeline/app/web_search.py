@@ -6,6 +6,8 @@ memory never learns from them. Kept small on purpose (5 results, short excerpts,
 every token and every second counts against the 5 s target.
 """
 
+from datetime import datetime, timezone
+
 import httpx
 
 from app.timing import hop
@@ -49,3 +51,27 @@ class TavilySearch:
                        for r in (resp.json().get("results") or [])[:MAX_RESULTS]]
             f["results"] = len(results)
         return results
+
+
+class DailyCap:
+    """At most `limit` searches per UTC day, for the demo site's real search (decided 2026-10-19).
+    Over the limit the model is told to answer without it, like any failed search. In memory:
+    correct with one worker; a restart resets the count, which errs on the side of availability."""
+
+    def __init__(self, inner, limit: int, today=lambda: datetime.now(timezone.utc).date()):
+        self.inner = inner
+        self.limit = limit
+        self.today = today
+        self.day, self.count = None, 0
+
+    def configured(self) -> bool:
+        return self.inner.configured()
+
+    async def search(self, query: str) -> list[dict]:
+        day = self.today()
+        if day != self.day:
+            self.day, self.count = day, 0
+        if self.count >= self.limit:
+            raise ToolError("web search is not available right now; answer without it, or say you could not check")
+        self.count += 1
+        return await self.inner.search(query)

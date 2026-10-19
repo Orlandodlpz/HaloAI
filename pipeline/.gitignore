@@ -9,3 +9,6 @@ __pycache__/
 *.pyc
 *.egg-info/
 .pytest_cache/
+
+# Demo site config with the public demo key: written on the server by deploy.sh, never committed.
+site/config.js
