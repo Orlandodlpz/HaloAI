@@ -15,7 +15,11 @@ from datetime import datetime
 
 from app.processing import Segment
 
-REMEMBER_RE = re.compile(r"\b(remember|don'?t forget|save (that|this)|note that|keep in mind)\b", re.IGNORECASE)
+# The user's own words asking to save something: "remember that...", and for routines "save a routine
+# called gym: ...", "make that my standup routine" (2026-10-19). Naming a routine to use it ("do my gym
+# routine") is not a request to save one.
+REMEMBER_RE = re.compile(r"\b(remember|don'?t forget|save (that|this)|note that|keep in mind)\b"
+                         r"|\b(save|create|make|add|set up|store)\b[^.]{0,40}\broutine\b", re.IGNORECASE)
 USUAL_LENGTH = "usual event length"
 
 
@@ -26,7 +30,7 @@ def remember_intent(segments: list[Segment]) -> bool:
 
 @dataclass
 class MemorySnapshot:
-    items: list[dict] = field(default_factory=list)    # contact | preference | fact
+    items: list[dict] = field(default_factory=list)    # contact | preference | fact | routine
     actions: list[dict] = field(default_factory=list)  # recent approved actions, newest first
 
 

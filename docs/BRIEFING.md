@@ -71,15 +71,17 @@ GET  /v1/requests/{request_id}                 current result of any request, in
 
 ```
 GET    /v1/memory                     list: { "items": [ memory item, ... ] }
-POST   /v1/memory                     { "call_id": "uuid", "kind": "contact | preference | fact", "label": "Victor", "value": "victor@example.com" }
+POST   /v1/memory                     { "call_id": "uuid", "kind": "contact | preference | fact | routine", "label": "Victor", "value": "victor@example.com" }
 PATCH  /v1/memory/{memory_id}         { "call_id": "uuid", "label": "...", "value": "..." }   (either field)
 DELETE /v1/memory/{memory_id}         { "call_id": "uuid" }   -> { "deleted": true }
 
-memory item: { "memory_id": "...", "kind": "contact | preference | fact | action", "label": "...", "value": "...",
+memory item: { "memory_id": "...", "kind": "contact | preference | fact | routine | action", "label": "...", "value": "...",
                "source": "user | learned | action", "uses": 3, "updated_at": "RFC 3339" }
 ```
 
 `action` items are recent approved actions; they can be deleted but not edited. Errors use the usual shape.
+
+**Routines (added 2026-10-19, Orlando; tell Carlos):** a `routine` item is a saved command the user reuses by name, the Personal AI track's "reusable skills". `label` is the name (for example `gym`, stored lowercase without "my" or "routine"), `value` is the command in the user's words (for example `block 7 to 8 am for the gym`, at most 200 characters). Saved by voice ("save a routine called gym: ...", "save that as my gym routine"), only when the user's own words ask for it, or with `POST /v1/memory`; viewed, edited and deleted like any memory item, so the phone's memory screen should show them. Using one ("do my gym routine on friday") is an ordinary request that ends in REVIEW and needs a press: **routines never run on their own.**
 
 *Google account (B4).* **Proposed 2026-10-15, signed off by Carlos 2026-10-19.** Sign in happens on the backend (locked decision).
 
@@ -126,6 +128,7 @@ API rules:
 - **Execution key on REVIEW (added 2026-10-17, agreed by Orlando, Carlos and Victor; live since 2026-10-16).** A `review` result carries `execution_key`, the same key approve will use (derived from request, revision and proposal hash, so nothing is created yet). Conflict states carry none, and a new revision gets a new key. The phone passes it to the device as `pending_key` on the REVIEW screen, and the device saves it to flash as it sends approve, so a reboot right after approve still leaves a key to check.
 - **`failure_stage` (added 2026-10-17; live since 2026-10-16).** Every result also has `failure_stage`. On `failure` it is `"processing"` (never approved: speech to text, the model or a deadline) or `"execution"` (approved and confirmed not done); in every other state it is `null`. It is decided by whether an execution exists, so a status query after a reboot gets the same answer. `"execution"` is authoritative: nothing happened, and the saved key may be cleared. An unclear outcome is always `execution_uncertain`, never `failure`.
 - **Status for a key that was never approved (added 2026-10-17; live since 2026-10-16; extends the Status endpoint rule above).** `GET /v1/executions/{execution_key}` for a key from a REVIEW that was never approved answers with the request's current state instead of `404`: `review` while it is still open, `cancelled` once it expired or was cancelled. If the answer is `review`, the phone cancels the request, and that reply is final: approve and cancel take the same user lock, so the answer is either `cancelled` (nothing happened: the phone sends a CANCELLED screen and the device clears the key) or `409 already_executing` (the approve won: keep the key and poll). `404 not_found` now means only a key the backend never issued. For a request that never reached REVIEW, and so never had a key, use `GET /v1/requests/{request_id}` (Status by request, above).
+- **An unknown key is uncertain, never cancelled (added 2026-10-19, proposed by Orlando, agreed by Carlos and Victor).** `GET /v1/executions/{execution_key}` answers `404 not_found` only for a key the backend has no record of. In normal operation that cannot happen for a key the device saved, because REVIEW stores it. It can after the database is restored from a nightly backup (up to a day old), which can lose an approval made after the backup even though the email or event may really exist. So in RECONCILE STATUS the phone treats a `404` as **EXECUTION UNCERTAIN** ("Not sure it went through, check Sent or your calendar"), never as CANCELLED: the device keeps the key, and only a double press dismisses it. A `401`, `429` or network error is not an answer at all: keep polling, as the status endpoint rule above says.
 - **Backend cancels (added 2026-10-17, Orlando).** The backend cancels on its own in two cases only: the 60 s expiry, and a new request replacing an older one that was not approved. Approved requests are never cancelled. The phone sends the device a CANCELLED screen for the current request, and drops any result whose request ID is not the current one.
 
 Errors have one shape. `message` is for logs only, never for the screen; `current` lets the phone resync without another call. `expired` means the request is no longer open: expired, cancelled or finished; there is no separate `cancelled` code (decided 2026-10-13, Orlando and Carlos).
@@ -574,4 +577,5 @@ Target dates for I1 to I4: _to be set by the team_.
 - [ ] All materials in English
 - [ ] Google demo account reconnected every week (testing mode tokens last 7 days), before the video, and before and during judging (December 1 to 15). The demo site runs on sample data and does not need it
 - [ ] One working badge kept available for a possible physical access request until January 11, 2027
-- [ ] Open, team: the target audience for the description and the video. Open, Orlando: real Tavily search on the demo site (read only; calendar and email stay sample data)
+- [ ] Open, team: the target audience for the description and the video
+- Decided 2026-10-19 (Orlando): the demo site searches the real web with Tavily (read only; calendar and email stay sample data), capped at 100 searches a day so the Tavily credit lasts through judging

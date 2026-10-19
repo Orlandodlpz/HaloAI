@@ -97,7 +97,16 @@ class Settings(BaseSettings):
     demo_daily_requests: int = 1000  # model requests (starts, additions, selections) by all visitors per 24 h
     demo_session_hours: int = 24  # a visitor's own sample world and key last this long
     demo_sessions_per_ip_hour: int = 10
-    visitor_rate_per_min: int = 12  # per visitor key, every call
+    # Per visitor key, every call. One command with its panel refreshes is about 8 calls; 12 was too tight
+    # (a 429 in the first browser test, 2026-10-19). Model cost is bounded by demo_daily_requests.
+    visitor_rate_per_min: int = 60
+    # Real Tavily search on the sample world (read only; calendar and email stay sample data), capped
+    # per day: the Tavily credit is small and the demo key is public (decided 2026-10-19).
+    demo_real_search: bool = True
+    # The demo site's own key (server secret). It sits in the public page, so it can only start
+    # visitor sessions in sample mode; registered for the 'demo-site' sandbox user at startup.
+    demo_site_key: SecretStr | None = None
+    demo_daily_searches: int = 100
     # The part of the real calendar read for each request: conflicts are only checked inside it.
     calendar_past_days: int = 7
     calendar_ahead_days: int = 60

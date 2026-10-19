@@ -140,6 +140,12 @@ def score(case: dict, out: ProcessorOutput | None, turns: int) -> tuple[bool, bo
         why.append(f"candidates {[c['candidate_id'] for c in (out.candidates or [])]}, expected {exp['candidates']}")
     if exp.get("no_memory_writes") and out.memory_writes:
         why.append(f"SAVED TO MEMORY although the user did not ask: {out.memory_writes}")
+    for want in exp.get("memory_writes_like", []):  # routines: the command text is free, so check its words
+        fixed = {k: v for k, v in want.items() if k != "value_has"}
+        if not any(all(w.get(k) == v for k, v in fixed.items())
+                   and all(x in str(w.get("value", "")).lower() for x in want.get("value_has", []))
+                   for w in out.memory_writes):
+            why.append(f"memory write like {want} missing (got {out.memory_writes})")
     for want in exp.get("memory_writes_has", []):
         if not any(all(w.get(k) == v for k, v in want.items()) for w in out.memory_writes):
             why.append(f"memory write {want} missing (got {out.memory_writes})")

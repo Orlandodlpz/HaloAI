@@ -264,3 +264,12 @@ async def test_no_extra_turn_without_a_search():
     with pytest.raises(RuntimeError, match="no result after 4 model turns"):
         await p.process(ctx("email someone"))
     assert len(client.requests) == 4
+
+
+@pytest.mark.parametrize("text", ["If you want to add a Farmers Market block for Saturday, I can propose that.",
+                                  "I can add it to your calendar if you'd like."])
+async def test_other_ways_of_asking_are_sent_back_too(text):
+    p, client = proc([reply(content=text),
+                      reply([tool_call("create_event", {"title": "Farmers market", "start": "2026-10-17T08:00"})])])
+    out = await p.process(ctx("look up when the farmers market opens and add it"))
+    assert out.state == "review" and len(client.requests) == 2
