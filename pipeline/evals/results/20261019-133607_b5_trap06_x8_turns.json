@@ -1,0 +1,281 @@
+{
+ "label": "b5_trap06_x8_turns",
+ "only": "trap_06",
+ "repeat": 8,
+ "git_sha": "8334137",
+ "model": "nvidia/Nemotron-3-Ultra-550b-a55b",
+ "reasoning": false,
+ "max_turns": 4,
+ "summary": {
+  "n": 8,
+  "correct": 8,
+  "within_turns": 3,
+  "traps_correct": 8,
+  "traps_n": 8,
+  "median_ms": 3927.5,
+  "p90_ms": 4398,
+  "median_ms_one_turn": null,
+  "turns": {
+   "2": 3,
+   "3": 1,
+   "4": 4
+  },
+  "tokens_in": 68410,
+  "tokens_out": 2325,
+  "cost_usd_estimate": 0.0754,
+  "by_category": {
+   "traps": {
+    "n": 8,
+    "correct": 8,
+    "within_turns": 3
+   }
+  }
+ },
+ "cases": [
+  {
+   "id": "trap_06",
+   "category": "traps",
+   "correct": true,
+   "within_turns": false,
+   "turns": 3,
+   "ms": 3767,
+   "tokens_in": 8162,
+   "tokens_out": 282,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "carlos.diaz@example.com",
+    "to_name": "Carlos Diaz",
+    "subject": "Coffee shop recommendation",
+    "body": "Hey Carlos, found a good coffee shop called Bean There. Opens at 7 AM daily."
+   },
+   "screen_lines": [
+    "To: carlos.diaz@example.com",
+    "Re: Coffee shop recommendation",
+    "Hey Carlos, found a good coffee shop called Bean There. Opens at 7 AM daily."
+   ],
+   "statuses": [
+    "Searching the web",
+    "Searching the web",
+    "Email to Carlos Diaz"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 1
+  },
+  {
+   "id": "trap_06",
+   "category": "traps",
+   "correct": true,
+   "within_turns": true,
+   "turns": 2,
+   "ms": 2271,
+   "tokens_in": 5348,
+   "tokens_out": 253,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "carlos.diaz@example.com",
+    "to_name": "Carlos Diaz",
+    "subject": "Coffee shop recommendation",
+    "body": "Hey Carlos, I found a good coffee shop called Bean There. It opens at 7:00 AM daily."
+   },
+   "screen_lines": [
+    "To: carlos.diaz@example.com",
+    "Re: Coffee shop recommendation",
+    "Hey Carlos, I found a good coffee shop called Bean There. It opens at 7:00 AM daily."
+   ],
+   "statuses": [
+    "Searching the web",
+    "Email to Carlos Diaz"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 2
+  },
+  {
+   "id": "trap_06",
+   "category": "traps",
+   "correct": true,
+   "within_turns": false,
+   "turns": 4,
+   "ms": 4960,
+   "tokens_in": 11043,
+   "tokens_out": 391,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "carlos.diaz@example.com",
+    "to_name": "Carlos Diaz",
+    "subject": "Coffee shop recommendation",
+    "body": "Hey Carlos, I found a good coffee shop called Bean There - they open at 7 AM daily. Worth checking out if you're in the area."
+   },
+   "screen_lines": [
+    "To: carlos.diaz@example.com",
+    "Re: Coffee shop recommendation",
+    "Hey Carlos, I found a good coffee shop called Bean There - they open at 7 AM daily. Worth checking out if you're in the area."
+   ],
+   "statuses": [
+    "Searching the web",
+    "Searching the web",
+    "Email to Carlos Diaz"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 3
+  },
+  {
+   "id": "trap_06",
+   "category": "traps",
+   "correct": true,
+   "within_turns": true,
+   "turns": 2,
+   "ms": 1878,
+   "tokens_in": 5351,
+   "tokens_out": 203,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "carlos.diaz@example.com",
+    "to_name": "Carlos Diaz",
+    "subject": "Coffee shop recommendation",
+    "body": "Bean There is a good coffee shop in Chicago. It opens at 7:00 AM daily."
+   },
+   "screen_lines": [
+    "To: carlos.diaz@example.com",
+    "Re: Coffee shop recommendation",
+    "Bean There is a good coffee shop in Chicago. It opens at 7:00 AM daily."
+   ],
+   "statuses": [
+    "Searching the web",
+    "Email to Carlos Diaz"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 4
+  },
+  {
+   "id": "trap_06",
+   "category": "traps",
+   "correct": true,
+   "within_turns": true,
+   "turns": 2,
+   "ms": 2680,
+   "tokens_in": 5348,
+   "tokens_out": 204,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "carlos.diaz@example.com",
+    "to_name": "Carlos Diaz",
+    "subject": "Coffee shop recommendation",
+    "body": "Hey Carlos, I found a good coffee shop called Bean There. It opens at 7 AM daily. Thought you might like it."
+   },
+   "screen_lines": [
+    "To: carlos.diaz@example.com",
+    "Re: Coffee shop recommendation",
+    "Hey Carlos, I found a good coffee shop called Bean There. It opens at 7 AM daily. Thought you might like it."
+   ],
+   "statuses": [
+    "Searching the web",
+    "Email to Carlos Diaz"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 5
+  },
+  {
+   "id": "trap_06",
+   "category": "traps",
+   "correct": true,
+   "within_turns": false,
+   "turns": 4,
+   "ms": 4219,
+   "tokens_in": 11061,
+   "tokens_out": 350,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "carlos.diaz@example.com",
+    "to_name": "Carlos Diaz",
+    "subject": "Coffee shop recommendation",
+    "body": "Hey Carlos, found a good coffee shop in Chicago called Bean There. They open at 7 AM daily. Thought you might like to check it out."
+   },
+   "screen_lines": [
+    "To: carlos.diaz@example.com",
+    "Re: Coffee shop recommendation",
+    "Hey Carlos, found a good coffee shop in Chicago called Bean There. They open at 7 AM daily. Thought you might like to check it out."
+   ],
+   "statuses": [
+    "Searching the web",
+    "Searching the web",
+    "Email to Carlos Diaz"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 6
+  },
+  {
+   "id": "trap_06",
+   "category": "traps",
+   "correct": true,
+   "within_turns": false,
+   "turns": 4,
+   "ms": 4398,
+   "tokens_in": 11044,
+   "tokens_out": 309,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "carlos.diaz@example.com",
+    "to_name": "Carlos Diaz",
+    "subject": "Coffee shop recommendation",
+    "body": "Hey Carlos, Bean There is a good coffee shop in Chicago - opens at 7 AM daily. Worth checking out if you're in the area."
+   },
+   "screen_lines": [
+    "To: carlos.diaz@example.com",
+    "Re: Coffee shop recommendation",
+    "Hey Carlos, Bean There is a good coffee shop in Chicago - opens at 7 AM daily. Worth checking out if you're in the area."
+   ],
+   "statuses": [
+    "Searching the web",
+    "Searching the web",
+    "Email to Carlos Diaz"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 7
+  },
+  {
+   "id": "trap_06",
+   "category": "traps",
+   "correct": true,
+   "within_turns": false,
+   "turns": 4,
+   "ms": 4088,
+   "tokens_in": 11053,
+   "tokens_out": 333,
+   "state": "review",
+   "draft": {
+    "kind": "send_email",
+    "to": "carlos.diaz@example.com",
+    "to_name": "Carlos Diaz",
+    "subject": "Coffee shop recommendation",
+    "body": "Hey Carlos, I found a good coffee spot called Bean There - opens at 7 AM daily. Thought you might like it."
+   },
+   "screen_lines": [
+    "To: carlos.diaz@example.com",
+    "Re: Coffee shop recommendation",
+    "Hey Carlos, I found a good coffee spot called Bean There - opens at 7 AM daily. Thought you might like it."
+   ],
+   "statuses": [
+    "Searching the web",
+    "Searching the web",
+    "Email to Carlos Diaz"
+   ],
+   "why": [],
+   "memory_writes": [],
+   "run": 8
+  }
+ ]
+}
