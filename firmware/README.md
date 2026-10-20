@@ -124,6 +124,21 @@ Two rules the tests exist to defend:
   state, for any reason. EXECUTING onwards is reconciled by execution key. The effect may
   already exist, and "cancelled" is a claim the device cannot make.
 
+## Reading the log
+
+An event that does nothing is logged, with the state it did nothing in:
+
+```
+12896  hold            READY -> PHONE / BLUETOOTH CHECK  [draw screen]  hold: new request
+12896  phone ready     PHONE / BLUETOOTH CHECK -> RECORDING  [start capture, draw screen]
+19956  screen: review  ignored in READY
+```
+
+That last line used to be invisible. It was an `ESP_LOGD`, and the build's maximum
+log level is INFO, so the macro was compiled out and `esp_log_level_set` could not
+bring it back. Tick and ScreenPresented are still left out: the device sends both
+to itself constantly and by design.
+
 ## The screens the device owns
 
 Twelve of the 21 states get their words from the backend, which owns the request

@@ -96,8 +96,16 @@ bool pressed(gpio_num_t pin) { return gpio_get_level(pin) == 0; }
 
 void log_transition(const Transition& t, const Event& e) {
     if (!t.handled) {
-        ESP_LOGD(kTag, "%8lu  %-22s ignored in %s", static_cast<unsigned long>(e.at_ms),
-                 name(e.kind), name(t.from));
+        // This was ESP_LOGD, and CONFIG_LOG_MAXIMUM_LEVEL is INFO, so the macro
+        // was compiled out and esp_log_level_set() could not bring it back: every
+        // event that did nothing left no trace at all. Found by Carlos on
+        // 2026-10-20, after sending several screens that were silently ignored.
+        // Tick and ScreenPresented are excluded: both are housekeeping the
+        // device sends itself, constantly and by design, and neither says
+        // anything about why a press or a screen did nothing.
+        if (e.kind != EventKind::Tick && e.kind != EventKind::ScreenPresented)
+            ESP_LOGI(kTag, "%8lu  %-22s ignored in %s", static_cast<unsigned long>(e.at_ms),
+                     name(e.kind), name(t.from));
         return;
     }
     if (!t.changed()) {
@@ -167,7 +175,8 @@ void draw_screen(State to, bool status_only) {
 // of what the phone can be told is exactly this function.
 void emit_events(const Transition& t, const Event& e);
 
-void feed(const Event& e) {
+// Returns the transition, so a caller can tell an ignored event from an acted one.
+Transition feed(const Event& e) {
     // The knob moves the highlight and the scroll before the machine sees the
     // event: a select has to carry the candidate that was under the bar.
     if (e.kind == EventKind::RotateUp || e.kind == EventKind::RotateDown) {
@@ -189,8 +198,25 @@ void feed(const Event& e) {
     log_transition(t, e);
     emit_events(t, e);
 
+    // PHONE / BLUETOOTH CHECK is answered from what the phone last told us, not
+    // by waiting for it to tell us again. Settings arrives once, right after
+    // hello, so a hold minutes later used to sit here until the hold was released
+    // and the request died as "released early" (found by Carlos, 2026-10-20).
+    // Section 2: RECORDING needs the link up AND the last phone_ready true.
+    //
+    // Answered before the screen is drawn on purpose. A refresh is about half a
+    // second, and spending it on a screen we are leaving immediately would delay
+    // the microphone by that much, which on the badge is half a second of speech.
+    if (t.changed() && t.to == State::PhoneCheck) {
+        const bool ready = ble::connected() && g_settings.phone_ready;
+        const Transition answered =
+            feed(Event::at(ready ? EventKind::PhoneReady : EventKind::PhoneAbsent, e.at_ms));
+        if (answered.changed()) return t;  // the nested call drew where we landed
+    }
+
     if (t.changed() && (t.actions.has(Action::DrawScreen) || t.actions.has(Action::ShowWallpaper)))
         draw_screen(t.to, false);
+    return t;
 }
 
 // ---------------------------------------------------------------- audio out
@@ -637,7 +663,11 @@ void apply_screen(const char* js, size_t len) {
 
     EventKind kind = EventKind::Tick;
     if (msg::event_for_screen(g_screen.state, g_machine.state(), &kind)) {
-        feed(Event::at(kind, now_ms()));
+        const Transition t = feed(Event::at(kind, now_ms()));
+        if (!t.handled)
+            ESP_LOGW(kTag, "screen %s ignored in %s: the device is not in a state that "
+                           "screen belongs to",
+                     msg::wire_name(g_screen.state), name(t.from));
         return;
     }
     // A screen with no event behind it (READY, CANCELLED, EXECUTING) still
@@ -764,12 +794,19 @@ void handle_serial() {
                 // The golden vectors in phone/test/golden/adpcm_chunks.json are
                 // built with req 513, rev 2, seg 3, so the phone can compare the
                 // bytes it receives against what it expects.
+                // A new segment per press. The phone treats a repeat of a
+                // finished segment as duplicates, correctly, so reusing seg 3
+                // meant a board reset between runs (Carlos, 2026-10-20). The
+                // first press after boot still uses seg 3, which is what the
+                // golden vectors were generated with.
+                static uint8_t clip_seg = 3;
                 msg::Link clip = g_link;
                 clip.req = 513;
                 clip.rev = 2;
-                clip.seg = 3;
+                clip.seg = clip_seg;
                 send(msg::record_start(g_tx, sizeof(g_tx), clip, false), "record_start");
-                g_audio.start(513, 2, 3, pcm, samples);
+                g_audio.start(513, 2, clip_seg, pcm, samples);
+                if (clip_seg < 255) ++clip_seg;
             } else {
                 ESP_LOGW(kTag, "no phone connected");
             }
