@@ -69,6 +69,18 @@ adb pull /sdcard/Android/data/com.haloai.haloai_phone/files/logs/halo_$(date +%Y
 grep -E 'P3LOG|APIRESULT|BLERESULT' halo_*.log
 ```
 
+## App features (P4, in progress)
+
+The app has four tabs: **Home** (badge link, phone mic hold, typed commands, the current screen as the device gets it, and the full draft the device's 48 x 12 text budget cuts), **Memory** (view, add, edit and delete what the assistant remembers), **Settings** (badge orientation, wallpaper, Google account) and **Debug** (the P0 to P3 bench). Code in `lib/ui/`, `lib/backend/draft_view.dart` and `lib/wallpaper/`.
+
+- **Orientation** is sent to the badge in Settings and with every request, and saved in the app's own storage.
+- **Wallpaper**: pick a photo, and the app crops, resizes and dithers it to the panel's 1 bit framebuffer and previews exactly those bits. Sending uses a format proposed to Victor (`docs/ble_fields_draft.md`, Wallpaper section) and stays off until the badge's `hello` says `wallpaper: true`.
+- **Google account**: Connect opens Google's sign in page in the browser and the app polls until it is linked. The sample data key cannot connect (422). For testing on your own Google account, Orlando issues a separate real scope key on its own test user; put it in `config/backend.google-test.json` (gitignored) as `HALO_GOOGLE_KEY`. Only the Google section uses it; requests and approvals keep the sample key.
+
+```sh
+flutter build apk --release --dart-define-from-file=config/backend.json --dart-define-from-file=config/backend.google-test.json
+```
+
 ## Pull mic test recordings
 
 ```sh

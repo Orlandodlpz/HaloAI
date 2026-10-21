@@ -39,6 +39,7 @@ ApiError err(int status, String code, {BackendResult? current}) => ApiError(stat
 class FakeApi extends BackendClient {
   FakeApi() : super(BackendConfig(Uri.parse('https://x'), 'k'));
   final calls = <String>[];
+  String? lastOrientation;
   Stream<StreamEvent> Function(String rid)? onStart;
   Stream<StreamEvent> Function(String rid, int rev)? onAddition;
   Stream<StreamEvent> Function(String rid, String cand)? onSelect;
@@ -56,6 +57,7 @@ class FakeApi extends BackendClient {
     String orientation = 'landscape',
   }) {
     calls.add('start "$text" $timezone');
+    lastOrientation = orientation;
     return onStart!(requestId);
   }
 
@@ -164,6 +166,13 @@ void main() {
     expect(w.last['pending_key'], key);
     expect(w.last['expires_in_s'], 60);
     expect(api.calls.single, 'start "block 3 to 4 tomorrow for the gym" America/Chicago');
+  });
+
+  test('orientation set on the controller goes with the next request (P4)', () async {
+    api.onStart = (rid) => answer(rid, res('review', hash: 'h', execKey: key));
+    c.orientation = 'portrait';
+    await c.say('block 3 to 4');
+    expect(api.lastOrientation, 'portrait');
   });
 
   test('pending_key goes only on REVIEW and EXECUTION_UNCERTAIN', () async {

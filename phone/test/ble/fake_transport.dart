@@ -28,6 +28,9 @@ class FakeTransport implements DeviceTransport {
   Future<void> writeAudioAck(Uint8List json) async => acks.add(jsonDecode(utf8.decode(json)) as Map);
   @override
   Future<void> writeScreen(Uint8List f) async => screens.add(f);
+  final wallpaper = <Uint8List>[];
+  @override
+  Future<void> writeWallpaper(Uint8List f) async => wallpaper.add(f);
   @override
   Future<void> writeSettings(Uint8List f) async =>
       settings.add(jsonDecode(Defragmenter().add(f)!) as Map);

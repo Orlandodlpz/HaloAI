@@ -123,3 +123,48 @@ With NimBLE on Arduino, the preferred MTU is set with `NimBLEDevice::setMTU(256)
 3. OK with the final marker resend after 300 ms?
 4. The 2 byte prefix for JSON fragments, or would you rather put the sequence number inside the JSON?
 5. Anything the firmware needs that is missing (for example a battery event outside `hello`)?
+
+## Wallpaper (phone to device): PROPOSAL for Victor, 2026-10-21 (P4)
+
+Nothing here is agreed yet. It fills in the one line the contract has (BRIEFING section 2: "JSON chunks with offset and checksum, image data base64", the image already resized and dithered on the phone), so it is a field name agreement in the same spirit as the rest of this file, not a contract change. The phone side is built and tested against this format (`phone/lib/wallpaper/`), with Send switched off until the firmware says it can receive one. If you want something different, say so: on the phone only the chunk encoder and the answer handling change.
+
+**The image.** Exactly the panel's framebuffer, nothing to convert on the device: 1 bit per pixel, rows top to bottom, most significant bit leftmost, **1 = white** (the convention both panels' framebuffers already use, CLAUDE.md Device). 800 x 480 in landscape, 480 x 800 in portrait, following the orientation setting at the moment it was made; 48,000 bytes either way. The phone centre crops the photo to the panel's aspect, resizes and dithers it (Floyd–Steinberg). On the CrowPanel only the top 272 rows of the 800 x 480 canvas are visible; the phone's preview marks that line.
+
+**Each write** (Wallpaper characteristic, write without response) is one JSON message with the usual 2 byte fragment prefix (message ID, then bit 7 last and the index), sized so a chunk always fits one write:
+
+```json
+{"wp": 7, "w": 800, "h": 480, "off": 0, "data": "<base64 of the next bytes>"}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `wp` | Transfer ID, 0 to 255, new for each image. A write with a new `wp` abandons any transfer in progress. |
+| `w`, `h` | Image size in pixels; the device rejects sizes it cannot show. |
+| `off` | Byte offset of `data` in the 48,000 byte image. Chunks arrive in order, each starting where the last ended. |
+| `data` | Base64 of the raw bytes from `off`. |
+| `crc` | Last chunk only: CRC-16/CCITT-FALSE (the same function as the audio chunks: poly 0x1021, init 0xFFFF, no reflection) over all 48,000 bytes. Its presence marks the end. |
+
+At MTU 256 (253 byte writes) that is **141 image bytes per write, 341 writes**, about 86 KB on air. Transfer time is unmeasured; it only happens when the user picks a new wallpaper.
+
+**The answer** goes on Events, because writes without response get no acknowledgment of their own:
+
+```json
+{"type": "wallpaper", "wp": 7, "ok": true}
+{"type": "wallpaper", "wp": 7, "ok": false, "resend_from": 28200}
+```
+
+- `ok: true` once the CRC matches and the image is stored. The phone shows "Sent".
+- `ok: false` with `resend_from` when a chunk was missing (an `off` that does not continue from the last one) or the CRC failed: the phone resends from that byte offset to the end, whole chunks, same `wp`, up to 3 attempts in total. `resend_from: 0` restarts it. The same idea as the audio `resend_from`.
+- `ok: false` without `resend_from` means refused for good (for example a size the device cannot show); the phone reports the failure.
+- No answer within 10 s of the last chunk counts as a failure on the phone.
+
+**Device side, as I picture it** (your call): keep the image in RAM while chunks arrive, check the CRC, then write it to the `wallpaper` partition already in the partition table, keep the previous wallpaper until the new one is complete, and show it in WALLPAPER instead of the placeholder text in `core/src/screens.cpp`.
+
+**Telling the phone it can.** The phone keeps Send off until `hello` carries `"wallpaper": true`, so an older firmware never receives writes it would drop. Please add that field when the receiver exists.
+
+**Questions for Victor**
+
+1. OK with the fields above, or would you rather have raw bytes with a small binary header, like audio? (JSON matches the contract wording; raw would be about a quarter smaller.)
+2. OK with the answer on Events as a new `wallpaper` event type, and with `wallpaper: true` in `hello`?
+3. Does the badge want the image in the current orientation, as proposed, or always 800 x 480 with the device rotating it?
+4. Is 48,000 bytes in RAM during the transfer fine, or should the device write each chunk to flash as it arrives (then `resend_from` restarts from the first bad chunk)?
