@@ -4,15 +4,11 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:path_provider/path_provider.dart';
 
-import 'backend/backend_client.dart';
-import 'backend/request_controller.dart';
-import 'ble/device_session.dart';
 import 'ble/device_transport.dart';
-import 'ble/fbp_transport.dart';
 import 'ble/loopback.dart';
+import 'halo_runtime.dart';
 import 'mic_test_recorder.dart';
 import 'stt_worker.dart';
 
@@ -33,6 +29,9 @@ import 'stt_worker.dart';
 ///   the panel shows the screen exactly as the device gets it, with phone
 ///   side Approve, Continue, Cancel and candidate buttons (APIRESULT lines).
 ///   Needs `--dart-define-from-file=config/backend.json`.
+/// - Locked (P3): the session, model and controller live in [HaloRuntime],
+///   not in this page, and a foreground service keeps them running while the
+///   badge is connected (P3LOG lines, plus a log file under files/logs/).
 
 const _clips = [
   'block_3_4_tmrw_gym',
@@ -50,27 +49,26 @@ const _minHold = Duration(milliseconds: 500);
 /// the request is over.
 const _afterApprove = {'executing', 'success', 'failure', 'execution_uncertain', 'cancelled', 'read_only_result'};
 
-class Entry {
-  Entry(this.label, this.r, {this.releaseToTextMs});
-  final String label;
-  final SttResult r;
-  final int? releaseToTextMs;
+void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  unawaited(HaloRuntime.instance.init());
+  runApp(const MaterialApp(home: BenchPage()));
 }
 
-void main() => runApp(const MaterialApp(home: BenchPage()));
-
 class BenchPage extends StatefulWidget {
-  const BenchPage({super.key});
+  const BenchPage({super.key, this.runtime});
+
+  /// Defaults to [HaloRuntime.instance]; tests pass their own.
+  final HaloRuntime? runtime;
   @override
   State<BenchPage> createState() => _BenchPageState();
 }
 
+/// A view over [HaloRuntime]. Closing it never stops the session.
 class _BenchPageState extends State<BenchPage> {
+  late final HaloRuntime _rt = widget.runtime ?? HaloRuntime.instance;
+  late final StreamSubscription<void> _sub;
   final _mic = MicTestRecorder();
-  final _entries = <Entry>[];
-  SttWorker? _stt;
-  String? _baseDir;
-  String _status = 'Loading model...';
   bool _busy = false;
   bool _recording = false;
   // Pointer events arrive synchronously, but starting the mic is async. These
@@ -78,102 +76,32 @@ class _BenchPageState extends State<BenchPage> {
   bool _starting = false;
   bool _fingerDown = false;
   final _holdTimer = Stopwatch();
-
-  DeviceSession? _device;
-  LinkStatus _link = const LinkStatus(LinkState.off);
-  final _deviceLog = <String>[];
-  final _deviceSubs = <StreamSubscription>[];
-
-  RequestController? _ctl;
-  ScreenView? _view;
-  final _apiLog = <String>[];
   final _text = TextEditingController();
+
+  SttWorker? get _stt => _rt.stt;
+  String? get _baseDir => _rt.baseDir;
+  List<Entry> get _entries => _rt.entries;
+  set _status(String s) => _rt.status = s;
 
   @override
   void initState() {
     super.initState();
-    _initBackend();
-    _init();
-  }
-
-  Future<void> _initBackend() async {
-    final config = BackendConfig.fromEnvironment();
-    if (config == null) {
-      setState(() => _apiLog.insert(0, 'Backend off: build with --dart-define-from-file=config/backend.json'));
-      return;
-    }
-    var tz = 'America/Chicago';
-    try {
-      tz = (await FlutterTimezone.getLocalTimezone()).identifier;
-    } catch (e) {
-      debugPrint('APILOG timezone lookup failed, using $tz: $e');
-    }
-    final ctl = RequestController(api: BackendClient(config), timezone: tz);
-    ctl.views.listen((v) => setState(() => _view = v));
-    ctl.log.listen((l) {
-      debugPrint('APILOG $l');
-      setState(() {
-        _apiLog.insert(0, l);
-        if (_apiLog.length > 4) _apiLog.removeLast();
-      });
+    _sub = _rt.changes.listen((_) {
+      if (mounted) setState(() {});
     });
-    _device?.timezone = tz;
-    ctl.attachDevice(_device);
-    setState(() => _ctl = ctl);
-  }
-
-  /// A hold while a proposal or question is on screen adds to it, as on the
-  /// device; otherwise it starts a new request.
-  Future<void> _sendSpoken(String text) async {
-    final ctl = _ctl;
-    if (ctl == null) return;
-    const open = {'review', 'conflict_ambiguous', 'conflict_schedule', 'processing'};
-    if (open.contains(ctl.current?.state)) {
-      await ctl.add(text);
-    } else {
-      await ctl.say(text);
-    }
+    unawaited(_rt.refreshServiceStatus());
+    unawaited(_mic.ensurePermission().catchError((Object e) {
+      debugPrint('P0ERROR mic permission: $e');
+      return false;
+    }));
   }
 
   @override
   void dispose() {
-    for (final s in _deviceSubs) {
-      s.cancel();
-    }
-    _device?.stop();
-    _ctl?.dispose();
+    _sub.cancel();
     _text.dispose();
-    _stt?.dispose();
     _mic.dispose();
     super.dispose();
-  }
-
-  Future<void> _init() async {
-    try {
-      final ext = await getExternalStorageDirectory();
-      _baseDir = ext!.path;
-      final modelDir = '$_baseDir/models/parakeet-v3';
-      // The app must create this folder itself: on Android 11+ a folder made by
-      // `adb shell` is owned by the shell user and its files stay invisible here.
-      Directory(modelDir).createSync(recursive: true);
-      if (!File('$modelDir/encoder.int8.onnx').existsSync()) {
-        final seen = Directory(modelDir).listSync().map((e) => e.path.split('/').last);
-        setState(() => _status = 'Model missing. Push it to:\n$modelDir\nSeen: ${seen.join(', ')}');
-        return;
-      }
-      final stt = await SttWorker.start(modelDir);
-      // ignore: avoid_print
-      print('P0RESULT load=${stt.loadMs}ms threads=${SttWorker.numThreads}');
-      setState(() {
-        _stt = stt;
-        _status = 'Ready. Model load ${stt.loadMs} ms, ${SttWorker.numThreads} threads.';
-      });
-      await _device?.phoneReadyChanged();
-      await _mic.ensurePermission();
-    } catch (e, st) {
-      debugPrint('P0ERROR $e\n$st');
-      setState(() => _status = 'Error: $e');
-    }
   }
 
   Future<void> _runClips() async {
@@ -266,14 +194,13 @@ class _BenchPageState extends State<BenchPage> {
         mode: FileMode.append,
         flush: true,
       );
-      // ignore: avoid_print
-      print('MICRESULT file=$name.wav audio=${r.audioSec.toStringAsFixed(2)}s '
+      _rt.record('MICRESULT file=$name.wav audio=${r.audioSec.toStringAsFixed(2)}s '
           'decode=${r.decodeMs}ms release_to_text=${total}ms text="${r.text}"');
       setState(() {
         _entries.insert(0, Entry('mic | $name', r, releaseToTextMs: total));
         _status = 'Release to text $total ms. Saved $name.wav';
       });
-      unawaited(_sendSpoken(r.text));
+      unawaited(_rt.sendSpoken(r.text));
     } catch (e, st) {
       debugPrint('P0ERROR $e\n$st');
       setState(() => _status = 'Error: $e');
@@ -282,53 +209,11 @@ class _BenchPageState extends State<BenchPage> {
     }
   }
 
-  Future<void> _toggleDevice() async {
-    if (_device != null) {
-      for (final s in _deviceSubs) {
-        await s.cancel();
-      }
-      _deviceSubs.clear();
-      _ctl?.attachDevice(null);
-      await _device!.stop();
-      setState(() {
-        _device = null;
-        _link = const LinkStatus(LinkState.off);
-      });
-      return;
-    }
-    final session = DeviceSession(
-      transport: FbpTransport(),
-      sttReady: () => _stt?.isAlive ?? false,
-      transcribe: (samples, sr, {tag}) {
-        final stt = _stt;
-        if (stt == null) throw StateError('speech model not loaded');
-        return stt.transcribeSamples(samples, sr, tag: tag);
-      },
-    );
-    _deviceSubs
-      ..add(session.log.listen((l) {
-        debugPrint('BLELOG $l');
-        setState(() {
-          _link = session.status;
-          _deviceLog.insert(0, l);
-          if (_deviceLog.length > 6) _deviceLog.removeLast();
-        });
-      }))
-      ..add(session.transcripts.listen((t) => setState(() {
-            _entries.insert(0, Entry('device | req ${t.req} seg ${t.seg} rev ${t.rev}', t.result,
-                releaseToTextMs: t.releaseToTextMs));
-            _status = 'Device: release to text ${t.releaseToTextMs} ms '
-                '(BLE ${t.releaseToCompleteMs} ms, ${t.stats.resendRequests} resend requests)';
-          })));
-    session.timezone = _ctl?.timezone;
-    _ctl?.attachDevice(session);
-    setState(() => _device = session);
-    await session.start();
-  }
+  Future<void> _toggleDevice() => _rt.device == null ? _rt.connect() : _rt.disconnect();
 
   Future<void> _sendTestScreen() async {
     try {
-      await _device!.sendScreen('REVIEW',
+      await _rt.device!.sendScreen('REVIEW',
           requestId: 'test',
           revision: 1,
           proposalHash: 'test',
@@ -374,9 +259,9 @@ class _BenchPageState extends State<BenchPage> {
   }
 
   Widget _backendPanel(BuildContext context) {
-    final ctl = _ctl;
+    final ctl = _rt.ctl;
     final small = Theme.of(context).textTheme.bodySmall;
-    final v = _view;
+    final v = _rt.view;
     final state = ctl?.current?.state;
     void run(Future<void> Function() f) => unawaited(f());
     return Card(
@@ -423,7 +308,7 @@ class _BenchPageState extends State<BenchPage> {
                     : () => run(ctl!.cancel),
                 child: const Text('Cancel')),
           ]),
-          for (final l in _apiLog.take(2)) Text(l, maxLines: 1, overflow: TextOverflow.ellipsis, style: small),
+          for (final l in _rt.apiLog.take(2)) Text(l, maxLines: 1, overflow: TextOverflow.ellipsis, style: small),
         ]),
       ),
     );
@@ -442,7 +327,7 @@ class _BenchPageState extends State<BenchPage> {
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Text(_status),
+          Text(_rt.status),
           const SizedBox(height: 8),
           Row(children: [
             Expanded(child: OutlinedButton(onPressed: ready ? _runClips : null, child: const Text('Run clips'))),
@@ -451,14 +336,17 @@ class _BenchPageState extends State<BenchPage> {
           ]),
           const SizedBox(height: 8),
           Row(children: [
-            Expanded(child: Text('Device: $_link', style: Theme.of(context).textTheme.bodySmall)),
+            Expanded(child: Text('Device: ${_rt.link}', style: Theme.of(context).textTheme.bodySmall)),
             TextButton(
-                onPressed: _device != null && _link.state == LinkState.connected ? _sendTestScreen : null,
+                onPressed: _rt.device != null && _rt.link.state == LinkState.connected ? _sendTestScreen : null,
                 child: const Text('Test screen')),
             FilledButton.tonal(
-                onPressed: _toggleDevice, child: Text(_device == null ? 'Connect' : 'Disconnect')),
+                onPressed: _toggleDevice, child: Text(_rt.device == null ? 'Connect' : 'Disconnect')),
           ]),
-          for (final l in _deviceLog.take(3))
+          Text('${_rt.serviceStatus}${_rt.lock.held ? ' | wake lock (${_rt.lock.reason})' : ''}'
+              '${_rt.lock.lastSummary == null ? '' : ' | last lock ${_rt.lock.lastSummary}'}',
+              style: Theme.of(context).textTheme.bodySmall),
+          for (final l in _rt.deviceLog.take(3))
             Text(l, maxLines: 1, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.bodySmall),
           const SizedBox(height: 8),
           // Listener instead of a button: recording starts on finger down and

@@ -2,7 +2,7 @@
 
 Flutter, Android first. Turns device audio into text on the phone with Parakeet v3 (sherpa-onnx) and talks to the backend. See `docs/BRIEFING.md` section 3.2 for phases.
 
-Current state: test bench with speech to text, the P1 BLE link to the device, and the P2 backend client (text only to the backend, never audio).
+Current state: test bench with speech to text, the P1 BLE link to the device, the P2 backend client (text only to the backend, never audio), and P3: it keeps working with the phone locked.
 
 - **Run clips:** transcribes the 5 test clips in `assets/clips/` twice and prints `P0RESULT` lines to logcat.
 - **Hold to talk (test mic), TEST ONLY:** records from the phone's own mic while held, transcribes on release. Talk after the vibration (the mic needs about 0.2 s to start). Presses under 0.5 s are discarded, like a device hold. Each recording is saved for reuse as a test clip. In the real product audio comes from the device over BLE (P1); `lib/mic_test_recorder.dart` is not part of that path.
@@ -53,6 +53,20 @@ Without the file the app still runs; the panel says the backend is off. Tests:
 ```sh
 flutter test                                                        # offline, fake backend
 flutter test test/backend/live_test.dart --dart-define-from-file=config/backend.json   # live server; approves, so sample data keys only
+```
+
+## Locked in a pocket (P3)
+
+The speech model, the BLE session and the request controller live in `lib/halo_runtime.dart` for the whole process, not in the page, so closing or swiping away the screen does not stop them. On the first connect the app starts a foreground service (`android/app/src/main/kotlin/.../HaloService.kt`, type `connectedDevice`, notification "HaloAI, Connected to your badge"); Disconnect stops it. The Flutter engine is created by `MainApplication` and cached, so the activity only attaches to it. `lib/work_lock.dart` holds a partial wake lock only while a command is in flight (from `record_start` to REVIEW or an outcome; 120 s at most), so the phone can sleep while REVIEW waits for a press. The status line under Device shows the service, notifications, battery setting and the last wake lock.
+
+No battery exemption or Samsung setting was needed on the Z Flip7 (2026-10-21). Every log line also goes to a file, because a locked run must be unplugged (USB charging keeps the phone out of Doze):
+
+```sh
+adb shell dumpsys activity services com.haloai.haloai_phone | grep isForeground   # service running
+adb shell dumpsys deviceidle force-idle      # with the screen off: force deep Doze for a test
+adb shell dumpsys deviceidle unforce && adb shell dumpsys battery reset           # undo
+adb pull /sdcard/Android/data/com.haloai.haloai_phone/files/logs/halo_$(date +%Y%m%d).log
+grep -E 'P3LOG|APIRESULT|BLERESULT' halo_*.log
 ```
 
 ## Pull mic test recordings
