@@ -46,6 +46,10 @@ const _clips = [
 // 500 ms, provisional, owned by the device). Approximation for testing only.
 const _minHold = Duration(milliseconds: 500);
 
+/// Backend states where Cancel no longer applies: the action was approved or
+/// the request is over.
+const _afterApprove = {'executing', 'success', 'failure', 'execution_uncertain', 'cancelled', 'read_only_result'};
+
 class Entry {
   Entry(this.label, this.r, {this.releaseToTextMs});
   final String label;
@@ -412,7 +416,12 @@ class _BenchPageState extends State<BenchPage> {
                 onPressed: state == 'conflict_schedule' ? () => run(ctl!.continueAnyway) : null,
                 child: const Text('Continue')),
             OutlinedButton(
-                onPressed: ctl?.currentRequestId == null ? null : () => run(ctl!.cancel), child: const Text('Cancel')),
+                // Like a double press: cancels only before execution. After SUCCESS
+                // the device just acknowledges, so the button is off.
+                onPressed: ctl?.currentRequestId == null || _afterApprove.contains(state)
+                    ? null
+                    : () => run(ctl!.cancel),
+                child: const Text('Cancel')),
           ]),
           for (final l in _apiLog.take(2)) Text(l, maxLines: 1, overflow: TextOverflow.ellipsis, style: small),
         ]),
