@@ -277,8 +277,11 @@ class RequestController {
   }
 
   Future<void> _continue(String rid, int revision) async {
+    final sw = Stopwatch()..start();
     try {
-      await _show(await api.continueAnyway(rid, revision: revision));
+      final r = await api.continueAnyway(rid, revision: revision);
+      _logResult(r, null, sw.elapsedMilliseconds, call: 'continue');
+      await _show(r);
     } on ApiError catch (err) {
       await _onError(err, rid);
     } catch (err) {
@@ -447,14 +450,17 @@ class RequestController {
     }
   }
 
+  /// One line per result, printed once through the log (main.dart adds the
+  /// APILOG prefix). model and tools come from the proposal's timings, so they
+  /// are only shown for the stream call that ran the model.
   void _logResult(BackendResult r, int? acceptedMs, int totalMs, {String call = 'stream'}) {
     final t = r.timings;
-    final line = 'APIRESULT $call req=${r.requestId.substring(0, 8)} rev=${r.revision} state=${r.state} '
-        'accepted=${acceptedMs}ms total=${totalMs}ms backend=${t['backend_total_ms']}ms '
-        'model=${t['model_ms']}ms tools=${t['tools_ms']}ms lines=${r.screenLines?.length}';
-    // ignore: avoid_print
-    print(line);
-    _say(line);
+    final stream = call == 'stream';
+    _say('APIRESULT $call req=${r.requestId.substring(0, 8)} rev=${r.revision} state=${r.state} '
+        '${acceptedMs == null ? '' : 'accepted=${acceptedMs}ms '}total=${totalMs}ms '
+        'backend=${t['backend_total_ms']}ms '
+        '${stream ? 'model=${t['model_ms']}ms tools=${t['tools_ms']}ms ' : ''}'
+        'lines=${r.screenLines?.length}');
   }
 
   void _say(String m) => _log.add(m);
