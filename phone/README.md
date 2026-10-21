@@ -2,19 +2,20 @@
 
 Flutter, Android first. Turns device audio into text on the phone with Parakeet v3 (sherpa-onnx) and talks to the backend. See `docs/BRIEFING.md` section 3.2 for phases.
 
-Current state: speech to text test bench, plus the P1 BLE link to the device.
+Current state: test bench with speech to text, the P1 BLE link to the device, and the P2 backend client (text only to the backend, never audio).
 
 - **Run clips:** transcribes the 5 test clips in `assets/clips/` twice and prints `P0RESULT` lines to logcat.
 - **Hold to talk (test mic), TEST ONLY:** records from the phone's own mic while held, transcribes on release. Talk after the vibration (the mic needs about 0.2 s to start). Presses under 0.5 s are discarded, like a device hold. Each recording is saved for reuse as a test clip. In the real product audio comes from the device over BLE (P1); `lib/mic_test_recorder.dart` is not part of that path.
 
 - **Loopback (P1):** runs the 5 clips through the whole BLE audio path without a radio (IMA ADPCM encode, 176 byte chunks with every 9th lost on purpose, cumulative acks and `resend_from`, decode) and compares the transcript with the original WAV's. Prints `LOOPRESULT` lines.
-- **Connect (P1):** scans for the HaloAI service, connects, asks for MTU 517 (fails loudly below 179), requests the 2M PHY, then receives audio and events. Each finished segment is transcribed and printed as a `BLERESULT` line with release to complete (BLE) and release to text times. **Test screen** writes a sample REVIEW screen. Needs Victor's firmware on the Waveshare ESP32-S3 board.
+- **Connect (P1):** scans for the HaloAI service, connects, asks for MTU 517 (fails loudly below 179), requests the 2M PHY, then receives audio and events. Each finished segment is transcribed and printed as a `BLERESULT` line with release to complete (BLE) and release to text times. **Test screen** writes a sample REVIEW screen (the device accepts it only while PROCESSING). Needs Victor's firmware, on the Waveshare ESP32-S3 badge or the CrowPanel development board.
+- **Backend panel (P2):** type a command and tap **Send** (new request) or **Add** (addition), or use the mic hold (a hold while a proposal is on screen adds to it, like on the device). The panel shows the screen exactly as the device receives it, with **Approve**, **Continue**, **Cancel** and one button per candidate. When connected, device presses take the same paths. Prints `APIRESULT` lines with phone and backend timings.
 
 Parakeet runs in a long-lived background isolate (`lib/stt_worker.dart`): the model loads once at app start and stays in memory. P1 feeds it decoded BLE audio the same way.
 
 ## BLE (P1)
 
-Code in `lib/ble/`. Protocol from BRIEFING section 2; UUIDs and JSON field names in `docs/ble_fields_draft.md` (DRAFT until Victor agrees). The BLE package (flutter_blue_plus) sits behind `DeviceTransport`, so everything else is tested with a fake transport.
+Code in `lib/ble/`. Protocol from BRIEFING section 2; UUIDs and JSON field names in `docs/ble_fields_draft.md` (agreed with Victor 2026-10-13, now in BRIEFING section 2). The BLE package (flutter_blue_plus) sits behind `DeviceTransport`, so everything else is tested with a fake transport.
 
 ```sh
 adb logcat -c
@@ -30,6 +31,28 @@ Firmware check: `test/golden/adpcm_chunks.json` holds a test signal and the exac
 python3 -m venv tools/audio_reference/.venv && tools/audio_reference/.venv/bin/pip install pytest
 tools/audio_reference/.venv/bin/python -m pytest -q tools/audio_reference/tests
 python3 tools/audio_reference/make_golden.py   # regenerate the golden vectors
+```
+
+## Backend (P2)
+
+Code in `lib/backend/`: `backend_client.dart` (REST and Server-Sent Events; every retry reuses its `call_id`, so a retry never acts twice), `request_controller.dart` (results to Screen writes, device presses to backend calls, polling after approve, reconciling a saved execution key). The reference for every call and Screen write is `pipeline/scripts/phone_sim.py`.
+
+The backend URL and API key never go in git. Copy the example and fill in a key from Orlando (scope `mock`, sample data, for development):
+
+```sh
+cp config/backend.example.json config/backend.json   # gitignored
+flutter build apk --release --dart-define-from-file=config/backend.json
+adb install -r build/app/outputs/flutter-apk/app-release.apk
+adb logcat -c
+# open the app, type "block 3 to 4 tomorrow for the gym", tap Send, then Approve
+adb logcat -d | grep -E 'APIRESULT|APILOG'
+```
+
+Without the file the app still runs; the panel says the backend is off. Tests:
+
+```sh
+flutter test                                                        # offline, fake backend
+flutter test test/backend/live_test.dart --dart-define-from-file=config/backend.json   # live server; approves, so sample data keys only
 ```
 
 ## Pull mic test recordings

@@ -74,11 +74,18 @@ class IdMap {
     return r < 0 ? null : r;
   }
 
-  String _uuid() {
-    final b = List<int>.generate(16, (_) => _random.nextInt(256));
-    b[6] = (b[6] & 0x0F) | 0x40; // version 4
-    b[8] = (b[8] & 0x3F) | 0x80; // RFC 4122 variant
-    final h = b.map((x) => x.toRadixString(16).padLeft(2, '0')).join();
-    return '${h.substring(0, 8)}-${h.substring(8, 12)}-${h.substring(12, 16)}-${h.substring(16, 20)}-${h.substring(20)}';
-  }
+  String _uuid() => uuidV4(_random);
+}
+
+final _secure = Random.secure();
+
+/// A random UUID (version 4), as the API wants for `request_id`,
+/// `segment_id` and `call_id`.
+String uuidV4([Random? random]) {
+  final r = random ?? _secure;
+  final b = List<int>.generate(16, (_) => r.nextInt(256));
+  b[6] = (b[6] & 0x0F) | 0x40; // version 4
+  b[8] = (b[8] & 0x3F) | 0x80; // RFC 4122 variant
+  final h = b.map((x) => x.toRadixString(16).padLeft(2, '0')).join();
+  return '${h.substring(0, 8)}-${h.substring(8, 12)}-${h.substring(12, 16)}-${h.substring(16, 20)}-${h.substring(20)}';
 }

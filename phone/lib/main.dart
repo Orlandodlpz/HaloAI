@@ -4,8 +4,11 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:path_provider/path_provider.dart';
 
+import 'backend/backend_client.dart';
+import 'backend/request_controller.dart';
 import 'ble/device_session.dart';
 import 'ble/device_transport.dart';
 import 'ble/fbp_transport.dart';
@@ -13,8 +16,8 @@ import 'ble/loopback.dart';
 import 'mic_test_recorder.dart';
 import 'stt_worker.dart';
 
-/// Speech to text test bench. Runs fully on the phone: the release manifest
-/// declares no INTERNET permission.
+/// HaloAI phone test bench. Speech to text runs fully on the phone; only
+/// text goes to the backend (P2), never audio.
 ///
 /// - Run clips: the P0 benchmark over the bundled test clips.
 /// - Hold to talk (TEST ONLY): records from the phone mic while held and
@@ -26,6 +29,10 @@ import 'stt_worker.dart';
 /// - Loopback (P1): the test clips through the whole BLE audio path (encode,
 ///   chunks with some lost on purpose, receiver, decode) without a radio,
 ///   compared with the original WAV's transcript (LOOPRESULT lines).
+/// - Backend (P2): typed text (Send, Add) or a mic hold goes to the backend;
+///   the panel shows the screen exactly as the device gets it, with phone
+///   side Approve, Continue, Cancel and candidate buttons (APIRESULT lines).
+///   Needs `--dart-define-from-file=config/backend.json`.
 
 const _clips = [
   'block_3_4_tmrw_gym',
@@ -73,10 +80,55 @@ class _BenchPageState extends State<BenchPage> {
   final _deviceLog = <String>[];
   final _deviceSubs = <StreamSubscription>[];
 
+  RequestController? _ctl;
+  ScreenView? _view;
+  final _apiLog = <String>[];
+  final _text = TextEditingController();
+
   @override
   void initState() {
     super.initState();
+    _initBackend();
     _init();
+  }
+
+  Future<void> _initBackend() async {
+    final config = BackendConfig.fromEnvironment();
+    if (config == null) {
+      setState(() => _apiLog.insert(0, 'Backend off: build with --dart-define-from-file=config/backend.json'));
+      return;
+    }
+    var tz = 'America/Chicago';
+    try {
+      tz = (await FlutterTimezone.getLocalTimezone()).identifier;
+    } catch (e) {
+      debugPrint('APILOG timezone lookup failed, using $tz: $e');
+    }
+    final ctl = RequestController(api: BackendClient(config), timezone: tz);
+    ctl.views.listen((v) => setState(() => _view = v));
+    ctl.log.listen((l) {
+      debugPrint('APILOG $l');
+      setState(() {
+        _apiLog.insert(0, l);
+        if (_apiLog.length > 4) _apiLog.removeLast();
+      });
+    });
+    _device?.timezone = tz;
+    ctl.attachDevice(_device);
+    setState(() => _ctl = ctl);
+  }
+
+  /// A hold while a proposal or question is on screen adds to it, as on the
+  /// device; otherwise it starts a new request.
+  Future<void> _sendSpoken(String text) async {
+    final ctl = _ctl;
+    if (ctl == null) return;
+    const open = {'review', 'conflict_ambiguous', 'conflict_schedule', 'processing'};
+    if (open.contains(ctl.current?.state)) {
+      await ctl.add(text);
+    } else {
+      await ctl.say(text);
+    }
   }
 
   @override
@@ -85,6 +137,8 @@ class _BenchPageState extends State<BenchPage> {
       s.cancel();
     }
     _device?.stop();
+    _ctl?.dispose();
+    _text.dispose();
     _stt?.dispose();
     _mic.dispose();
     super.dispose();
@@ -215,6 +269,7 @@ class _BenchPageState extends State<BenchPage> {
         _entries.insert(0, Entry('mic | $name', r, releaseToTextMs: total));
         _status = 'Release to text $total ms. Saved $name.wav';
       });
+      unawaited(_sendSpoken(r.text));
     } catch (e, st) {
       debugPrint('P0ERROR $e\n$st');
       setState(() => _status = 'Error: $e');
@@ -229,6 +284,7 @@ class _BenchPageState extends State<BenchPage> {
         await s.cancel();
       }
       _deviceSubs.clear();
+      _ctl?.attachDevice(null);
       await _device!.stop();
       setState(() {
         _device = null;
@@ -260,6 +316,8 @@ class _BenchPageState extends State<BenchPage> {
             _status = 'Device: release to text ${t.releaseToTextMs} ms '
                 '(BLE ${t.releaseToCompleteMs} ms, ${t.stats.resendRequests} resend requests)';
           })));
+    session.timezone = _ctl?.timezone;
+    _ctl?.attachDevice(session);
     setState(() => _device = session);
     await session.start();
   }
@@ -309,6 +367,57 @@ class _BenchPageState extends State<BenchPage> {
     } finally {
       setState(() => _busy = false);
     }
+  }
+
+  Widget _backendPanel(BuildContext context) {
+    final ctl = _ctl;
+    final small = Theme.of(context).textTheme.bodySmall;
+    final v = _view;
+    final state = ctl?.current?.state;
+    void run(Future<void> Function() f) => unawaited(f());
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(8),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Row(children: [
+            Expanded(
+              child: TextField(
+                controller: _text,
+                enabled: ctl != null,
+                decoration: const InputDecoration(isDense: true, hintText: 'Type a command'),
+              ),
+            ),
+            TextButton(
+                onPressed: ctl == null ? null : () => run(() => ctl.say(_text.text)), child: const Text('Send')),
+            TextButton(
+                onPressed: ctl?.currentRequestId == null ? null : () => run(() => ctl!.add(_text.text)),
+                child: const Text('Add')),
+          ]),
+          if (v != null) ...[
+            const SizedBox(height: 4),
+            Text('${v.screen}  rev ${v.revision}${v.expiresInS == null ? '' : '  ${v.expiresInS} s'}'
+                '${v.pendingKey == null ? '' : '  key'}',
+                style: Theme.of(context).textTheme.labelLarge),
+            if (v.statusLine != null) Text(v.statusLine!, style: small),
+            for (final l in v.lines) Text(l, style: const TextStyle(fontFamily: 'monospace')),
+          ],
+          Wrap(spacing: 4, children: [
+            for (var i = 0; i < (v?.candidates.length ?? 0); i++)
+              OutlinedButton(
+                  onPressed: state == 'conflict_ambiguous' ? () => run(() => ctl!.select(i)) : null,
+                  child: Text(v!.candidates[i], style: small)),
+            FilledButton(
+                onPressed: state == 'review' ? () => run(ctl!.approve) : null, child: const Text('Approve')),
+            OutlinedButton(
+                onPressed: state == 'conflict_schedule' ? () => run(ctl!.continueAnyway) : null,
+                child: const Text('Continue')),
+            OutlinedButton(
+                onPressed: ctl?.currentRequestId == null ? null : () => run(ctl!.cancel), child: const Text('Cancel')),
+          ]),
+          for (final l in _apiLog.take(2)) Text(l, maxLines: 1, overflow: TextOverflow.ellipsis, style: small),
+        ]),
+      ),
+    );
   }
 
   static String _stamp(DateTime t) {
@@ -366,6 +475,8 @@ class _BenchPageState extends State<BenchPage> {
               ),
             ),
           ),
+          const SizedBox(height: 8),
+          _backendPanel(context),
           const SizedBox(height: 8),
           Expanded(
             child: ListView(children: [

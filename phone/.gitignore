@@ -55,3 +55,7 @@ recordings/
 .venv/
 __pycache__/
 .pytest_cache/
+
+# P2: backend URL and API key, passed with --dart-define-from-file. Never commit
+# it; config/backend.example.json lists the names.
+config/backend.json
