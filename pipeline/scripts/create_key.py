@@ -3,9 +3,13 @@
 Run: .venv/bin/python scripts/create_key.py --client demo-site --scope mock
      .venv/bin/python scripts/create_key.py --client phone-carlos-dev --scope mock --user phone-dev
      .venv/bin/python scripts/create_key.py --client phone-carlos --scope real --rate 120
-Scope 'mock' can only ever reach sample data; 'real' can reach real tools (the phone's Google account).
---user gives a mock key its own sandbox user, so a developer's sample world, memory and outbox are
-separate from the demo site's (for building the phone app against the live server, 2026-10-19).
+     .venv/bin/python scripts/create_key.py --client carlos-google-test --scope real --user carlos-google-test
+Scope 'mock' can only ever reach sample data; 'real' can reach real tools (the user's Google account).
+--user gives a key its own user. For mock keys: a developer's own sample world, memory and outbox,
+separate from the demo site's (2026-10-19). For real keys: a separate real user with its own Google
+connection, so connect, status and disconnect can be tested with a developer's own Google account
+without touching the demo account, which belongs to the default 'demo' user (2026-10-21). The
+developer's Google address must be a test user of the OAuth app (Google Cloud console).
 """
 
 import argparse
@@ -25,10 +29,12 @@ async def main(client: str, scope: str, rate: int, user: str | None) -> None:
     await migrate(url)
     pool = await open_pool(url)
     try:
-        # Phone keys belong to the 'demo' user; demo site keys to the separate 'demo-site' sandbox.
-        name, sandbox = ((user or "demo-site"), True) if scope == "mock" else ("demo", False)
-        if user and scope != "mock":
-            raise SystemExit("--user is only for mock keys; real keys belong to the 'demo' user")
+        # Phone keys belong to the 'demo' user, demo site keys to the 'demo-site' sandbox; --user picks
+        # another. create_key refuses a real key on a sandbox user and a mock key on a real one.
+        if scope == "mock":
+            name, sandbox = (user or "demo-site"), True
+        else:
+            name, sandbox = (user or "demo"), False
         async with pool.connection() as conn:
             cur = await conn.execute(
                 "INSERT INTO users (name, sandbox) VALUES (%s, %s) ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name"
@@ -46,6 +52,6 @@ if __name__ == "__main__":
     parser.add_argument("--client", required=True)
     parser.add_argument("--scope", required=True, choices=["real", "mock"])
     parser.add_argument("--rate", type=int, default=60)
-    parser.add_argument("--user", help="mock keys only: their own sandbox user, e.g. phone-dev")
+    parser.add_argument("--user", help="the key's own user: e.g. phone-dev (mock) or carlos-google-test (real)")
     args = parser.parse_args()
     asyncio.run(main(args.client, args.scope, args.rate, args.user))
