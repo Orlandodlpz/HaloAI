@@ -19,7 +19,8 @@ class HaloUuids {
 /// One event from the device. [type] is one of `hello`, `wake`,
 /// `record_start`, `record_end`, `approve`, `select`, `continue`, `cancel`,
 /// `dismiss`, `ack`, `status_query`, `activity`, `battery` (added
-/// 2026-10-13 with `reason` on `cancel`, BRIEFING section 2).
+/// 2026-10-13 with `reason` on `cancel`, BRIEFING section 2), and the
+/// proposed `wallpaper` answer (P4, docs/ble_fields_draft.md).
 class DeviceEvent {
   DeviceEvent(this.type, this.fields);
   final String type;
@@ -28,6 +29,7 @@ class DeviceEvent {
   static const types = {
     'hello', 'wake', 'record_start', 'record_end', 'approve', 'select', 'continue', //
     'cancel', 'dismiss', 'ack', 'status_query', 'activity', 'battery',
+    'wallpaper', // P4, proposed: the answer to a wallpaper transfer
   };
 
   static DeviceEvent parse(String json) {

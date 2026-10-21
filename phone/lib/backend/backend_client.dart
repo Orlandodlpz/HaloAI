@@ -21,6 +21,17 @@ class BackendConfig {
     if (base.isEmpty || key.isEmpty) return null;
     return BackendConfig(Uri.parse(base), key);
   }
+
+  /// P4: an optional second key used **only** by the Google account screen,
+  /// from `--dart-define-from-file=config/backend.google-test.json` (gitignored,
+  /// a real scope key on its own test user). Approvals with it would act on
+  /// that Google account, so requests and approvals always use [fromEnvironment].
+  static BackendConfig? googleFromEnvironment() {
+    const base = String.fromEnvironment('HALO_API_BASE');
+    const key = String.fromEnvironment('HALO_GOOGLE_KEY');
+    if (base.isEmpty || key.isEmpty) return null;
+    return BackendConfig(Uri.parse(base), key);
+  }
 }
 
 /// Phone to cloud API client (BRIEFING section 2).
@@ -113,6 +124,38 @@ class BackendClient {
 
   Future<BackendResult> requestStatus(String requestId) => _json('GET', '/v1/requests/$requestId', null);
 
+  // ---------------------------------------------- memory (P4, BRIEFING section 2)
+
+  Future<List<MemoryItem>> memoryList() async {
+    final m = await _call('GET', '/v1/memory', null);
+    return [for (final i in (m['items'] as List? ?? const [])) MemoryItem((i as Map).cast<String, Object?>())];
+  }
+
+  /// [kind] is `contact`, `preference`, `fact` or `routine`. Adding an item
+  /// that already exists only refreshes it.
+  Future<MemoryItem> memoryAdd(String kind, String label, String value) async => MemoryItem(
+      await _call('POST', '/v1/memory', {'call_id': _newId(), 'kind': kind, 'label': label, 'value': value}));
+
+  /// Not for `action` items, which can only be deleted (the backend answers 422).
+  Future<MemoryItem> memoryEdit(String memoryId, {String? label, String? value}) async => MemoryItem(await _call(
+      'PATCH', '/v1/memory/${Uri.encodeComponent(memoryId)}', {'call_id': _newId(), 'label': ?label, 'value': ?value}));
+
+  /// DELETE with a JSON body: the call_id makes a retried delete safe.
+  Future<void> memoryDelete(String memoryId) =>
+      _call('DELETE', '/v1/memory/${Uri.encodeComponent(memoryId)}', {'call_id': _newId()});
+
+  // --------------------------------------------- Google account (P4, section 2)
+
+  Future<GoogleStatus> googleStatus() async => GoogleStatus(await _call('GET', '/v1/google/status', null));
+
+  /// The Google sign in page to open in a browser. Needs a `real` scope key:
+  /// the sample data key gets 422 `invalid_request`. Nothing tells the phone
+  /// when sign in finishes, so the caller polls [googleStatus].
+  Future<Uri> googleConnect() async =>
+      Uri.parse((await _call('POST', '/v1/google/connect', {'call_id': _newId()}))['url'] as String);
+
+  Future<void> googleDisconnect() => _call('POST', '/v1/google/disconnect', {'call_id': _newId()});
+
   void close() => _http.close();
 
   // ------------------------------------------------------------------ calls
@@ -125,7 +168,12 @@ class BackendClient {
 
   Uri _url(String path) => config.base.resolve(path);
 
-  Future<BackendResult> _json(String method, String path, Map<String, Object?>? body,
+  Future<BackendResult> _json(String method, String path, Map<String, Object?>? body, {Duration? timeout}) async =>
+      BackendResult(await _call(method, path, body, timeout: timeout));
+
+  /// One plain JSON call with retries; the same [body] (and its call_id) on
+  /// every attempt.
+  Future<Map<String, Object?>> _call(String method, String path, Map<String, Object?>? body,
       {Duration? timeout}) async {
     Object? lastError;
     for (var attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -143,7 +191,7 @@ class BackendClient {
           continue;
         }
         if (res.statusCode < 200 || res.statusCode >= 300) throw _error(res.statusCode, res.body, res.headers);
-        return BackendResult((jsonDecode(res.body) as Map).cast<String, Object?>());
+        return (jsonDecode(res.body) as Map).cast<String, Object?>();
       } on TimeoutException catch (e) {
         if (!abort.isCompleted) abort.complete();
         lastError = e;

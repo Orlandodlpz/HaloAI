@@ -43,6 +43,30 @@ class BackendResult {
   String toString() => 'BackendResult($state, $requestId, rev $revision)';
 }
 
+/// One memory item (BRIEFING section 2, Memory). [kind] is `contact`,
+/// `preference`, `fact`, `routine`, or `action` (a recent approved action,
+/// delete only). [source] is `user`, `learned` or `action`.
+class MemoryItem {
+  MemoryItem(this.json);
+  final Map<String, Object?> json;
+
+  String get id => json['memory_id'] as String;
+  String get kind => json['kind'] as String;
+  String get label => json['label'] as String? ?? '';
+  String get value => json['value'] as String? ?? '';
+  String get source => json['source'] as String? ?? '';
+  int get uses => json['uses'] as int? ?? 0;
+  bool get editable => kind != 'action';
+}
+
+class GoogleStatus {
+  GoogleStatus(Map<String, Object?> json)
+      : connected = json['connected'] == true,
+        email = json['email'] as String?;
+  final bool connected;
+  final String? email;
+}
+
 /// An error answer: `{"error": {"code", "message", "current"}}`. [message] is
 /// for logs only, never for the screen.
 class ApiError implements Exception {

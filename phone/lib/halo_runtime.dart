@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -12,6 +13,7 @@ import 'ble/device_transport.dart';
 import 'ble/fbp_transport.dart';
 import 'halo_service.dart';
 import 'stt_worker.dart';
+import 'wallpaper/wallpaper_sender.dart';
 import 'work_lock.dart';
 
 class Entry {
@@ -59,6 +61,20 @@ class HaloRuntime {
 
   ServiceStatus serviceStatus = const ServiceStatus();
 
+  /// `landscape` or `portrait` (P4): sent to the device in Settings and to the
+  /// backend with every request. Saved on the phone.
+  String orientation = 'landscape';
+
+  /// The Google account screen's own client, on the separate test key when
+  /// the build has one (BackendConfig.googleFromEnvironment), else the main one.
+  BackendClient? google;
+
+  BackendClient? get api => ctl?.api;
+
+  /// The device says it can take a wallpaper (proposed `hello` field, P4).
+  bool get deviceTakesWallpaper =>
+      link.state == LinkState.connected && device?.lastHello?.fields['wallpaper'] == true;
+
   final _changes = StreamController<void>.broadcast();
 
   /// Fires whenever anything shown on the page changed.
@@ -73,6 +89,14 @@ class HaloRuntime {
   Future<void> init() async {
     if (_started) return;
     _started = true;
+    try {
+      final saved = await _settingsFile();
+      if (saved.existsSync()) {
+        orientation = (jsonDecode(saved.readAsStringSync()) as Map)['orientation'] as String? ?? orientation;
+      }
+    } catch (e) {
+      record('P4LOG settings not loaded: $e');
+    }
     await _initBackend();
     await _initModel();
   }
@@ -122,7 +146,9 @@ class HaloRuntime {
       record('APILOG timezone lookup failed, using $tz: $e');
     }
     timezone = tz;
-    final c = RequestController(api: BackendClient(config), timezone: tz);
+    final c = RequestController(api: BackendClient(config), timezone: tz, orientation: orientation);
+    final g = BackendConfig.googleFromEnvironment();
+    google = g == null ? c.api : BackendClient(g);
     c.views.listen((v) {
       view = v;
       unawaited(lock.onScreen(v.screen));
@@ -201,6 +227,7 @@ class HaloRuntime {
         changed();
       }));
     session.timezone = timezone;
+    session.orientation = orientation;
     ctl?.attachDevice(session);
     device = session;
     changed();
@@ -258,6 +285,37 @@ class HaloRuntime {
       serviceStatus = const ServiceStatus();
     }
     changed();
+  }
+
+  // -------------------------------------------------------------- settings
+
+  /// The phone's own settings (P4), in app private storage. A file rather
+  /// than shared_preferences, whose Android plugin failed in release builds
+  /// (R8 removed a method it calls; NoSuchMethodError on the Z Flip7).
+  Future<File> Function() settingsFile = () async => File('${(await getApplicationSupportDirectory()).path}/settings.json');
+  Future<File> _settingsFile() => settingsFile();
+
+  Future<void> setOrientation(String o) async {
+    orientation = o;
+    ctl?.orientation = o;
+    device?.orientation = o;
+    changed();
+    try {
+      await (await _settingsFile()).writeAsString(jsonEncode({'orientation': o}), flush: true);
+    } catch (e) {
+      record('P4LOG orientation not saved: $e');
+    }
+    await device?.phoneReadyChanged(); // resends Settings with the new orientation
+    record('P4LOG orientation $o');
+  }
+
+  /// Sends a packed 1 bit image (wallpaper/dither.dart) to the device.
+  Future<void> sendWallpaper(Uint8List bits, int w, int h) async {
+    final d = device;
+    if (d == null || link.state != LinkState.connected) throw StateError('device not connected');
+    final sw = Stopwatch()..start();
+    await WallpaperSender(d.transport, d.events).send(bits, w, h);
+    record('P4LOG wallpaper ${w}x$h sent and confirmed in ${sw.elapsedMilliseconds} ms');
   }
 
   // ----------------------------------------------------------- phone input

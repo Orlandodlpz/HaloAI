@@ -277,7 +277,7 @@ class DeviceSession {
     for (final f in fragment(s, _messageId++ & 0xFF, transport.maxWrite)) {
       await _write(() => transport.writeSettings(f));
     }
-    _say('settings phone_ready=${s['phone_ready']}');
+    _say('settings phone_ready=${s['phone_ready']} orientation=$orientation');
   }
 
   Future<void> _write(Future<void> Function() w) async {

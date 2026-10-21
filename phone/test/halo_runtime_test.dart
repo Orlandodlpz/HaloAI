@@ -1,9 +1,10 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:haloai_phone/ble/device_transport.dart';
 import 'package:haloai_phone/halo_runtime.dart';
 import 'package:haloai_phone/halo_service.dart';
 import 'package:haloai_phone/main.dart';
+import 'dart:io';
 
 import 'ble/fake_transport.dart';
 
@@ -65,6 +66,17 @@ void main() {
     expect(service.calls.where((c) => c == 'start'), hasLength(1));
   });
 
+  test('orientation resends Settings to the device and is saved (P4)', () async {
+    final file = File('${Directory.systemTemp.createTempSync('halo').path}/settings.json');
+    final transport = FakeTransport();
+    final rt = HaloRuntime(service: FakeService(), transport: () => transport)..settingsFile = () async => file;
+    await rt.connect();
+    await pumpEventQueue();
+    await rt.setOrientation('portrait');
+    expect(transport.settings.last['orientation'], 'portrait');
+    expect(file.readAsStringSync(), contains('"orientation":"portrait"'));
+  });
+
   testWidgets('closing the page does not stop the session', (tester) async {
     final transport = StopCountingTransport();
     final rt = HaloRuntime(service: FakeService(), transport: () => transport);
@@ -72,9 +84,9 @@ void main() {
       await rt.connect();
       await pumpEventQueue();
     });
-    await tester.pumpWidget(MaterialApp(home: BenchPage(runtime: rt)));
+    await tester.pumpWidget(HaloApp(runtime: rt));
     expect(find.text('Disconnect'), findsOneWidget);
-    await tester.pumpWidget(const SizedBox()); // page disposed
+    await tester.pumpWidget(const SizedBox()); // app disposed
     expect(transport.stops, 0);
     expect(rt.device, isNotNull);
     expect(rt.link.state, LinkState.connected);
