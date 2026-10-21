@@ -1,0 +1,82 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:haloai_phone/ble/device_transport.dart';
+import 'package:haloai_phone/halo_runtime.dart';
+import 'package:haloai_phone/halo_service.dart';
+import 'package:haloai_phone/main.dart';
+
+import 'ble/fake_transport.dart';
+
+class FakeService extends HaloService {
+  final calls = <String>[];
+  bool running = false;
+  @override
+  Future<void> start() async {
+    calls.add('start');
+    running = true;
+  }
+
+  @override
+  Future<void> stop() async {
+    calls.add('stop');
+    running = false;
+  }
+
+  @override
+  Future<void> acquire(String reason, Duration timeout) async => calls.add('acquire $reason');
+  @override
+  Future<void> release() async => calls.add('release');
+  @override
+  Future<ServiceStatus> status() async => ServiceStatus(running: running);
+}
+
+class StopCountingTransport extends FakeTransport {
+  int stops = 0;
+  @override
+  Future<void> stop() async => stops++;
+}
+
+void main() {
+  test('the service starts when the link connects and stops on disconnect', () async {
+    final service = FakeService();
+    final transport = StopCountingTransport();
+    final rt = HaloRuntime(service: service, transport: () => transport);
+    await rt.connect();
+    await pumpEventQueue();
+    expect(rt.link.state, LinkState.connected);
+    expect(service.calls, ['start']);
+    expect(rt.serviceStatus.running, isTrue);
+
+    await rt.disconnect();
+    expect(service.calls.last, 'stop');
+    expect(transport.stops, 1);
+    expect(rt.serviceStatus.running, isFalse);
+  });
+
+  test('a reconnect does not start the service twice', () async {
+    final service = FakeService();
+    final transport = FakeTransport();
+    final rt = HaloRuntime(service: service, transport: () => transport);
+    await rt.connect();
+    await pumpEventQueue();
+    transport.statusC.add(const LinkStatus(LinkState.lost));
+    transport.statusC.add(const LinkStatus(LinkState.connected));
+    await pumpEventQueue();
+    expect(service.calls.where((c) => c == 'start'), hasLength(1));
+  });
+
+  testWidgets('closing the page does not stop the session', (tester) async {
+    final transport = StopCountingTransport();
+    final rt = HaloRuntime(service: FakeService(), transport: () => transport);
+    await tester.runAsync(() async {
+      await rt.connect();
+      await pumpEventQueue();
+    });
+    await tester.pumpWidget(MaterialApp(home: BenchPage(runtime: rt)));
+    expect(find.text('Disconnect'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox()); // page disposed
+    expect(transport.stops, 0);
+    expect(rt.device, isNotNull);
+    expect(rt.link.state, LinkState.connected);
+  });
+}
