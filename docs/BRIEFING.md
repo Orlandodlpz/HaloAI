@@ -495,16 +495,18 @@ Each phase ends with a gate. The gate must pass before the next phase in that tr
     - **Google:** Connect opened Google sign in, the app showed "Connected as" Carlos's Gmail, and Disconnect went through. No approvals with that key.
     - Caveats: shown on the CrowPanel, not the badge. The CrowPanel squeezes the canvas's 480 rows into 272, so the picture looks flattened there; the badge panel is the real target. Drawing in portrait is Victor's (the phone sends the portrait image and orientation). The refused contact and "Connected as" line are seen on screen, not in the log.
 
-#### Phase P5: Spanish and bilingual transcription (PLANNED, only after English works end to end)
+#### Phase P5: Spanish and bilingual transcription (DROPPED 2026-10-26: English only)
 - **Goal:** measure and enable Spanish and mixed English and Spanish.
 - **Steps:** test clips in Spanish and mixed sentences; report accuracy honestly.
 - **Gate:** results recorded; team decides whether to demo mixed sentences or one language at a time.
 - **Results (if DONE):**
+  - **DROPPED 2026-10-26: team decision** (Carlos, Orlando, Victor): the device and the app are English only from now on, so the gate's decision is "one language, English" and there is nothing to demo in Spanish. No Spanish or mixed clips were recorded or measured. The phone keeps sending `language: "en"` with every request and keeps the P0 model. For the record, if Spanish is ever revisited: that model (Parakeet TDT 0.6B v3) is multilingual, so it needs no model change, but the badge fonts are printable ASCII only (`firmware/tools/bdf_to_c.py`), so accented letters would show as gaps on the glass.
 
-#### Phase P6: iOS (STRETCH, only if Android is done early)
+#### Phase P6: iOS (DROPPED 2026-10-26)
 - **Goal:** the same app on iPhone from the Flutter codebase.
 - **Gate:** first test is whether audio arrives and is transcribed with the iPhone locked.
 - **Results (if DONE):**
+  - **DROPPED 2026-10-26** (Carlos): no time before the October 30 submission, and getting an app onto an iPhone is harder than onto Android (a Mac build plus signing). The demo phone is the Android Z Flip7.
 
 ### 3.3 Device (Victor, `firmware/`, branch `Hardware`)
 
