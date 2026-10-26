@@ -13,6 +13,7 @@ import 'ble/device_transport.dart';
 import 'ble/fbp_transport.dart';
 import 'halo_service.dart';
 import 'stt_worker.dart';
+import 'wallpaper/dither.dart';
 import 'wallpaper/wallpaper_sender.dart';
 import 'work_lock.dart';
 
@@ -92,8 +93,13 @@ class HaloRuntime {
     try {
       final saved = await _settingsFile();
       if (saved.existsSync()) {
-        orientation = (jsonDecode(saved.readAsStringSync()) as Map)['orientation'] as String? ?? orientation;
+        final m = jsonDecode(saved.readAsStringSync()) as Map;
+        orientation = m['orientation'] as String? ?? orientation;
+        wallpaperFit = WallpaperFit.values.asNameMap()[m['wallpaper_fit']] ?? wallpaperFit;
+        wallpaperOnBadgeFor = m['wallpaper_on_badge_for'] as String?;
       }
+      final photo = await _photoFile();
+      if (photo.existsSync()) wallpaperPhoto = photo.readAsBytesSync();
     } catch (e) {
       record('P4LOG settings not loaded: $e');
     }
@@ -216,7 +222,13 @@ class HaloRuntime {
         if (deviceLog.length > 6) deviceLog.removeLast();
         changed();
       }))
-      ..add(session.events.listen((e) => unawaited(lock.onDeviceEvent(e))))
+      ..add(session.events.listen((e) {
+        unawaited(lock.onDeviceEvent(e));
+        // The device shows a wallpaper only in the orientation it was made for
+        // and cannot rotate it (it never had the photo): if the setting changed
+        // while it was away, send the picture again for the new one.
+        if (e.type == 'hello' && wallpaperStale && deviceTakesWallpaper) unawaited(_resendWallpaper('reconnect'));
+      }))
       ..add(session.transcripts.listen((t) {
         unawaited(lock.onTranscript());
         record(t.logLine, echo: false); // DeviceSession already prints it
@@ -295,27 +307,116 @@ class HaloRuntime {
   Future<File> Function() settingsFile = () async => File('${(await getApplicationSupportDirectory()).path}/settings.json');
   Future<File> _settingsFile() => settingsFile();
 
+  Future<File> _photoFile() async => File('${(await settingsFile()).parent.path}/wallpaper_photo');
+
+  Future<void> _saveSettings() async {
+    try {
+      await (await _settingsFile()).writeAsString(
+          jsonEncode({
+            'orientation': orientation,
+            'wallpaper_fit': wallpaperFit.name,
+            'wallpaper_on_badge_for': wallpaperOnBadgeFor,
+          }),
+          flush: true);
+    } catch (e) {
+      record('P4LOG settings not saved: $e');
+    }
+  }
+
   Future<void> setOrientation(String o) async {
     orientation = o;
     ctl?.orientation = o;
     device?.orientation = o;
     changed();
-    try {
-      await (await _settingsFile()).writeAsString(jsonEncode({'orientation': o}), flush: true);
-    } catch (e) {
-      record('P4LOG orientation not saved: $e');
-    }
+    await _saveSettings();
     await device?.phoneReadyChanged(); // resends Settings with the new orientation
     record('P4LOG orientation $o');
+    if (wallpaperStale && deviceTakesWallpaper) await _resendWallpaper('orientation $o');
   }
 
-  /// Sends a packed 1 bit image (wallpaper/dither.dart) to the device.
-  Future<void> sendWallpaper(Uint8List bits, int w, int h) async {
+  // ------------------------------------------------------------- wallpaper
+
+  /// The photo the user picked, as picked (JPEG, PNG...). Kept, because only
+  /// the phone can redo the crop for a new orientation (Victor, 2026-10-25).
+  Uint8List? wallpaperPhoto;
+  WallpaperFit wallpaperFit = WallpaperFit.fill;
+
+  /// The orientation of the wallpaper the device last confirmed, or null.
+  String? wallpaperOnBadgeFor;
+  bool wallpaperSending = false;
+
+  /// Pause between wallpaper writes (WallpaperSender.defaultPace); tests set 0.
+  Duration wallpaperPace = WallpaperSender.defaultPace;
+  String? wallpaperNote;
+
+  /// The badge has a wallpaper, but for the other orientation, so it is
+  /// showing its "HaloAI" fallback instead.
+  bool get wallpaperStale => wallpaperPhoto != null && wallpaperOnBadgeFor != null && wallpaperOnBadgeFor != orientation;
+
+  ({int w, int h}) get panelSize => orientation == 'portrait' ? portrait : landscape;
+
+  Future<void> setWallpaperPhoto(Uint8List photo) async {
+    wallpaperPhoto = photo;
+    changed();
+    try {
+      await (await _photoFile()).writeAsBytes(photo, flush: true);
+    } catch (e) {
+      record('P4LOG wallpaper photo not saved: $e');
+    }
+  }
+
+  Future<void> setWallpaperFit(WallpaperFit f) async {
+    wallpaperFit = f;
+    changed();
+    await _saveSettings();
+  }
+
+  /// The picked photo as the exact bits for the current orientation and fit.
+  /// Runs in another isolate: dithering 384,000 pixels would freeze the UI.
+  Future<Uint8List> wallpaperBits() {
+    final size = panelSize;
+    return compute(prepareWallpaper, (wallpaperPhoto!, size.w, size.h, wallpaperFit));
+  }
+
+  /// Prepares the picked photo for the current orientation and sends it.
+  Future<void> sendWallpaper() async {
     final d = device;
-    if (d == null || link.state != LinkState.connected) throw StateError('device not connected');
-    final sw = Stopwatch()..start();
-    await WallpaperSender(d.transport, d.events).send(bits, w, h);
-    record('P4LOG wallpaper ${w}x$h sent and confirmed in ${sw.elapsedMilliseconds} ms');
+    if (d == null || link.state != LinkState.connected) throw StateError('badge not connected');
+    if (wallpaperPhoto == null) throw StateError('no photo picked');
+    wallpaperSending = true;
+    wallpaperNote = null;
+    changed();
+    try {
+      final size = panelSize;
+      final bits = await wallpaperBits();
+      final sender = WallpaperSender(d.transport, d.events, pace: wallpaperPace);
+      final sw = Stopwatch()..start();
+      await sender.send(bits, size.w, size.h);
+      final ms = sw.elapsedMilliseconds;
+      wallpaperOnBadgeFor = orientation;
+      await _saveSettings();
+      wallpaperNote = 'On the badge (${(ms / 1000).toStringAsFixed(1)} s). It shows when the badge goes idle.';
+      record('P4LOG wallpaper ${size.w}x${size.h} ${wallpaperFit.name} confirmed in $ms ms, '
+          'pass ${sender.attempts}, pace ${sender.pace.inMilliseconds} ms, '
+          '${(bits.length * 8 / ms).toStringAsFixed(0)} kbit/s of image');
+    } catch (e) {
+      wallpaperNote = 'Not sent: $e';
+      record('P4LOG wallpaper failed: $e');
+      rethrow;
+    } finally {
+      wallpaperSending = false;
+      changed();
+    }
+  }
+
+  Future<void> _resendWallpaper(String why) async {
+    if (wallpaperSending) return;
+    record('P4LOG wallpaper resend ($why): the badge has it for $wallpaperOnBadgeFor, the setting is $orientation');
+    try {
+      await sendWallpaper();
+    } catch (_) {
+      // Already logged and shown; the next reconnect or change tries again.
+    }
   }
 
   // ----------------------------------------------------------- phone input

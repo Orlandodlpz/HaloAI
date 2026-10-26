@@ -12,18 +12,20 @@ import 'package:image/image.dart' as img;
 const landscape = (w: 800, h: 480);
 const portrait = (w: 480, h: 800);
 
-/// Rows of the 800 x 480 canvas the CrowPanel development board can show; the
-/// preview draws a line there.
-const crowPanelVisibleRows = 272;
+/// How a photo meets the panel's shape.
+/// - [fill]: scale until the panel is covered and crop the overflow, centred.
+///   No borders, but the edges of the photo are lost.
+/// - [fit]: scale until the whole photo fits, on white bars. Nothing is lost.
+enum WallpaperFit { fill, fit }
 
-/// Decodes [encoded] (JPEG, PNG, ...), centre crops it to the panel's aspect,
-/// resizes, dithers and packs it. Top-level so it can run in `compute()`
-/// (a closure would capture widget state and fail as unsendable).
-Uint8List prepareWallpaper((Uint8List encoded, int w, int h) args) {
-  final (encoded, w, h) = args;
+/// Decodes [encoded] (JPEG, PNG, ...), fits it to the panel (see
+/// [WallpaperFit]), dithers and packs it. Top-level so it can run in
+/// `compute()` (a closure would capture widget state and fail as unsendable).
+Uint8List prepareWallpaper((Uint8List encoded, int w, int h, WallpaperFit fit) args) {
+  final (encoded, w, h, mode) = args;
   final src = img.decodeImage(encoded) ?? (throw const FormatException('not an image this app can read'));
   final oriented = img.bakeOrientation(src); // phone photos carry EXIF rotation
-  final fitted = _cover(oriented, w, h);
+  final fitted = mode == WallpaperFit.fill ? _cover(oriented, w, h) : _contain(oriented, w, h);
   final gray = Uint8List(w * h);
   for (var y = 0; y < h; y++) {
     for (var x = 0; x < w; x++) {
@@ -39,6 +41,15 @@ img.Image _cover(img.Image src, int w, int h) {
   final cw = (w / scale).round().clamp(1, src.width), ch = (h / scale).round().clamp(1, src.height);
   final crop = img.copyCrop(src, x: (src.width - cw) ~/ 2, y: (src.height - ch) ~/ 2, width: cw, height: ch);
   return img.copyResize(crop, width: w, height: h, interpolation: img.Interpolation.average);
+}
+
+/// The whole photo scaled to fit inside [w] x [h], centred on white.
+img.Image _contain(img.Image src, int w, int h) {
+  final scale = (w / src.width) < (h / src.height) ? w / src.width : h / src.height;
+  final sw = (src.width * scale).round().clamp(1, w), sh = (src.height * scale).round().clamp(1, h);
+  final resized = img.copyResize(src, width: sw, height: sh, interpolation: img.Interpolation.average);
+  final canvas = img.Image(width: w, height: h, numChannels: 3)..clear(img.ColorRgb8(255, 255, 255));
+  return img.compositeImage(canvas, resized, dstX: (w - sw) ~/ 2, dstY: (h - sh) ~/ 2);
 }
 
 /// Floyd–Steinberg error diffusion: 8 bit gray in, one bool per pixel out
@@ -80,7 +91,9 @@ Uint8List pack(List<bool> white, int w, int h) {
 }
 
 /// The packed bits as a PNG for the preview, so the phone shows exactly what
-/// would be sent, with a line where the CrowPanel's visible area ends.
+/// would be sent. No crop line: the CrowPanel squeezes the whole canvas into
+/// its 272 rows rather than cutting it (Victor, 2026-10-25), and the badge
+/// shows all of it.
 Uint8List previewPng((Uint8List packed, int w, int h) args) {
   final (packed, w, h) = args;
   final im = img.Image(width: w, height: h, numChannels: 3);
@@ -89,11 +102,6 @@ Uint8List previewPng((Uint8List packed, int w, int h) args) {
       final i = y * w + x;
       final v = packed[i >> 3] & (0x80 >> (i & 7)) != 0 ? 255 : 0;
       im.setPixelRgb(x, y, v, v, v);
-    }
-  }
-  if (w == landscape.w && h == landscape.h) {
-    for (var x = 0; x < w; x++) {
-      im.setPixelRgb(x, crowPanelVisibleRows, 255, 0, 0);
     }
   }
   return img.encodePng(im);

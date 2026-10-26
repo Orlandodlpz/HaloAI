@@ -482,11 +482,18 @@ Each phase ends with a gate. The gate must pass before the next phase in that tr
     - Not needed on this phone: the battery optimization exemption and Samsung's "never sleeping apps". Not measured: a 30 minute run, battery drain, natural Doze (it was forced, the harsher case).
     - Caveats: the CrowPanel has no microphone, so "a command from the device" was the flash clip streamed after a real MENU hold, with the audio completion injected from the console (`a`); same BLE and speech path as a hold, not real speech. The `A` clip always uses request 513, so without a board reset the phone takes a second clip as an addition to the first request (seen once: `409 expired`, CANCELLED); a real hold gets a new request number. MENU holds with nothing streamed left the board in FINALIZE AUDIO until it timed out, likely the stall Victor asked about; the board log is kept for him.
 
-#### Phase P4: App features (PLANNED)
+#### Phase P4: App features (DONE 2026-10-26)
 - **Goal:** settings and memory control.
 - **Steps:** orientation setting; wallpaper picker that resizes and dithers to the panel's resolution and color depth, then sends it; Google account link; view, edit and delete memory; full text of long drafts.
 - **Gate:** each feature works against the real device or backend; a wallpaper set on the phone shows on the device in WALLPAPER.
 - **Results (if DONE):**
+  - **DONE 2026-10-26: gate met** (Z Flip7, release build, live server; sample data key for everything except the Google section, which used Orlando's separate test key on Carlos's own Google account; CrowPanel with Victor's wallpaper receiver from `d8725d0`). The app now has four tabs (Home, Memory, Settings, Debug, with the P0 to P3 bench moved to Debug). 106 tests offline, analyze clean.
+    - **Wallpaper, on the glass:** a photo picked in Settings is centre cropped (Fill) or scaled whole onto white (Fit), dithered to 1 bit (Floyd Steinberg) in a background isolate, previewed exactly as sent, and sent in Victor's format (`firmware/docs/ble_fields.md`). Seen on the CrowPanel in WALLPAPER by Carlos. Nine transfers, every one confirmed on the first pass with no `resend_from`, 6.6 to 7.9 s each (about 50 kbit/s of image) with the 10 ms pacing Victor asked for; the board stored each in its spare slot with the CRC matching, and the same photo and settings gave the same CRC twice. Photos are shrunk to 1600 px by the picker, which also turns HEIC into JPEG (an earlier HEIC photo was refused before that change; not retried with the same photo since).
+    - **Orientation:** saved on the phone, sent in Settings and with every request; the board log shows it arriving. Per Victor, the wallpaper is resent on every change: landscape to portrait sent 480 x 800 and back sent 800 x 480 by itself, and a change made while disconnected was sent on the next connect.
+    - **Memory:** list, add, edit and delete against the live server (11 to 12 to 11 items). Adding the same fact twice made no second copy (the backend treats it as a refresh, `pipeline/app/memory.py`); a contact that is not an email address was refused on screen. Recent actions are delete only.
+    - **Full draft:** an email and a calendar event each reached REVIEW with the full draft under the screen on Home, then cancelled.
+    - **Google:** Connect opened Google sign in, the app showed "Connected as" Carlos's Gmail, and Disconnect went through. No approvals with that key.
+    - Caveats: shown on the CrowPanel, not the badge. The CrowPanel squeezes the canvas's 480 rows into 272, so the picture looks flattened there; the badge panel is the real target. Drawing in portrait is Victor's (the phone sends the portrait image and orientation). The refused contact and "Connected as" line are seen on screen, not in the log.
 
 #### Phase P5: Spanish and bilingual transcription (PLANNED, only after English works end to end)
 - **Goal:** measure and enable Spanish and mixed English and Spanish.

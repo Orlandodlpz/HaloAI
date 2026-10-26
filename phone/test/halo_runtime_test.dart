@@ -1,9 +1,13 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:haloai_phone/ble/ble_messages.dart';
 import 'package:haloai_phone/ble/device_transport.dart';
 import 'package:haloai_phone/halo_runtime.dart';
 import 'package:haloai_phone/halo_service.dart';
 import 'package:haloai_phone/main.dart';
+import 'package:image/image.dart' as img;
+import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'ble/fake_transport.dart';
@@ -75,6 +79,35 @@ void main() {
     await rt.setOrientation('portrait');
     expect(transport.settings.last['orientation'], 'portrait');
     expect(file.readAsStringSync(), contains('"orientation":"portrait"'));
+  });
+
+  test('changing orientation resends the wallpaper for the new one (Victor, 2026-10-25)', () async {
+    final dir = Directory.systemTemp.createTempSync('halo');
+    final transport = FakeTransport();
+    final rt = HaloRuntime(service: FakeService(), transport: () => transport)
+      ..settingsFile = (() async => File('${dir.path}/settings.json'))
+      ..wallpaperPace = Duration.zero
+      ..wallpaperPhoto = img.encodePng(img.Image(width: 60, height: 40))
+      ..wallpaperOnBadgeFor = 'landscape';
+    await rt.connect();
+    transport.event({'type': 'hello', 'boot': 1, 'wallpaper': true});
+    await pumpEventQueue();
+    // The device: confirm each finished transfer.
+    final answered = <int>{};
+    final timer = Timer.periodic(const Duration(milliseconds: 2), (_) {
+      if (transport.wallpaper.isEmpty) return;
+      final m = jsonDecode(Defragmenter().add(transport.wallpaper.last)!) as Map;
+      if (m['crc'] != null && answered.add(m['wp'] as int)) {
+        transport.event({'type': 'wallpaper', 'wp': m['wp'], 'ok': true});
+      }
+    });
+    await rt.setOrientation('portrait');
+    timer.cancel();
+    final first = jsonDecode(Defragmenter().add(transport.wallpaper.first)!) as Map;
+    expect((first['w'], first['h']), (480, 800));
+    expect(rt.wallpaperOnBadgeFor, 'portrait');
+    expect(rt.wallpaperStale, isFalse);
+    expect(File('${dir.path}/settings.json').readAsStringSync(), contains('"wallpaper_on_badge_for":"portrait"'));
   });
 
   testWidgets('closing the page does not stop the session', (tester) async {
