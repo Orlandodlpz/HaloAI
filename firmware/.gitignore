@@ -1,7 +1,7 @@
 # Host test build
 build/
 
-# ESP32 build output (once a framework is chosen)
+# ESP-IDF build output
 .pio/
 managed_components/
 sdkconfig.old
@@ -15,3 +15,6 @@ board/dependencies.lock
 
 # Python bytecode from the bench tools
 tools/__pycache__/
+
+# Bench tool dependencies (bleak, pyserial). Not part of the firmware.
+tools/.venv/

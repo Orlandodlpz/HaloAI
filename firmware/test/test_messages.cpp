@@ -89,21 +89,49 @@ HALO_TEST(messages_hello_carries_everything_the_phone_resyncs_from) {
     msg::Link l = demo_link();
     l.sid = -1;  // nothing drawn yet
     char buf[256];
-    const size_t n = msg::hello(buf, sizeof(buf), l, "f1-dev", 3735928559u, State::Ready);
+    const size_t n = msg::hello(buf, sizeof(buf), l, "f1-dev", 3735928559u, State::Ready, true);
     // boot is a full u32: 0xDEADBEEF would come out negative through an int32.
     CHECK_JSON(std::string(buf, n),
                R"({"type":"hello","fw":"f1-dev","boot":3735928559,"state":"READY","req":12,)"
-               R"("sid":null,"pending_key":null,"battery":87})");
+               R"("sid":null,"pending_key":null,"battery":87,"wallpaper":true})");
 }
 
 HALO_TEST(messages_hello_sends_a_pending_key_when_there_is_one) {
     msg::Link l = demo_link();
     std::memcpy(l.pending_key, "01HQZX9K3M7N2P4R6T8V0W1Y3Z", 27);
     char buf[256];
-    const size_t n = msg::hello(buf, sizeof(buf), l, "f1-dev", 1, State::ExecutionUncertain);
+    const size_t n = msg::hello(buf, sizeof(buf), l, "f1-dev", 1, State::ExecutionUncertain, true);
     CHECK(std::string(buf, n).find(R"("pending_key":"01HQZX9K3M7N2P4R6T8V0W1Y3Z")") !=
           std::string::npos);
     CHECK(std::string(buf, n).find(R"("state":"EXECUTION_UNCERTAIN")") != std::string::npos);
+}
+
+HALO_TEST(messages_hello_says_no_when_the_wallpaper_store_is_not_there) {
+    // The phone reads this to decide whether to offer Send at all, so a device
+    // whose flash partition is missing has to say so rather than stay silent.
+    const msg::Link l = demo_link();
+    char buf[256];
+    const size_t n = msg::hello(buf, sizeof(buf), l, "f1-dev", 1, State::Ready, false);
+    CHECK(std::string(buf, n).find(R"("wallpaper":false)") != std::string::npos);
+}
+
+HALO_TEST(messages_wallpaper_answer_says_stored_asks_again_or_refuses) {
+    char buf[128];
+
+    size_t n = msg::wallpaper_answer(buf, sizeof(buf), 7, true, nullptr);
+    CHECK_JSON(std::string(buf, n), R"({"type":"wallpaper","wp":7,"ok":true})");
+
+    const uint32_t from = 28200;
+    n = msg::wallpaper_answer(buf, sizeof(buf), 7, false, &from);
+    CHECK_JSON(std::string(buf, n),
+               R"({"type":"wallpaper","wp":7,"ok":false,"resend_from":28200})");
+
+    // No resend_from at all is the refusal the phone must not retry.
+    n = msg::wallpaper_answer(buf, sizeof(buf), 255, false, nullptr);
+    CHECK_JSON(std::string(buf, n), R"({"type":"wallpaper","wp":255,"ok":false})");
+
+    char small[16];
+    CHECK(msg::wallpaper_answer(small, sizeof(small), 1, true, nullptr) == 0);
 }
 
 HALO_TEST(messages_approve_select_continue_echo_the_screen_they_acted_on) {
@@ -172,7 +200,7 @@ HALO_TEST(messages_that_do_not_fit_report_zero_and_are_never_sent) {
     msg::Link l = demo_link();
     std::memcpy(l.pending_key, "01HQZX9K3M7N2P4R6T8V0W1Y3Z", 27);
     char small[48];
-    CHECK(msg::hello(small, sizeof(small), l, "f1-dev", 1, State::Ready) == 0);
+    CHECK(msg::hello(small, sizeof(small), l, "f1-dev", 1, State::Ready, true) == 0);
     char tiny[8];
     CHECK(msg::approve(tiny, sizeof(tiny), l) == 0);
 }

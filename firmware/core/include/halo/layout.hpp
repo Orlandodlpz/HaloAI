@@ -14,6 +14,10 @@ namespace halo {
 struct Icon {
     const uint8_t* bits = nullptr;  // 1 bit per pixel, rows byte padded, set bit = ink
     uint16_t w = 0, h = 0;
+    // The wallpaper is the exception and it is not ours to change: the phone, both
+    // panels' framebuffers and the phone's preview all use 1 = white. It is stored
+    // as it arrived so those bytes stay comparable, and inverted here instead.
+    bool invert = false;
 };
 
 // Everything a screen can show. The phone fills most of it from the backend's

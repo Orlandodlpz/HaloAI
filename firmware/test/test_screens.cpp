@@ -163,3 +163,107 @@ HALO_TEST(screens_local_screens_lay_out_on_every_panel_we_have) {
         }
     }
 }
+
+// ---------------------------------------------------------------- wallpaper
+
+namespace {
+
+// Not a real image: layout never looks at the bits, only at the size.
+const uint8_t kFakeBits[1] = {0};
+Icon a_wallpaper(uint16_t w, uint16_t h) {
+    Icon i;
+    i.bits = kFakeBits;
+    i.w = w;
+    i.h = h;
+    i.invert = true;  // 1 = white on the wire and in flash; the display list wants ink
+    return i;
+}
+
+}  // namespace
+
+HALO_TEST(screens_a_stored_wallpaper_owns_the_whole_glass) {
+    test::FakeDisplay d = test::FakeDisplay::badge();
+    const Icon img = a_wallpaper(800, 480);
+    DeviceStatus st;
+    st.wallpaper = &img;
+
+    ScreenModel m;
+    CHECK(local_screen(State::Wallpaper, st, m));
+    CHECK(m.status_line == nullptr);
+    CHECK_EQ(int(m.line_count), 0);
+
+    DisplayList list;
+    CHECK_EQ(int(layout_screen(d, m, list)), 0);
+    CHECK_EQ(int(list.size()), 1);
+    CHECK_EQ(test::count_of(list, CmdKind::Text), 0);   // no words over someone's photo
+    CHECK(list[0].kind == CmdKind::Bitmap);
+    CHECK(list[0].bitmap.scale_to_box);
+    CHECK(list[0].bitmap.invert);
+    CHECK_EQ(int(list[0].bitmap.box.w), 800);
+    CHECK_EQ(int(list[0].bitmap.box.h), 480);
+}
+
+HALO_TEST(screens_a_wallpaper_is_fitted_to_what_the_panel_can_show) {
+    // The development board shows 272 of the canvas's 480 rows. The image is
+    // still the badge's 800 x 480: the backend fits it, layout does not crop.
+    test::FakeDisplay d = test::FakeDisplay::crowpanel();
+    const Icon img = a_wallpaper(800, 480);
+    DeviceStatus st;
+    st.wallpaper = &img;
+
+    ScreenModel m;
+    CHECK(local_screen(State::Wallpaper, st, m));
+    DisplayList list;
+    layout_screen(d, m, list);
+    CHECK_EQ(int(list.size()), 1);
+    CHECK_EQ(int(list[0].bitmap.src_h), 480);
+    CHECK_EQ(int(list[0].bitmap.box.h), 272);
+    CHECK(list[0].bitmap.scale_to_box);
+}
+
+HALO_TEST(screens_a_portrait_wallpaper_fills_a_portrait_panel) {
+    test::FakeDisplay d = test::FakeDisplay::badge_portrait();
+    const Icon img = a_wallpaper(480, 800);
+    DeviceStatus st;
+    st.wallpaper = &img;
+
+    ScreenModel m;
+    CHECK(local_screen(State::Wallpaper, st, m));
+    DisplayList list;
+    layout_screen(d, m, list);
+    CHECK_EQ(int(list.size()), 1);
+    CHECK_EQ(int(list[0].bitmap.box.w), 480);
+    CHECK_EQ(int(list[0].bitmap.box.h), 800);
+}
+
+HALO_TEST(screens_wallpaper_falls_back_to_the_name_when_nothing_is_stored) {
+    test::FakeDisplay d = test::FakeDisplay::badge();
+    DeviceStatus st;   // no wallpaper
+    ScreenModel m;
+    CHECK(local_screen(State::Wallpaper, st, m));
+    CHECK(m.icon == nullptr);
+    CHECK_EQ(int(m.line_count), 1);
+    DisplayList list;
+    layout_screen(d, m, list);
+    CHECK(test::count_of(list, CmdKind::Text) > 0);
+}
+
+HALO_TEST(screens_an_image_that_is_not_the_whole_canvas_is_an_icon_not_a_wallpaper) {
+    // The wallpaper path triggers on the canvas size, so a small icon above a
+    // line of text must keep working exactly as it did.
+    test::FakeDisplay d = test::FakeDisplay::badge();
+    const Icon small = a_wallpaper(64, 64);
+    ScreenModel m;
+    m.state = State::Ready;
+    const char* lines[] = {"Hold the side button"};
+    m.lines = lines;
+    m.line_count = 1;
+    m.icon = &small;
+
+    DisplayList list;
+    layout_screen(d, m, list);
+    CHECK_EQ(test::count_of(list, CmdKind::Bitmap), 1);
+    CHECK(test::count_of(list, CmdKind::Text) > 0);
+    for (uint8_t i = 0; i < list.size(); ++i)
+        if (list[i].kind == CmdKind::Bitmap) CHECK(!list[i].bitmap.scale_to_box);
+}

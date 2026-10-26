@@ -4,7 +4,8 @@ The device: hold the side button, speak, read the e-paper screen, confirm with a
 single press. See `docs/BRIEFING.md` section 2 for the V1 state machine and the BLE
 contract, and section 3.3 for the phases.
 
-**State: F0 done, F1 nearly done, part of F2 built early.** Framework is ESP-IDF
+**State: F0 done, F1 built (the wallpaper has not been on the glass yet), part of
+F2 built early.** Framework is ESP-IDF
 (v5.5.5). The board app runs on the development board: the state machine drives real
 buttons, the e-paper renders real screens, and BLE streams audio to a phone.
 
@@ -19,7 +20,8 @@ closes a phase gate for the product.
 | BLE audio throughput | 158 kbit/s, 2.25x realtime |
 | Clip delivered, clean link | 233 chunks, 2.21 s, 2.10x realtime, 0 bad CRC |
 | Final marker resend | verified: 2 dropped on purpose, resent, segment completed |
-| Host tests | 171, about 20 ms |
+| Wallpaper, 48000 bytes over BLE | 341 writes, 4.1 s, stored, CRC matched |
+| Host tests | 194, about 20 ms |
 
 ## Layout
 
@@ -48,7 +50,7 @@ cmake --build build -j8
 ./build/halo_tests review          # only tests whose name contains "review"
 ```
 
-Needs only CMake 3.16 and a C++17 compiler. 121 tests, about 20 ms.
+Needs only CMake 3.16 and a C++17 compiler. 194 tests, about 20 ms.
 
 ## Build and flash the device
 
@@ -80,6 +82,9 @@ tools/phone_sim.py 0 2    # drop the first two final markers, exercising the 300
 tools/screen_sim.py       # fragmented Screen and Settings writes, and a broken sequence
 tools/screen_tour.py      # walk the nine screens the device owns, to look at them
 tools/flow_sim.py         # a whole request to an approve, then power cycle and reconcile
+tools/wallpaper_sim.py    # send a wallpaper the way the phone does, check the answer
+tools/wallpaper_sim.py --drop 7       # drop every 7th chunk: it must ask for a resend
+tools/wallpaper_sim.py --break-crc    # a corrupt byte: it must refuse and start over
 ```
 
 `flow_sim.py` needs the bench build, because it injects gestures over serial. Clear the
@@ -155,6 +160,34 @@ out against all three panel shapes to prove nothing falls off the bottom.
 
 `local_screen()` returns false for the twelve the phone owns. Inventing words for
 those would put text on the glass that the backend never wrote and never checked.
+
+## The wallpaper
+
+The picture the user picks on the phone, over the Wallpaper characteristic: JSON
+chunks with an offset and a CRC, base64 inside (BRIEFING section 2, field names in
+`docs/ble_fields.md`). 48000 bytes, 141 per write at MTU 256, 341 writes.
+
+Split the way everything else here is split. `core/src/wallpaper.cpp` decides what to
+accept, which chunk to ask for again and when an image may be stored, and is tested on
+a laptop against a fake sink. `board/main/wallpaper_store.cpp` owns the flash and
+nothing else: the image is assembled in RAM and written in one erase and one write
+after the last chunk, into whichever of two slots is not being shown, with the record
+that marks a slot complete written **last**. The picture on the glass therefore
+survives a transfer that dies halfway, a bad CRC, or the power going out mid-write;
+the old slot stays in charge until the new one is whole.
+
+Three things that are easy to get backwards:
+
+- The image is stored exactly as the phone sent it, where **1 means white**. The
+  display list is the opposite, so `BitmapCmd::invert` flips it at draw time. Keeping
+  the wire, flash and preview bytes identical is what makes them comparable when a
+  picture comes out wrong.
+- The device answers **once** per transfer. One lost chunk puts every later chunk at
+  the wrong offset, and answering each of those would be 300 notifications for one
+  lost packet.
+- The development panel shows 272 of the canvas's 480 rows, so it **squeezes** the
+  image rather than cropping it: the user chose a picture, not the top half of one.
+  The badge shows all 480 and squeezes nothing.
 
 ## The confirm guard
 

@@ -10,6 +10,7 @@
 #include <cstdio>
 
 #include "ble.hpp"
+#include "wallpaper_store.hpp"
 #include "board_pins.hpp"
 #include "display_backends.hpp"
 #include "driver/gpio.h"
@@ -58,6 +59,14 @@ uint32_t g_boot = 0;        // random per power up: tells a reconnect from a res
 uint8_t g_battery_pct = 100;
 uint8_t g_battery_sent = 255;
 
+// The wallpaper the user picked on the phone. The store owns the flash; the
+// receiver owns every decision about what to accept, and is tested on a laptop.
+board::WallpaperStore g_wallpaper;
+wp::Receiver g_wallpaper_rx(g_wallpaper);
+// Counted on the radio task. Against the bytes the receiver accepted, it says
+// whether a missing chunk was lost on the air or lost inside this firmware.
+volatile uint32_t g_wallpaper_writes = 0;
+
 // Everything from the phone arrives on the NimBLE host task. The state machine,
 // the gesture detector and the display all live on the main task and not one of
 // them is thread safe, so nothing from the radio touches them directly: the
@@ -66,7 +75,7 @@ uint8_t g_battery_sent = 255;
 // A dropped message is logged, never silent. The screen the phone sent is the
 // source of truth for every decision state, so losing one is a real failure and
 // has to be visible, not a gap in a log that reads as if nothing happened.
-enum class Incoming : uint8_t { Screen, Settings, EventsSubscribed, Disconnected };
+enum class Incoming : uint8_t { Screen, Settings, Wallpaper, EventsSubscribed, Disconnected };
 
 struct Message {
     Incoming kind = Incoming::Screen;
@@ -139,6 +148,10 @@ void draw_screen(State to, bool status_only) {
     st.battery_pct = g_battery_pct;
     st.phone_linked = ble::connected() && g_settings.phone_ready;
     st.pending_execution = g_machine.has_pending_execution();
+    // Null unless an image is stored for the orientation that is set now, in
+    // which case WALLPAPER says the device's name instead of showing a sideways
+    // photo, and the phone can send a new one.
+    st.wallpaper = g_wallpaper.current(g_settings.portrait);
     const bool ours = local_screen(to, st, m);
 
     if (!ours) m.status_line = name(to);
@@ -616,7 +629,8 @@ void send_hello() {
     // hello goes out here, not on connect: a notification sent before the phone
     // subscribes is dropped and nobody ever sees it.
     g_link.battery = g_battery_pct;
-    send(msg::hello(g_tx, sizeof(g_tx), g_link, kFirmwareVersion, g_boot, g_machine.state()),
+    send(msg::hello(g_tx, sizeof(g_tx), g_link, kFirmwareVersion, g_boot, g_machine.state(),
+                    g_wallpaper.ready()),
          "hello");
     ESP_LOGI(kTag, "hello sent, MTU %u", ble::mtu());
 }
@@ -633,6 +647,32 @@ void apply_settings(const char* js, size_t len) {
     feed(Event::at(g_settings.phone_ready && ble::connected() ? EventKind::PhoneReady
                                                               : EventKind::PhoneAbsent,
                    now_ms()));
+}
+
+// A wallpaper chunk. The receiver decides everything; this moves the bytes and
+// says out loud what happened, because a transfer that quietly stops looks the
+// same from the phone as one that is still going.
+void apply_wallpaper(const char* js, size_t len) {
+    const wp::Answer a = g_wallpaper_rx.feed(js, len);
+    if (a.note[0] != '\0') {
+        if (a.send && !a.ok) ESP_LOGW(kTag, "%s", a.note);
+        else ESP_LOGI(kTag, "%s", a.note);
+    }
+    if (!a.send) return;
+
+    // How many writes the radio actually handed us, against how far the receiver
+    // got. Equal means nothing was lost on the way in and the gap is ours; fewer
+    // means the write never arrived at all.
+    ESP_LOGI(kTag, "wallpaper: %u writes arrived since the last answer, %u bytes accepted",
+             static_cast<unsigned>(g_wallpaper_writes),
+             static_cast<unsigned>(g_wallpaper_rx.received()));
+    g_wallpaper_writes = 0;
+
+    const uint32_t from = a.resend_from;
+    send(msg::wallpaper_answer(g_tx, sizeof(g_tx), a.wp, a.ok, a.resend ? &from : nullptr),
+         "wallpaper");
+    // A stored wallpaper only reaches the glass on the next WALLPAPER screen, and
+    // the user is looking at their phone right now, so nothing is redrawn here.
 }
 
 // A Screen write is the only way the device enters a decision or an outcome
@@ -701,6 +741,7 @@ void queue_message(Incoming kind, const char* data, size_t len) {
 // whole messages are handed to the main task.
 msg::Reassembler g_screen_rx;
 msg::Reassembler g_settings_rx;
+msg::Reassembler g_wallpaper_frag;
 
 void feed_fragment(msg::Reassembler& rx, Incoming kind, const char* what, const char* data,
                    size_t len) {
@@ -724,12 +765,18 @@ void on_screen(const char* js, size_t len) {
 void on_settings(const char* js, size_t len) {
     feed_fragment(g_settings_rx, Incoming::Settings, "settings", js, len);
 }
+void on_wallpaper(const uint8_t* data, size_t len) {
+    ++g_wallpaper_writes;
+    feed_fragment(g_wallpaper_frag, Incoming::Wallpaper, "wallpaper",
+                  reinterpret_cast<const char*>(data), len);
+}
 void on_events_subscribed() { queue_message(Incoming::EventsSubscribed, nullptr, 0); }
 void on_phone_gone() {
     // A half assembled write from the old link must not be completed by the new
     // one: the IDs start over on a reconnect.
     g_screen_rx.reset();
     g_settings_rx.reset();
+    g_wallpaper_frag.reset();
     queue_message(Incoming::Disconnected, nullptr, 0);
 }
 
@@ -741,11 +788,15 @@ void drain_inbox() {
         switch (m.kind) {
             case Incoming::Screen: apply_screen(m.data, m.len); break;
             case Incoming::Settings: apply_settings(m.data, m.len); break;
+            case Incoming::Wallpaper: apply_wallpaper(m.data, m.len); break;
             case Incoming::EventsSubscribed: send_hello(); break;
             case Incoming::Disconnected:
                 // The link is the phone. Losing it while a request is in flight is
                 // a transport failure, and the state machine decides what it costs.
                 g_settings.phone_ready = false;
+                // Transfer IDs start over on a reconnect, so a half written image
+                // must never be finished by the next connection's chunks.
+                g_wallpaper_rx.reset();
                 feed(Event::at(EventKind::TransportFailure, now_ms()));
                 break;
         }
@@ -935,13 +986,21 @@ extern "C" void app_main() {
     }
     // Created before the radio starts, so no callback can arrive without somewhere
     // to put its message.
-    g_inbox = xQueueCreate(4, sizeof(Message));
+    // 12 deep, not 4: a wallpaper is 341 writes back to back, and the main loop
+    // stops draining for tens of ms whenever it erases a flash sector. Every
+    // message dropped there costs the phone a resend of everything after it.
+    g_inbox = xQueueCreate(12, sizeof(Message));
     if (g_inbox == nullptr) ESP_LOGE(kTag, "no inbox: messages from the phone will be dropped");
+
+    // Before the radio starts: `hello` reports whether a wallpaper can be stored
+    // at all, and the phone keeps its Send button off until it says yes.
+    g_wallpaper.init();
 
     ble::Handlers h;
     h.on_audio_ack = on_audio_ack;
     h.on_screen = on_screen;
     h.on_settings = on_settings;
+    h.on_wallpaper = on_wallpaper;
     h.on_disconnect = on_phone_gone;
     h.on_events_subscribed = on_events_subscribed;
     ble::start("HaloAI", h);

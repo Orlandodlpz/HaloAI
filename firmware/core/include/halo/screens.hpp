@@ -20,6 +20,10 @@ struct DeviceStatus {
     uint8_t battery_pct = 100;
     bool phone_linked = false;       // link up AND the phone's capture service ready
     bool pending_execution = false;  // an action was dispatched and is unconfirmed
+    // The picture the user chose on the phone, once one is stored and it matches
+    // the current orientation. Null until then, and WALLPAPER says the name
+    // instead: a blank panel reads as a dead device.
+    const Icon* wallpaper = nullptr;
 };
 
 // Fills `out` for a state the device owns, and returns true. Returns false for

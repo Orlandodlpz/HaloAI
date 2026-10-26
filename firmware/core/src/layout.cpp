@@ -98,11 +98,29 @@ uint8_t layout_screen(const Display& d, const ScreenModel& m, DisplayList& out) 
 
     int16_t y = body.y;
 
+    // A full canvas image is a wallpaper: it covers the glass, status bar and all,
+    // and the backend fits it to however much of the canvas that panel shows. Any
+    // smaller icon is placed in the body like a picture above the text.
+    if (m.icon != nullptr && m.icon->bits != nullptr && m.icon->w == c.logical_w &&
+        m.icon->h == c.logical_h) {
+        BitmapCmd b;
+        b.bits = m.icon->bits;
+        b.src_w = m.icon->w;
+        b.src_h = m.icon->h;
+        b.invert = m.icon->invert;
+        b.box = Box{0, 0, c.logical_w, c.visible_h};
+        b.scale_to_box = true;
+        out.clear();   // nothing shares the glass with a wallpaper
+        out.bitmap(b);
+        return 0;
+    }
+
     // An icon, either the whole screen or above the text.
     if (m.icon != nullptr && m.icon->bits != nullptr) {
         const bool alone = (m.line_count == 0 && m.candidate_count == 0);
         BitmapCmd b;
         b.bits = m.icon->bits;
+        b.invert = m.icon->invert;
         b.src_w = m.icon->w;
         b.src_h = m.icon->h;
         const int16_t h = alone ? body.h : static_cast<int16_t>(m.icon->h);
