@@ -38,6 +38,14 @@ inline void fail(const char* file, int line, const std::string& what) {
     std::printf("  FAIL %s\n    %s:%d: %s\n", current().c_str(), file, line, what.c_str());
 }
 
+// Prints both values when it fails. A bare CHECK(a == b) on two numbers tells you
+// only that they differ, which is the one thing you already knew.
+template <typename A, typename B>
+inline void check_eq(const char* file, int line, const char* expr, const A& a, const B& b) {
+    if (!(a == b))
+        fail(file, line, std::string(expr) + ": " + std::to_string(a) + " != " + std::to_string(b));
+}
+
 inline int run(const char* filter) {
     int ran = 0;
     for (const Case& c : registry()) {
@@ -67,6 +75,9 @@ inline int run(const char* filter) {
     do {                                                                      \
         if (!(cond)) ::halo::test::fail(__FILE__, __LINE__, "CHECK(" #cond ")"); \
     } while (0)
+
+#define CHECK_EQ(a, b)                                                        \
+    ::halo::test::check_eq(__FILE__, __LINE__, #a " == " #b, (a), (b))
 
 #define CHECK_STATE(sm, expected)                                             \
     do {                                                                      \

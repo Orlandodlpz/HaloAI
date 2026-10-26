@@ -1,8 +1,8 @@
 # Host build of the hardware independent layer and its tests.
 #
 # This builds on a laptop with nothing but a C++17 compiler: core/ contains no
-# board headers, no vendor library and no framework. The ESP32 build (Arduino core
-# or ESP-IDF, not chosen yet) compiles the same sources.
+# board headers, no vendor library and no framework. The ESP-IDF build compiles the
+# same sources through core/CMakeLists.txt.
 cmake_minimum_required(VERSION 3.16)
 project(halo_firmware_core CXX)
 
@@ -18,6 +18,8 @@ add_library(halo_core
     core/src/audio.cpp
     core/src/json.cpp
     core/src/messages.cpp
+    core/src/base64.cpp
+    core/src/wallpaper.cpp
 )
 target_include_directories(halo_core PUBLIC core/include)
 target_compile_options(halo_core PRIVATE -Wall -Wextra -Wpedantic -Werror)
@@ -32,6 +34,7 @@ add_executable(halo_tests
     test/test_audio.cpp
     test/test_json.cpp
     test/test_messages.cpp
+    test/test_wallpaper.cpp
 )
 target_link_libraries(halo_tests PRIVATE halo_core)
 target_include_directories(halo_tests PRIVATE test)

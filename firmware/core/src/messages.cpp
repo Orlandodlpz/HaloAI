@@ -84,7 +84,8 @@ bool state_from_wire(const char* text, State* out) {
 
 // ------------------------------------------------------------------ builders
 
-size_t hello(char* out, size_t n, const Link& l, const char* fw, uint32_t boot, State state) {
+size_t hello(char* out, size_t n, const Link& l, const char* fw, uint32_t boot, State state,
+             bool wallpaper) {
     if (too_small(n)) return 0;
     json::Writer w(out, n);
     w.key_str("type", "hello");
@@ -95,6 +96,25 @@ size_t hello(char* out, size_t n, const Link& l, const char* fw, uint32_t boot, 
     put_sid(w, l);
     put_pending_key(w, l);
     w.key_int("battery", l.battery);
+    // The phone keeps its wallpaper Send button off until this says true, so an
+    // older firmware is never written an image it would drop. It is the receiver
+    // answering for itself: false if the flash partition is not there.
+    w.key_bool("wallpaper", wallpaper);
+    return done(w);
+}
+
+// The answer to a wallpaper transfer. Writes without response get no
+// acknowledgment of their own, so the only way to tell the phone how it went is
+// an event. Sent once, at the end of a transfer or the first time one goes wrong.
+size_t wallpaper_answer(char* out, size_t n, uint8_t wp, bool ok, const uint32_t* resend_from) {
+    if (too_small(n)) return 0;
+    json::Writer w(out, n);
+    w.key_str("type", "wallpaper");
+    w.key_int("wp", wp);
+    w.key_bool("ok", ok);
+    // Absent, not null: `resend_from` present means "send that byte onwards
+    // again", and absent means refused for good. The phone tells them apart.
+    if (resend_from != nullptr) w.key_uint("resend_from", *resend_from);
     return done(w);
 }
 

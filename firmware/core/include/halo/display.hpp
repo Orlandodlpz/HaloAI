@@ -71,6 +71,7 @@ struct BitmapCmd {
     const uint8_t* bits = nullptr;
     uint16_t src_w = 0, src_h = 0;
     bool scale_to_box = false;    // false: centred at native size
+    bool invert = false;          // the source has 1 = white, not 1 = ink
 };
 
 struct DrawCmd {

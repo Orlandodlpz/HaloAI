@@ -60,7 +60,8 @@ const char* name(CancelReason r);
 // Builders. Each writes one complete JSON object into `out` and returns its
 // length, or 0 if it did not fit. 0 means do not send: a truncated object is not
 // JSON, and half an approve is worse than no approve.
-size_t hello(char* out, size_t n, const Link& l, const char* fw, uint32_t boot, State state);
+size_t hello(char* out, size_t n, const Link& l, const char* fw, uint32_t boot, State state,
+             bool wallpaper);
 size_t wake(char* out, size_t n);
 size_t record_start(char* out, size_t n, const Link& l, bool addition);
 size_t record_end(char* out, size_t n, const Link& l, uint16_t chunks, uint32_t ms);
@@ -73,6 +74,9 @@ size_t ack(char* out, size_t n, const Link& l);
 size_t status_query(char* out, size_t n, const Link& l);
 size_t activity(char* out, size_t n, const Link& l);
 size_t battery(char* out, size_t n, uint8_t percent);
+// `resend_from` null means refused for good: the transfer is over and resending
+// would not help. See halo/wallpaper.hpp for what produces these.
+size_t wallpaper_answer(char* out, size_t n, uint8_t wp, bool ok, const uint32_t* resend_from);
 
 // ------------------------------------------------------------ from the phone
 

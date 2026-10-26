@@ -62,9 +62,14 @@ bool local_screen(State s, const DeviceStatus& st, ScreenModel& out) {
             return true;
 
         case State::Wallpaper:
-            // No status bar: a wallpaper is the whole screen. The picture the user
-            // chose replaces this in F1; until it is in flash there is nothing to
-            // show, and a name is better than a blank panel that reads as dead.
+            // No status bar: a wallpaper is the whole screen.
+            if (st.wallpaper != nullptr && st.wallpaper->bits != nullptr) {
+                set(out, nullptr, nullptr, 0);
+                out.icon = st.wallpaper;
+                return true;
+            }
+            // Until the user picks one there is nothing to show, and a name is
+            // better than a blank panel that reads as dead.
             g_lines[0] = "HaloAI";
             set(out, nullptr, g_lines, 1);
             return true;

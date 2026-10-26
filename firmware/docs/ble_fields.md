@@ -322,6 +322,92 @@ flash for something the backend had already settled. An authoritative outcome no
 state too, success or failure, clearing the key. A double press there still dismisses without
 clearing, which is unchanged and deliberate.
 
+## Wallpaper: your four questions, answered and implemented, 2026-10-25
+
+Your P4 proposal (`phone/docs/ble_fields_draft.md`) is **adopted as written**. The receiver,
+the flash store and the WALLPAPER screen are built and the host tests cover them; nothing on
+the phone side has to change. `hello` now carries `"wallpaper": true`, so you can turn Send on.
+
+**1. JSON and base64, not raw bytes.** It is what section 2 already says, and the cost is
+seconds on an action the user takes once in a while: 141 image bytes per write at MTU 256,
+341 writes, about 86 KB on air. Not worth a contract change and a rewrite of your encoder.
+If a wallpaper ever turns out to be something people change often, we revisit it with a
+measurement rather than an estimate.
+
+**2. Yes to both.** The answer is a `wallpaper` event on Events, exactly the two shapes you
+wrote, and `hello` carries `wallpaper`. One correction to your wording: `resend_from` is
+**absent**, not null, when the device refuses for good, which is the difference you already
+described. The device answers **once per transfer**: at the end, or the first time something
+goes wrong. One lost chunk makes every later chunk land at the wrong offset, and a device
+that answered each of those would send 300 notifications for one lost packet.
+
+**3. In the current orientation, as you proposed.** The device stores the image with its
+`w`/`h` and shows it only while the orientation setting agrees. If the setting changes
+afterwards it falls back to the "HaloAI" screen rather than drawing a sideways photo.
+**That leaves you one thing to do:** resend the wallpaper when the user changes orientation,
+since only the phone still has the original photo. The device does not ask for it.
+
+**4. Held in RAM, then written once.** I built it streaming to flash first, on the theory
+that 48 KB was worth avoiding; the board disagreed and I changed it. The image is assembled
+in RAM (PSRAM when the board has any, internal otherwise, and nothing at rest between
+transfers) and goes to flash in one erase and one write after the last chunk, while you are
+waiting for the answer. Two slots either way, so the picture already on the glass survives a
+transfer that dies halfway or a power cut mid-write; the old one stays in charge until the
+CRC matches. `resend_from` is still the exact byte offset the device holds.
+
+**What I measured on the board, 2026-10-25, and what it means for your sender.** A Mac
+sending as fast as it can loses chunks: writes without response have no acknowledgment, and
+CoreBluetooth silently discards them when its own queue fills. The device was never the
+problem, and I have the numbers to say so rather than the impression:
+
+| Rate of image bytes | Result |
+| --- | --- |
+| 88 to 109 kbit/s | all 341 writes arrived, stored, CRC matched |
+| 139 kbit/s | one gap, 240 chunks in |
+| 400+ kbit/s | gaps from about 90 chunks in |
+
+In the failing runs the board logged **146 writes arrived, 93 accepted**: it kept receiving at
+full speed with holes in the stream, and its own inbox never overflowed once. So the losses
+were all on the sending side. Android is not CoreBluetooth and may well behave better, but
+**please check it rather than assume**: if your Send loses chunks, each attempt only resumes
+from the first gap, so three attempts can run out before the image is whole. Pacing the writes
+is the fix, not more attempts. `tools/wallpaper_sim.py` paces at 10 ms per write by default
+for exactly this reason, and `--pace-ms` changes it if you want to see where yours breaks.
+
+**What the device does with a wallpaper, in one list:**
+
+- Sizes: 800 x 480 or 480 x 800, nothing else. Anything else is refused for good, no resend.
+- Chunks must continue where the last one ended. `off: 0` restarts the transfer, which is
+  what your retry after a CRC failure does; a new `wp` abandons whatever was in progress.
+- The CRC field marks the end. It is checked over all 48000 bytes before anything is stored,
+  and a mismatch answers `resend_from: 0`.
+- A disconnect abandons a half written image: your transfer IDs start over on a reconnect and
+  the device must not let the new connection finish the old picture.
+- The image is stored **exactly as you send it**, 1 = white. The display list wants the
+  opposite, so the inversion happens at draw time. The bytes in flash, on air and in your
+  preview are the same bytes, which is what makes them comparable when something looks wrong.
+
+**One thing I would like from you, not urgent.** Your preview draws its line at row 272
+because the development board shows that much. That number is hardcoded on your side and the
+badge does not share it. The device knows its own panel, so I suggest `hello` grows a
+`panel` object (`{"w":800,"h":480,"visible_h":272}`) and the app reads the line from there
+and decides scale or crop itself. Until then the development board **squeezes** the whole
+800 x 480 into its 792 x 272 rather than cropping to the top: a squeezed picture is still the
+picture the user chose, a cropped one is the top half of it. The badge shows all 480 rows and
+none of this applies to it.
+
+All of this ran on the board on 2026-10-25, not just in the host tests:
+
+```sh
+tools/wallpaper_sim.py              # 341 writes, 4.1 s, stored, crc cbfd
+tools/wallpaper_sim.py --drop 7     # 48 chunks dropped, one resend asked for at byte 846,
+                                    # second attempt resumed there and stored
+tools/wallpaper_sim.py --break-crc  # refused twice, resend_from 0, nothing stored
+```
+
+The image survived a power cycle and came back from the other slot (`wallpaper 800x480 from
+slot 1, crc cbfd`), and `hello` carries `"wallpaper":true`, so Send can go on.
+
 ## Still open, and not mine to close
 
 - `pending_key` on the Screen write: **agreed with Carlos 2026-10-16**, optional on the Screen
@@ -330,6 +416,8 @@ clearing, which is unchanged and deliberate.
   brings the device up in RECONCILE STATUS instead of READY. It needs the backend to send one.
 - ~~The FAILURE ambiguity (5d)~~ answered by `failure_stage` in B4; see above. What is left is
   carrying it over BLE, which is Carlos's.
+- Wallpaper: the phone resending after an orientation change, and the `panel` object in
+  `hello` so the app stops hardcoding 272. Both Carlos's, both described above.
 - The ring buffer size stays provisional until F2 runs on the badge with a real microphone.
 - MTU and throughput on Android are still unmeasured. Everything here was exercised against a
   Mac acting as the central; CoreBluetooth is not Android's stack.

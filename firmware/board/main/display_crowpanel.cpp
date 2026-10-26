@@ -335,16 +335,44 @@ void draw_text(const TextCmd& c) {
     }
 }
 
+// A source pixel, as ink. The wallpaper arrives in the phone's and the panels'
+// framebuffer convention, where a set bit is white, which is the opposite of an
+// icon; `invert` is how the display list says which one this is.
+inline bool bitmap_ink(const BitmapCmd& b, int stride, int x, int y) {
+    const uint8_t byte = b.bits[y * stride + (x >> 3)];
+    const bool on = (byte >> (7 - (x & 7))) & 1;
+    return b.invert ? !on : on;
+}
+
 void draw_bitmap(const BitmapCmd& b) {
-    if (b.bits == nullptr) return;
+    if (b.bits == nullptr || b.src_w == 0 || b.src_h == 0) return;
     const int stride = (b.src_w + 7) / 8;
-    const int ox = b.box.x + (b.box.w - b.src_w) / 2;  // centred in its box
+
+    if (b.scale_to_box && b.box.w > 0 && b.box.h > 0) {
+        // The wallpaper path. Layout hands over the badge's whole 800 x 480
+        // canvas and this panel has 792 x 272 of glass, so the image is squeezed
+        // to fit rather than cropped: the user picked a picture, not the top half
+        // of one. Nearest neighbour, because the panel is 1 bit anyway and
+        // anything smoother would only invent gray it cannot show.
+        const int dst_w = b.box.x + b.box.w > kVisibleW ? kVisibleW - b.box.x : b.box.w;
+        const int dst_h = b.box.y + b.box.h > kHeight ? kHeight - b.box.y : b.box.h;
+        for (int y = 0; y < dst_h; ++y) {
+            const int sy = static_cast<int>(static_cast<uint32_t>(y) * b.src_h / dst_h);
+            for (int x = 0; x < dst_w; ++x) {
+                const int sx = static_cast<int>(static_cast<uint32_t>(x) * b.src_w / dst_w);
+                set_pixel(b.box.x + x, b.box.y + y, bitmap_ink(b, stride, sx, sy));
+            }
+        }
+        return;
+    }
+
+    // An icon: placed at its native size, centred in its box, and only its ink
+    // is drawn so it sits on whatever is already there.
+    const int ox = b.box.x + (b.box.w - b.src_w) / 2;
     const int oy = b.box.y + (b.box.h - b.src_h) / 2;
     for (int row = 0; row < b.src_h; ++row)
-        for (int col = 0; col < b.src_w; ++col) {
-            const uint8_t byte = b.bits[row * stride + (col >> 3)];
-            if ((byte >> (7 - (col & 7))) & 1) set_pixel(ox + col, oy + row, true);
-        }
+        for (int col = 0; col < b.src_w; ++col)
+            if (bitmap_ink(b, stride, col, row)) set_pixel(ox + col, oy + row, true);
 }
 
 // ---------------------------------------------------------------- backend
