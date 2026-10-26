@@ -41,7 +41,12 @@ public:
     // The only way in. Returns what changed and what the hardware layer must do.
     Transition handle(const Event& e);
 
-    Transition tick(uint32_t at_ms) { return handle(Event::at(EventKind::Tick, at_ms)); }
+    // [[nodiscard]] because dropping this is exactly the bug above: the timeout
+    // fired, the state moved, and the actions that draw the screen and tell the
+    // phone went in the bin.
+    [[nodiscard]] Transition tick(uint32_t at_ms) {
+        return handle(Event::at(EventKind::Tick, at_ms));
+    }
 
     // Test and log helpers.
     uint32_t deadline_at() const { return deadline_at_; }

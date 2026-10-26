@@ -1067,7 +1067,17 @@ extern "C" void app_main() {
 
         drain_inbox();
         g_audio.poll();
-        g_machine.tick(t);
+        // Through feed(), not g_machine.tick(): the transition carries the
+        // actions, and feed() is the only thing that applies them. Calling tick()
+        // and dropping what it returned moved the state and drew nothing, told
+        // the phone nothing and logged nothing, so READY reached WALLPAPER
+        // without the picture appearing, a decision state expired without the
+        // cancel being sent, and FINALIZE AUDIO passed its delivery deadline into
+        // FAILURE with the screen still saying FINALIZE AUDIO. Found on the board
+        // 2026-10-25: `hello` answered "state":"WALLPAPER" while the glass still
+        // showed READY. An idle tick is unhandled and is deliberately not logged,
+        // so this costs nothing 200 times a second.
+        feed(Event::at(EventKind::Tick, t));
         handle_serial();
         // Never let this round to zero ticks: that starves the idle task and
         // trips the watchdog. See CONFIG_FREERTOS_HZ in sdkconfig.defaults.
