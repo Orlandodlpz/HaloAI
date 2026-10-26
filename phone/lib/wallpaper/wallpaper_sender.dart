@@ -22,8 +22,22 @@ import '../ble/device_transport.dart';
 /// `"ok":false` with `"resend_from"`, and the phone resends from there.
 class WallpaperSender {
   WallpaperSender(this.transport, Stream<DeviceEvent> events,
-      {this.answerTimeout = const Duration(seconds: 10), this.maxAttempts = 3})
-      : _events = events;
+      {this.answerTimeout = const Duration(seconds: 10),
+      this.maxAttempts = 3,
+      this.pace = defaultPace,
+      Future<void> Function(Duration)? sleep})
+      : _events = events,
+        _sleep = sleep ?? Future<void>.delayed;
+
+  /// Pause between writes. Writes without response have no acknowledgment, so
+  /// a sender that outruns its own BLE stack loses chunks silently; a lost
+  /// chunk costs a whole resend pass from the first gap. Victor measured a Mac
+  /// losing chunks above about 110 kbit/s and paces his tool at 10 ms
+  /// (firmware/docs/ble_fields.md, 2026-10-25). Override at build time with
+  /// `--dart-define=HALO_WALLPAPER_PACE_MS=n` to find where Android breaks.
+  static const defaultPace = Duration(milliseconds: int.fromEnvironment('HALO_WALLPAPER_PACE_MS', defaultValue: 10));
+  final Duration pace;
+  final Future<void> Function(Duration) _sleep;
 
   final DeviceTransport transport;
   final Stream<DeviceEvent> _events;
@@ -49,6 +63,9 @@ class WallpaperSender {
         'crc': ?crc,
       };
 
+  /// Resend passes the last [send] needed (1 = clean), for the log.
+  int attempts = 0;
+
   /// Returns when the device confirms the image, or throws.
   Future<void> send(Uint8List bits, int w, int h) async {
     if (bits.length != w * h ~/ 8) throw ArgumentError('${bits.length} bytes is not a $w x $h 1 bit image');
@@ -57,6 +74,7 @@ class WallpaperSender {
     final per = bytesPerWrite(transport.maxWrite);
     var from = 0;
     for (var attempt = 1; attempt <= maxAttempts; attempt++) {
+      attempts = attempt;
       // Listen before writing so a fast answer is not missed; the timeout
       // only starts after the last chunk, however long the writes took.
       final answer = _events.where((e) => e.type == 'wallpaper' && e.fields['wp'] == wp).first;
@@ -66,6 +84,7 @@ class WallpaperSender {
             crc: end == bits.length ? crc : null);
         for (final f in fragment(msg, _messageId++ & 0xFF, transport.maxWrite)) {
           await transport.writeWallpaper(f);
+          if (pace > Duration.zero) await _sleep(pace);
         }
       }
       final e = await answer.timeout(answerTimeout, onTimeout: () => throw TimeoutException('no wallpaper answer'));

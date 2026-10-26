@@ -26,11 +26,12 @@ class SettingsTab extends StatefulWidget {
 class _SettingsTabState extends State<SettingsTab> with WidgetsBindingObserver {
   HaloRuntime get _rt => widget.rt;
 
-  // Wallpaper
-  Uint8List? _bits, _preview;
-  int _w = landscape.w, _h = landscape.h;
-  bool _preparing = false, _sending = false;
-  String? _wallpaperNote;
+  // Wallpaper preview, rebuilt whenever the photo, the fit or the
+  // orientation changes ([_previewFor] is what it was made from).
+  Uint8List? _preview;
+  Object? _previewFor;
+  bool _preparing = false;
+  String? _pickNote;
 
   // Google
   GoogleStatus? _google;
@@ -67,45 +68,53 @@ class _SettingsTabState extends State<SettingsTab> with WidgetsBindingObserver {
   // ------------------------------------------------------------ wallpaper
 
   Future<void> _pick() async {
-    final file = await ImagePicker().pickImage(source: ImageSource.gallery);
+    // Size limits make Android decode the photo and re-encode it as JPEG, so
+    // HEIC photos (the default on Samsung cameras), which the image package
+    // cannot read, still work; 1600 px is double the panel's long side.
+    final file = await ImagePicker().pickImage(
+        source: ImageSource.gallery, maxWidth: 1600, maxHeight: 1600, imageQuality: 95);
     if (file == null) return;
-    final size = _rt.orientation == 'portrait' ? portrait : landscape;
-    setState(() {
-      _preparing = true;
-      _wallpaperNote = null;
-    });
+    setState(() => _pickNote = null);
+    await _rt.setWallpaperPhoto(await file.readAsBytes());
+  }
+
+  Object? get _previewKey => _rt.wallpaperPhoto == null
+      ? null
+      : (identityHashCode(_rt.wallpaperPhoto), _rt.wallpaperFit, _rt.orientation);
+
+  Future<void> _refreshPreview() async {
+    final key = _previewKey;
+    if (key == null || _preparing) return;
+    setState(() => _preparing = true);
     try {
-      final encoded = await file.readAsBytes();
+      final size = _rt.panelSize;
       final sw = Stopwatch()..start();
-      // Both run in another isolate: dithering 384,000 pixels would freeze the UI.
-      final bits = await compute(prepareWallpaper, (encoded, size.w, size.h));
+      final bits = await _rt.wallpaperBits();
       final png = await compute(previewPng, (bits, size.w, size.h));
-      _rt.record('P4LOG wallpaper prepared ${size.w}x${size.h} (${bits.length} bytes) in ${sw.elapsedMilliseconds} ms');
+      _rt.record('P4LOG wallpaper preview ${size.w}x${size.h} ${_rt.wallpaperFit.name} in ${sw.elapsedMilliseconds} ms');
+      if (!mounted) return;
       setState(() {
-        _bits = bits;
         _preview = png;
-        _w = size.w;
-        _h = size.h;
+        _previewFor = key;
+        _pickNote = null;
       });
     } catch (e) {
-      setState(() => _wallpaperNote = 'Could not use that picture: $e');
+      if (!mounted) return;
+      setState(() {
+        _preview = null;
+        _previewFor = key; // do not retry the same picture in a loop
+        _pickNote = 'Could not use that picture: $e';
+      });
     } finally {
       if (mounted) setState(() => _preparing = false);
     }
   }
 
   Future<void> _send() async {
-    setState(() {
-      _sending = true;
-      _wallpaperNote = null;
-    });
     try {
-      await _rt.sendWallpaper(_bits!, _w, _h);
-      setState(() => _wallpaperNote = 'Sent. The badge shows it when it goes idle.');
-    } catch (e) {
-      setState(() => _wallpaperNote = 'Not sent: $e');
-    } finally {
-      if (mounted) setState(() => _sending = false);
+      await _rt.sendWallpaper();
+    } catch (_) {
+      // The runtime shows the reason in wallpaperNote.
     }
   }
 
@@ -186,6 +195,9 @@ class _SettingsTabState extends State<SettingsTab> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    if (_previewKey != null && _previewKey != _previewFor && !_preparing) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => unawaited(_refreshPreview()));
+    }
     final t = Theme.of(context).textTheme;
     final small = t.bodySmall;
     return ListView(padding: const EdgeInsets.all(16), children: [
@@ -205,31 +217,58 @@ class _SettingsTabState extends State<SettingsTab> with WidgetsBindingObserver {
       const SizedBox(height: 8),
       Row(children: [
         OutlinedButton.icon(
-          onPressed: _preparing ? null : _pick,
+          onPressed: _rt.wallpaperSending ? null : _pick,
           icon: const Icon(Icons.photo),
-          label: Text(_preparing ? 'Preparing...' : 'Pick a photo'),
+          label: Text(_rt.wallpaperPhoto == null ? 'Pick a photo' : 'Change photo'),
         ),
         const SizedBox(width: 8),
         FilledButton(
-          onPressed: _bits != null && _rt.deviceTakesWallpaper && !_sending ? _send : null,
-          child: Text(_sending ? 'Sending...' : 'Send to badge'),
+          onPressed: _rt.wallpaperPhoto != null && _rt.deviceTakesWallpaper && !_rt.wallpaperSending && !_preparing
+              ? _send
+              : null,
+          child: Text(_rt.wallpaperSending ? 'Sending...' : 'Send to badge'),
         ),
       ]),
-      if (_preview != null) ...[
+      if (_rt.wallpaperPhoto != null) ...[
+        const SizedBox(height: 8),
+        SegmentedButton<WallpaperFit>(
+          segments: const [
+            ButtonSegment(value: WallpaperFit.fill, label: Text('Fill (crop)'), icon: Icon(Icons.crop)),
+            ButtonSegment(value: WallpaperFit.fit, label: Text('Fit (whole photo)'), icon: Icon(Icons.fit_screen)),
+          ],
+          selected: {_rt.wallpaperFit},
+          onSelectionChanged: _rt.wallpaperSending ? null : (s) => unawaited(_rt.setWallpaperFit(s.first)),
+        ),
+        Text(
+            _rt.wallpaperFit == WallpaperFit.fill
+                ? 'Covers the whole screen; the edges of the photo that do not fit are cut off.'
+                : 'Shows the whole photo, with white bars where its shape differs from the screen.',
+            style: small),
         const SizedBox(height: 8),
         // Exactly the bits that would be sent, one pixel per panel pixel.
         AspectRatio(
-          aspectRatio: _w / _h,
-          child: Image.memory(_preview!, filterQuality: FilterQuality.none, fit: BoxFit.contain),
+          aspectRatio: _rt.panelSize.w / _rt.panelSize.h,
+          child: DecoratedBox(
+            decoration: BoxDecoration(border: Border.all(color: Theme.of(context).colorScheme.outline)),
+            child: _preview == null || _previewFor != _previewKey
+                ? const Center(child: CircularProgressIndicator())
+                : Image.memory(_preview!, filterQuality: FilterQuality.none, fit: BoxFit.fill, gaplessPlayback: true),
+          ),
         ),
-        Text(
-            '$_w x $_h, black and white, as the badge will show it.'
-            '${_w == landscape.w ? ' The red line marks the bottom of what the CrowPanel shows.' : ''}',
+        Text('${_rt.panelSize.w} x ${_rt.panelSize.h} (${_rt.orientation}), black and white, exactly as sent.',
             style: small),
       ],
-      if (!_rt.deviceTakesWallpaper)
-        Text("The badge's firmware can't receive a wallpaper yet, so Send stays off.", style: small),
-      if (_wallpaperNote != null) Text(_wallpaperNote!, style: small),
+      if (_pickNote != null) Text(_pickNote!, style: small),
+      if (_rt.link.state.name == 'connected' && !_rt.deviceTakesWallpaper)
+        Text("This badge's firmware can't receive a wallpaper, so Send stays off.", style: small)
+      else if (!_rt.deviceTakesWallpaper && _rt.wallpaperPhoto != null)
+        Text('Connect the badge to send it.', style: small),
+      if (_rt.wallpaperStale)
+        Text(
+            'The badge has this wallpaper for ${_rt.wallpaperOnBadgeFor}; it is sent again for ${_rt.orientation} '
+            'when the badge connects.',
+            style: small),
+      if (_rt.wallpaperNote != null) Text(_rt.wallpaperNote!, style: small),
       const Divider(height: 32),
       Text('Google account', style: t.titleSmall),
       const SizedBox(height: 8),
