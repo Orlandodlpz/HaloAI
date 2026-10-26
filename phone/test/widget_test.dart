@@ -1,11 +1,21 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:haloai_phone/halo_runtime.dart';
 import 'package:haloai_phone/main.dart';
 
 void main() {
-  testWidgets('shows the test controls', (tester) async {
-    await tester.pumpWidget(const MaterialApp(home: BenchPage()));
+  testWidgets('four tabs, and the bench lives under Debug', (tester) async {
+    await tester.pumpWidget(HaloApp(runtime: HaloRuntime()));
+    for (final tab in ['Home', 'Memory', 'Settings', 'Debug']) {
+      expect(find.text(tab), findsOneWidget);
+    }
+    expect(find.text('Hold to talk (phone mic)'), findsOneWidget);
+    expect(find.text('Connect'), findsOneWidget);
+    await tester.tap(find.text('Debug'));
+    await tester.pumpAndSettle();
     expect(find.text('Run clips'), findsOneWidget);
-    expect(find.text('Hold to talk (test mic)'), findsOneWidget);
+    await tester.tap(find.text('Settings'));
+    await tester.pumpAndSettle();
+    expect(find.text('Landscape'), findsOneWidget);
+    expect(find.textContaining("can't receive a wallpaper yet"), findsOneWidget);
   });
 }

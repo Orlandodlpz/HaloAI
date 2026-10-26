@@ -84,6 +84,11 @@ class DeviceSession {
 
   LinkStatus status = const LinkStatus(LinkState.off);
   DeviceEvent? lastHello;
+
+  /// Sent in Settings: IANA zone (e.g. America/Chicago) and `landscape` or
+  /// `portrait`. Set before [start]; call [phoneReadyChanged] to resend.
+  String? timezone;
+  String orientation = 'landscape';
   int get rejectedChunks => _receiver.rejectedChunks;
 
   static final _clockStart = Stopwatch()..start();
@@ -119,7 +124,8 @@ class DeviceSession {
       String? statusLine,
       List<String> candidateLabels = const [],
       List<String> candidateIds = const [],
-      int? expiresInS}) async {
+      int? expiresInS,
+      String? pendingKey}) async {
     final ctx = ids.newScreen(
         requestId: requestId, revision: revision, proposalHash: proposalHash, candidateIds: candidateIds);
     final msg = ScreenMessage(
@@ -129,12 +135,27 @@ class DeviceSession {
         screenLines: screenLines,
         statusLine: statusLine,
         candidates: candidateLabels,
-        expiresInS: expiresInS);
+        expiresInS: expiresInS,
+        pendingKey: pendingKey);
+    await _writeScreen(msg);
+    _say('screen sid=${ctx.sid} $screen${pendingKey == null ? '' : ' key'}');
+    return ctx;
+  }
+
+  /// Status bar only ("Email to Victor", "Searching the web"): a partial
+  /// refresh that leaves the body alone. It still gets a fresh sid bound to
+  /// the request, because the device echoes the last sid it was given.
+  Future<ScreenContext> sendStatus(String statusLine, {String? requestId, int? revision}) async {
+    final ctx = ids.newScreen(requestId: requestId, revision: revision);
+    await _writeScreen(ScreenMessage.statusOnly(sid: ctx.sid, statusLine: statusLine));
+    _say('status sid=${ctx.sid} "$statusLine"');
+    return ctx;
+  }
+
+  Future<void> _writeScreen(ScreenMessage msg) async {
     for (final f in fragment(msg.toJson(), _messageId++ & 0xFF, transport.maxWrite)) {
       await transport.writeScreen(f);
     }
-    _say('screen sid=${ctx.sid} $screen');
-    return ctx;
   }
 
   AudioReceiver _newReceiver() => AudioReceiver(
@@ -251,11 +272,12 @@ class DeviceSession {
     if (status.state != LinkState.connected) return;
     // DateTime.toIso8601String has no UTC offset for local times, so the
     // time is formatted here instead of by settingsJson.
-    final s = settingsJson(phoneReady: sttReady())..['time'] = isoWithOffset(_clock());
+    final s = settingsJson(phoneReady: sttReady(), orientation: orientation, tz: timezone)
+      ..['time'] = isoWithOffset(_clock());
     for (final f in fragment(s, _messageId++ & 0xFF, transport.maxWrite)) {
       await _write(() => transport.writeSettings(f));
     }
-    _say('settings phone_ready=${s['phone_ready']}');
+    _say('settings phone_ready=${s['phone_ready']} orientation=$orientation');
   }
 
   Future<void> _write(Future<void> Function() w) async {

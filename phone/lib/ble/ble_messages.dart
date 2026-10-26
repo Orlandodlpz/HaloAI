@@ -19,7 +19,8 @@ class HaloUuids {
 /// One event from the device. [type] is one of `hello`, `wake`,
 /// `record_start`, `record_end`, `approve`, `select`, `continue`, `cancel`,
 /// `dismiss`, `ack`, `status_query`, `activity`, `battery` (added
-/// 2026-10-13 with `reason` on `cancel`, BRIEFING section 2).
+/// 2026-10-13 with `reason` on `cancel`, BRIEFING section 2), and the
+/// proposed `wallpaper` answer (P4, docs/ble_fields_draft.md).
 class DeviceEvent {
   DeviceEvent(this.type, this.fields);
   final String type;
@@ -28,6 +29,7 @@ class DeviceEvent {
   static const types = {
     'hello', 'wake', 'record_start', 'record_end', 'approve', 'select', 'continue', //
     'cancel', 'dismiss', 'ack', 'status_query', 'activity', 'battery',
+    'wallpaper', // P4, proposed: the answer to a wallpaper transfer
   };
 
   static DeviceEvent parse(String json) {
@@ -59,30 +61,49 @@ class DeviceEvent {
 class ScreenMessage {
   ScreenMessage({
     required this.sid,
-    required this.screen,
+    required String this.screen,
     this.rev,
     this.screenLines = const [],
     this.statusLine,
     this.candidates = const [],
     this.expiresInS,
+    this.pendingKey,
   });
+
+  /// Only `sid` and `status_line`: the device redraws its status bar with a
+  /// partial refresh and leaves the body alone (BRIEFING section 2, Screen).
+  ScreenMessage.statusOnly({required this.sid, required String this.statusLine})
+      : screen = null,
+        rev = null,
+        screenLines = const [],
+        candidates = const [],
+        expiresInS = null,
+        pendingKey = null;
+
   final int sid;
-  final String screen; // V1 state name, e.g. REVIEW, CONFLICT_AMBIGUOUS
+  final String? screen; // V1 state name, e.g. REVIEW, CONFLICT_AMBIGUOUS
   final int? rev;
   final List<String> screenLines;
   final String? statusLine;
   final List<String> candidates;
   final int? expiresInS;
 
-  Map<String, Object?> toJson() => {
-        'sid': sid,
-        'screen': screen,
-        'rev': ?rev,
-        'screen_lines': screenLines,
-        'status_line': ?statusLine,
-        'candidates': candidates,
-        'expires_in_s': ?expiresInS,
-      };
+  /// The execution key, on REVIEW (saved to flash as the device approves) and
+  /// on EXECUTION_UNCERTAIN (BRIEFING section 2, added 2026-10-19).
+  final String? pendingKey;
+
+  Map<String, Object?> toJson() => screen == null
+      ? {'sid': sid, 'status_line': statusLine}
+      : {
+          'sid': sid,
+          'screen': screen,
+          'rev': ?rev,
+          'screen_lines': screenLines,
+          'status_line': ?statusLine,
+          'candidates': candidates,
+          'expires_in_s': ?expiresInS,
+          'pending_key': ?pendingKey,
+        };
 }
 
 /// Settings write. Absent fields keep their previous value on the device.

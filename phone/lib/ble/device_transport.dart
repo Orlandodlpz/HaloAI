@@ -21,6 +21,10 @@ abstract class DeviceTransport {
   Future<void> writeScreen(Uint8List fragment);
   Future<void> writeSettings(Uint8List fragment);
 
+  /// Wallpaper write without response (P4, proposed format in
+  /// docs/ble_fields_draft.md); the device answers on Events.
+  Future<void> writeWallpaper(Uint8List fragment);
+
   /// Starts scanning and keeps the link up (reconnects) until [stop].
   Future<void> start();
   Future<void> stop();

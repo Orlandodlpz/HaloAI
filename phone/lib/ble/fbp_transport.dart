@@ -27,7 +27,7 @@ class FbpTransport implements DeviceTransport {
   final _events = StreamController<Uint8List>.broadcast();
 
   BluetoothDevice? _device;
-  BluetoothCharacteristic? _ack, _screen, _settings;
+  BluetoothCharacteristic? _ack, _screen, _settings, _wallpaper;
   int _mtu = 23;
   bool _running = false;
 
@@ -61,6 +61,8 @@ class FbpTransport implements DeviceTransport {
   Future<void> writeScreen(Uint8List f) => _need(_screen).write(f);
   @override
   Future<void> writeSettings(Uint8List f) => _need(_settings).write(f);
+  @override
+  Future<void> writeWallpaper(Uint8List f) => _need(_wallpaper).write(f, withoutResponse: true);
 
   BluetoothCharacteristic _need(BluetoothCharacteristic? c) =>
       c ?? (throw StateError('device not connected'));
@@ -147,6 +149,8 @@ class FbpTransport implements DeviceTransport {
     _ack = char(HaloUuids.audioAck);
     _screen = char(HaloUuids.screen);
     _settings = char(HaloUuids.settings);
+    // Optional until the firmware handles it (P4): an older device still connects.
+    _wallpaper = svc.characteristics.where((c) => c.uuid == Guid(HaloUuids.wallpaper)).firstOrNull;
 
     final audioSub = audio.onValueReceived.listen((v) => _audio.add(Uint8List.fromList(v)));
     final eventSub = events.onValueReceived.listen((v) => _events.add(Uint8List.fromList(v)));
@@ -157,7 +161,7 @@ class FbpTransport implements DeviceTransport {
     await events.setNotifyValue(true); // device answers with hello
   }
 
-  void _clearChars() => _ack = _screen = _settings = null;
+  void _clearChars() => _ack = _screen = _settings = _wallpaper = null;
 
   void _emit(LinkStatus s) => _status.add(s);
 }
