@@ -398,17 +398,21 @@ Each phase ends with a gate. The gate must pass before the next phase in that tr
   - **Eval on the deployed config (server, its own key, 3 runs):** 268 of 276 (97.1%), the same as on the Mac, median 0.75 s, p90 1.18 s. It surfaced a flaky trap: in trap_06 the model asked for a third search after being told no, and after `web_search` was removed from its tools, it called it anyway (it remembers it from the conversation; Token Factory does not enforce the tool list), so the request ran out of turns (2 of 3 runs on the server, 2 of 8 on the Mac; never the attacker). Fix: a request that searched gets one more turn (5). After it, on the Mac: trap_06 8 of 8, search cases 12 of 12, traps 24 of 24. 245 of 245 tests.
   - Progress 2026-10-14 (not DONE): early deploy so the phone can start P2. B1 backend in mock mode at `https://api.haloai-cov.io` (Oracle ARM, Chicago), deployed from main with `pipeline/scripts/deploy.sh`. Verified from the internet: Let's Encrypt certificate, 401 without the key, `/docs` and `/openapi.json` blocked (404), HTTP redirects to HTTPS, a full flow (stream start, approve, status) with `/health` in 142 ms from Texas. A reboot brought Postgres, the backend, Caddy and the firewall rules back on their own. Still open for the gate: daily backups copied off the server, 20 request timings, the B2 eval on the server. Live delivery through Caddy verified on 2026-10-14 with the real model: on a 4-turn command the `status` events and the `slow` event (3.05 s) arrived as they happened.
 
-#### Phase B6: Demo site support (PLANNED)
+#### Phase B6: Demo site support (DONE 2026-10-27)
 - **Goal:** judges can try HaloAI without hardware or a Google login.
 - **Steps:** sample data mode as default; endpoints for push to talk or typed input, a mock e-ink screen with the same text budget, live memory and action panels.
 - **Gate:** a person with no context completes a calendar flow and an email flow on the demo site.
 - **Results (if DONE):**
+  - **Gate passed 2026-10-27** on `https://haloai-cov.io` by an outside tester with no context: added an event and approved it, went ahead with an event over an existing one, and sent a sample email (it landed in the sample outbox; nothing real is sent from the demo). "Everything was easy to find."
+  - **What confused them:** Double press and Hold. On the badge they are gestures of one button; on the site they are separate buttons, and what each did was only in hover text, which phones do not show. Fixed the same day: each button names its action on a second line (approve or choose, cancel, speak or add more), with a line under them saying the three are one side button on the badge and the knob chooses and scrolls. Checked at 375, 768 and 1280 px in light and dark.
+  - **What the site is:** a badge simulator drawn with the firmware's own Spleen glyph bytes at the real text budget (48 x 12 landscape, 28 x 22 portrait on phones), Press with the 1 s guard, Double press, Hold, the knob, the 60 s countdown, and live calendar, outbox, contacts and memory panels. Each visitor gets their own sample student week (`POST /v1/demo/session`, a 24 h key, 10 sessions per IP per hour), so judges never see each other's changes. Real Nemotron 3 Ultra and real Tavily search; model requests from all sample keys capped at 1000 a day and demo searches at 100 a day. Served by Caddy on the same server, with a strict content security policy.
 
-#### Phase B7: Spanish and bilingual (PLANNED, only after English works end to end)
+#### Phase B7: Spanish and bilingual (DROPPED 2026-10-26: English only)
 - **Goal:** the same flows in Spanish, then in mixed English and Spanish.
 - **Steps:** add Spanish and mixed commands to the eval set; replies and `screen_lines` in the user's language; Spanish date phrases ("mañana a las 3"); review the phone's Spanish transcription quality.
 - **Gate:** Spanish results reported per category next to English. **Provisional target: Spanish within a few points of English, no English regression.**
 - **Results (if DONE):**
+  - **DROPPED 2026-10-26: team decision** (Carlos, Orlando, Victor), with P5: the device and the app are English only. The backend keeps reading the `language` field on every request; nothing in it depends on Spanish.
 
 ### 3.2 Phone (Carlos, `phone/`, branch `Phone-App`)
 
@@ -593,7 +597,7 @@ Target dates (agreed by the team 2026-10-19): **I1 by October 22** (Carlos; `pip
 - Google OAuth testing mode tokens expire every 7 days. Re-authorize before the video and before judging.
 - Oracle may stop the Always Free server if it looks idle for 7 days (server created 2026-10-14). Check it before the video and before judging, or move the account to Pay As You Go.
 - Token Factory credits are finite. Log token usage per request.
-- Spanish and mixed-language quality unknown. Deferred to B7 and P5; demo mixed language only if testing supports it.
+- Spanish and mixed-language quality: no longer a risk. English only, decided 2026-10-26 (B7 and P5 dropped).
 
 ## 5. Submission Checklist (due October 30, 2026, 10:00 AM PDT, 12:00 PM in Edinburg, TX)
 
