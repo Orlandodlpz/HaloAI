@@ -18,3 +18,6 @@ tools/__pycache__/
 
 # Bench tool dependencies (bleak, pyserial). Not part of the firmware.
 tools/.venv/
+
+# Recordings from the bench tools. Evidence, not source.
+tools/received_*.wav

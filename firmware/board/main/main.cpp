@@ -7,14 +7,18 @@
 //
 // Anything the phone would send can still be injected over serial (type a letter
 // in idf.py monitor), so all 21 states can be walked with no phone in the room.
+#include <atomic>
 #include <cstdio>
+#include <cstring>
 
 #include "ble.hpp"
+#include "mic.hpp"
 #include "wallpaper_store.hpp"
 #include "board_pins.hpp"
 #include "display_backends.hpp"
 #include "driver/gpio.h"
 #include "driver/uart.h"
+#include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_random.h"
 #include "esp_timer.h"
@@ -35,6 +39,7 @@ using namespace halo;
 namespace {
 
 namespace ble = halo::board::ble;
+namespace mic = halo::board::mic;
 
 constexpr const char* kTag = "halo";
 // Reported in `hello`, so the phone can tell which firmware it is talking to.
@@ -63,9 +68,10 @@ uint8_t g_battery_sent = 255;
 // receiver owns every decision about what to accept, and is tested on a laptop.
 board::WallpaperStore g_wallpaper;
 wp::Receiver g_wallpaper_rx(g_wallpaper);
-// Counted on the radio task. Against the bytes the receiver accepted, it says
-// whether a missing chunk was lost on the air or lost inside this firmware.
-volatile uint32_t g_wallpaper_writes = 0;
+// Counted on the radio task and read on the main one. Against the bytes the
+// receiver accepted, it says whether a missing chunk was lost on the air or lost
+// inside this firmware.
+std::atomic<uint32_t> g_wallpaper_writes{0};
 
 // Everything from the phone arrives on the NimBLE host task. The state machine,
 // the gesture detector and the display all live on the main task and not one of
@@ -664,9 +670,9 @@ void apply_wallpaper(const char* js, size_t len) {
     // got. Equal means nothing was lost on the way in and the gap is ours; fewer
     // means the write never arrived at all.
     ESP_LOGI(kTag, "wallpaper: %u writes arrived since the last answer, %u bytes accepted",
-             static_cast<unsigned>(g_wallpaper_writes),
+             static_cast<unsigned>(g_wallpaper_writes.load(std::memory_order_relaxed)),
              static_cast<unsigned>(g_wallpaper_rx.received()));
-    g_wallpaper_writes = 0;
+    g_wallpaper_writes.store(0, std::memory_order_relaxed);
 
     const uint32_t from = a.resend_from;
     send(msg::wallpaper_answer(g_tx, sizeof(g_tx), a.wp, a.ok, a.resend ? &from : nullptr),
@@ -766,7 +772,7 @@ void on_settings(const char* js, size_t len) {
     feed_fragment(g_settings_rx, Incoming::Settings, "settings", js, len);
 }
 void on_wallpaper(const uint8_t* data, size_t len) {
-    ++g_wallpaper_writes;
+    g_wallpaper_writes.fetch_add(1, std::memory_order_relaxed);
     feed_fragment(g_wallpaper_frag, Incoming::Wallpaper, "wallpaper",
                   reinterpret_cast<const char*>(data), len);
 }
@@ -824,6 +830,18 @@ void handle_serial() {
         case 'f': feed(Event::at(EventKind::ExecutionRejected, now_ms())); break;
         case 'u': feed(Event::at(EventKind::ExecutionUnknown, now_ms())); break;
         case 'x': feed(Event::at(EventKind::TransportFailure, now_ms())); break;
+        case 'M':  // is the external microphone alive and hearing?
+            mic::probe(5);
+            break;
+        case 'N':  // which physical header pin is which, found with a multimeter
+            mic::identify_pins();
+            break;
+        case 'J':  // is anything out there on the microphone's three pins at all?
+            mic::line_check();
+            break;
+        case 'L':  // with a jumper from IO21 to IO19: is the framing really running?
+            mic::loopback_check();
+            break;
         case 'b': note_battery(4); break;   // critical
         case 'B': note_battery(80); break;  // recovered
         // Gesture injection, bench only. These bypass the gesture detector, NOT the

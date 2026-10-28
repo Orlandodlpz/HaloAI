@@ -51,4 +51,19 @@ constexpr gpio_num_t kKnobPress = GPIO_NUM_5;  // wake, never a gesture
 // IO3 is deliberately avoided: it is a strapping pin and is on the same header.
 constexpr gpio_num_t kBtnSide = GPIO_NUM_15;
 
+// ---- The external I2S microphone on the same 2x10 header. ----
+//
+// The header breaks out IO3, IO9, IO15, IO17, IO19 and IO21. IO3 is a strapping
+// pin and anything holding it at reset stops the board booting, which presents
+// as a dead board rather than a wiring mistake. IO15 is the side button above.
+// That leaves these three, and IO9 spare.
+//
+// firmware/docs/external_mic.md had BCLK on IO15, which is the side button. The
+// clock is on IO21 instead; the doc is corrected.
+constexpr gpio_num_t kMicBclk = GPIO_NUM_21;   // SCK on an INMP441
+constexpr gpio_num_t kMicWs = GPIO_NUM_17;     // WS / LRCL
+constexpr gpio_num_t kMicData = GPIO_NUM_19;   // SD, the microphone's output
+// L/R goes to GND: it then speaks in the left slot, which is what the driver
+// reads. Floating is not a third option; it has to be tied.
+
 }  // namespace halo::board

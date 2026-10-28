@@ -32,10 +32,14 @@ needs three.
 
 | Signal | Pin | Note |
 | --- | --- | --- |
-| BCLK (SCK) | IO15 | |
+| BCLK (SCK) | IO21 | |
 | WS (LRCL) | IO17 | |
 | DOUT (SD) | IO19 | |
 | L/R | GND | left channel, which is what the driver should read |
+
+**Corrected 2026-10-27: BCLK was IO15 in the first version of this table, and IO15 is
+`kBtnSide`,** the breadboard side button the F0 gesture timings were measured on. Sharing
+it would have broken both. The clock is IO21; IO9 is the one header pin still free.
 
 **Do not use IO3.** It is an ESP32-S3 strapping pin and anything holding it at reset
 stops the board booting, which presents as a dead board rather than a wiring mistake.

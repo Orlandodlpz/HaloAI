@@ -20,7 +20,7 @@ if(HALO_BENCH_INJECT)
 endif()
 
 idf_component_register(
-    SRCS "main.cpp" "ble.cpp" "wallpaper_store.cpp" "display_${HALO_PANEL}.cpp"
+    SRCS "main.cpp" "ble.cpp" "wallpaper_store.cpp" "mic.cpp" "display_${HALO_PANEL}.cpp"
     INCLUDE_DIRS "."
     REQUIRES driver esp_timer core bt nvs_flash
     EMBED_FILES "test_clip.pcm")
