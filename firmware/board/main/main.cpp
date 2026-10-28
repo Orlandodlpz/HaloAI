@@ -61,6 +61,11 @@ msg::Link g_link;
 msg::Screen g_screen;
 msg::Settings g_settings;
 int8_t g_highlight = -1;    // candidate under the bar in CONFLICT-AMBIGUOUS
+// How long to wait for the phone's acknowledgment before drawing FINALIZE
+// AUDIO. Long enough to cover the 30 to 70 ms the ack actually takes, short
+// enough that a stalled link still reaches its screen quickly.
+constexpr uint32_t kFinalizeAckGraceMs = 150;
+
 uint8_t g_scroll = 0;       // first body line drawn
 uint8_t g_overflow = 0;     // body lines that did not fit, from layout_screen
 uint32_t g_boot = 0;        // random per power up: tells a reconnect from a restart
@@ -219,6 +224,8 @@ void draw_screen(State to, bool status_only, bool same_screen = false) {
 // else in the firmware sends an Events message about a state change, so the list
 // of what the phone can be told is exactly this function.
 void emit_events(const Transition& t, const Event& e);
+// Defined with the streamer below; feed() needs it before that.
+bool take_audio_completed();
 
 // Returns the transition, so a caller can tell an ignored event from an acted one.
 Transition feed(const Event& e) {
@@ -257,6 +264,27 @@ Transition feed(const Event& e) {
         const Transition answered =
             feed(Event::at(ready ? EventKind::PhoneReady : EventKind::PhoneAbsent, e.at_ms));
         if (answered.changed()) return t;  // the nested call drew where we landed
+    }
+
+    // The phone acknowledges the final marker 30 to 70 ms after it goes out, and
+    // the marker now goes out before anything is drawn. Drawing FINALIZE AUDIO
+    // costs 645 ms and is thrown away the moment that ack lands, so wait a
+    // moment for it and go straight to PROCESSING instead. Carlos measured the
+    // wasted draw on the badge: ack at +44 ms, the FINALIZE AUDIO draw running
+    // from there to +665 ms, and the state moving on the instant it finished.
+    //
+    // Bounded, and the screen is still drawn if the ack does not come: a stalled
+    // link must show FINALIZE AUDIO, because that is the screen that explains
+    // the wait.
+    if (t.changed() && t.to == State::FinalizeAudio) {
+        const uint32_t until = now_ms() + kFinalizeAckGraceMs;
+        while (now_ms() < until) {
+            if (take_audio_completed()) {
+                feed(Event::at(EventKind::AudioComplete, now_ms()));
+                return t;
+            }
+            vTaskDelay(pdMS_TO_TICKS(5));
+        }
     }
 
     // The ACTION decides, not whether the state changed.
@@ -566,6 +594,8 @@ private:
 };
 
 AudioTx g_audio;
+
+bool take_audio_completed() { return g_audio.take_completed(); }
 
 // Called on the microphone's task. One memcpy and a counter, nothing else.
 void capture_sink(const int16_t* samples, size_t count) { g_audio.write_captured(samples, count); }
@@ -1424,7 +1454,7 @@ extern "C" void app_main() {
         // The phone has acknowledged the final marker, so the segment really is
         // delivered and FINALIZE AUDIO is over. The radio task cannot say so
         // itself without touching the state machine, so it is said here.
-        if (g_audio.take_completed()) feed(Event::at(EventKind::AudioComplete, t));
+        if (take_audio_completed()) feed(Event::at(EventKind::AudioComplete, t));
         poll_battery(t);
         // Through feed(), not g_machine.tick(): the transition carries the
         // actions, and feed() is the only thing that applies them. Calling tick()
