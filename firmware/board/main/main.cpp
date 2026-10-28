@@ -150,7 +150,13 @@ void log_transition(const Transition& t, const Event& e) {
 // state, the phone's text wins: the backend owns the words, the device owns the
 // pixels. `status_only` is the partial refresh path, about 495 ms on this panel
 // against 4.3 s for a full clear and redraw.
-void draw_screen(State to, bool status_only) {
+// `same_screen` means this is a re-render of the screen already on the glass
+// rather than a new one: today that is scrolling, which moves the window over
+// the body without changing state. Those never spend a full refresh and never
+// count towards the next one. Rotating through a long draft on the badge
+// otherwise hits the every-tenth-screen ghost clear mid-scroll and freezes for
+// 7.7 s, which is a long time to stand there holding a knob.
+void draw_screen(State to, bool status_only, bool same_screen = false) {
     // Static, not on the stack: a DisplayList is close to a kilobyte and the
     // main task does not have that to spare. Single threaded, so sharing one
     // is safe, and it makes the memory cost visible at link time.
@@ -189,14 +195,14 @@ void draw_screen(State to, bool status_only) {
 
     g_overflow = layout_screen(board::display(), m, list);
     board::display().draw(list);
-    const Refresh intent = g_refresh.choose(to, status_only);
+    const Refresh intent = same_screen ? Refresh::Partial : g_refresh.choose(to, status_only);
     board::display().present(intent, [](void*, uint32_t at) {
         // The REVIEW confirm guard starts here, when the panel says the pixels
         // are there, never when the screen was queued.
         const Transition pt = g_machine.handle(Event::at(EventKind::ScreenPresented, at));
         log_transition(pt, Event::at(EventKind::ScreenPresented, at));
     }, nullptr);
-    g_refresh.note_presented(intent);
+    if (!same_screen) g_refresh.note_presented(intent);
 }
 
 // Turns one transition into the events the contract says the phone gets. Nothing
@@ -256,7 +262,7 @@ Transition feed(const Event& e) {
     // Same shape as the tick bug: the state machine said what to do and the
     // thing that applies its actions quietly dropped it on the floor.
     if (t.actions.has(Action::DrawScreen) || t.actions.has(Action::ShowWallpaper))
-        draw_screen(t.to, false);
+        draw_screen(t.to, false, !t.changed());
     return t;
 }
 
