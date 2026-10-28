@@ -32,6 +32,31 @@ HaloAI is a credit card sized e-paper badge that clips to your pants and pairs w
 - **NVIDIA Parakeet TDT 0.6B v3** (int8, through sherpa-onnx) does speech to text on the phone: 12.7% word error rate on our first clips, 0.19 to 0.32 seconds per command, private by design.
 - **Tavily** powers search then act ("when does the library close on Saturday? block a study session until then"), on the phone's real account and on the demo site.
 
+## The phone app
+
+The phone is the badge's ears and its link to the cloud. It is a Flutter app for Android, tested on a Samsung Galaxy Z Flip7, and it does four jobs:
+
+- **Hears the badge.** It receives the badge's audio over Bluetooth LE while the button is still held: compressed chunks with a checksum each, acknowledged as they arrive, with lost chunks asked for again. Across every hold on the real badge it never needed a resend, and the last chunk arrives about 0.1 s after the button is released.
+- **Transcribes on the phone.** **NVIDIA Parakeet TDT 0.6B v3** (int8, sherpa-onnx, 4 CPU threads) loads once when the app starts and stays in memory, so each command takes 0.1 to 0.6 s to transcribe. Transcription needs no network: it was first measured with the phone in airplane mode. **Only the text goes to the backend; the audio never leaves the phone.**
+- **Runs the conversation.** It sends the text to the backend, streams the answer back, and draws it on the badge. Each press on the badge becomes an approve, cancel or choice. Every retry reuses the same call ID, so a flaky connection can never send an email twice.
+- **Keeps working in a pocket.** A foreground service holds the Bluetooth link with the phone locked; a command still went through after 10 minutes of forced deep sleep (Android Doze). The phone only stays awake while a command is in flight.
+
+It also pairs with **your badge only**: it remembers the first badge it connects to and ignores every other one, and asks which is yours when several are nearby. Without this, a phone could pick up a teammate's badge and run their commands on your account.
+
+The app's tabs: **Home** (badge status, the screen as the badge sees it, and the full text of long drafts the small screen cuts), **Memory** (view, edit and delete what the assistant remembers), **Settings** (badge orientation, a wallpaper photo cropped or fitted and dithered to the 1 bit screen, and the Google account link) and **Debug** (the test bench).
+
+**Measured on the real badge** (October 28, Waveshare badge with its own microphone, live backend):
+
+| | Result |
+| --- | --- |
+| Release the button to the answer on the e-ink screen | **2.2 to 2.7 s on 7 of 7 commands** (5 s budget) |
+| Word errors on our five test sentences, badge microphone | 7.7% (phone's own microphone: 12.7%) |
+| Bluetooth audio | 0 resends on every hold, about 70 kbit/s |
+| Parakeet on the phone, per command | 0.1 to 0.6 s |
+| Sending a wallpaper photo to the badge (48,000 bytes) | about 7 s, checked end to end |
+
+Setup, the model download and every test: [`phone/README.md`](phone/README.md). Phase by phase results: [`docs/BRIEFING.md`](docs/BRIEFING.md) section 3.2.
+
 ## Safety and privacy
 
 The model only proposes; code decides everything that must be exact, and nothing irreversible happens without a press on the badge.
