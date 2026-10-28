@@ -44,14 +44,15 @@
       </div>
 
       <div class="controls" aria-label="Badge buttons">
-        <button id="btn-press" class="ctl primary" title="Single press: approve or select">Press</button>
-        <button id="btn-double" class="ctl" title="Double press: cancel or dismiss">Double press</button>
-        <button id="btn-hold" class="ctl" title="Hold: add to this request">Hold to add</button>
+        <button id="btn-press" class="ctl primary" title="Single press: approve or select">Press<span class="ctl-sub">approve or choose</span></button>
+        <button id="btn-double" class="ctl" title="Double press: cancel or dismiss">Double press<span class="ctl-sub">cancel</span></button>
+        <button id="btn-hold" class="ctl" title="Hold: speak, or add to this request">Hold<span class="ctl-sub">speak or add more</span></button>
         <div class="rotary" aria-label="Rotary knob">
           <button id="btn-up" class="ctl small" title="Rotate up" aria-label="Rotate up">&#9650;</button>
           <button id="btn-down" class="ctl small" title="Rotate down" aria-label="Rotate down">&#9660;</button>
         </div>
       </div>
+      <p class="hint muted">On the badge, Press, Double press and Hold are one side button used three ways. The knob (&#9650; &#9660;) chooses and scrolls.</p>
 
       <form id="command" class="command" autocomplete="off">
         <label for="command-input" id="command-label">Say it (type it here)</label>

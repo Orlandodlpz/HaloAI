@@ -16,6 +16,7 @@ void main() {
     await tester.tap(find.text('Settings'));
     await tester.pumpAndSettle();
     expect(find.text('Landscape'), findsOneWidget);
-    expect(find.textContaining("can't receive a wallpaper yet"), findsOneWidget);
+    expect(find.text('Pick a photo'), findsOneWidget);
+    expect(find.text('Send to badge'), findsOneWidget);
   });
 }

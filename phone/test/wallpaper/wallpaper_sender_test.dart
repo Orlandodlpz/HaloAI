@@ -36,7 +36,7 @@ void main() {
 
   test('every byte goes once, in order, each write fits the MTU, and the last carries the CRC', () async {
     device([{'ok': true}]);
-    await WallpaperSender(t, events.stream).send(bits, 800, 480);
+    await WallpaperSender(t, events.stream, pace: Duration.zero).send(bits, 800, 480);
     expect(t.wallpaper.every((f) => f.length <= t.maxWrite), isTrue);
     final msgs = messages();
     expect(t.wallpaper.length, msgs.length, reason: 'one write per chunk');
@@ -56,7 +56,7 @@ void main() {
 
   test('resend_from resends from that chunk to the end', () async {
     device([{'ok': false, 'resend_from': 30000}, {'ok': true}]);
-    await WallpaperSender(t, events.stream).send(bits, 800, 480);
+    await WallpaperSender(t, events.stream, pace: Duration.zero).send(bits, 800, 480);
     final msgs = messages();
     final per = WallpaperSender.bytesPerWrite(t.maxWrite);
     final firstPass = (48000 + per - 1) ~/ per;
@@ -78,17 +78,27 @@ void main() {
       }
     });
     // 341 writes of 1 ms each take far longer than the 50 ms answer timeout.
-    await WallpaperSender(slow, events.stream, answerTimeout: const Duration(milliseconds: 50)).send(bits, 800, 480);
+    await WallpaperSender(slow, events.stream, pace: Duration.zero, answerTimeout: const Duration(milliseconds: 50)).send(bits, 800, 480);
   });
 
   test('no answer is an error, not a silent success', () async {
     await expectLater(
-        WallpaperSender(t, events.stream, answerTimeout: const Duration(milliseconds: 50)).send(bits, 800, 480),
+        WallpaperSender(t, events.stream, pace: Duration.zero, answerTimeout: const Duration(milliseconds: 50)).send(bits, 800, 480),
         throwsA(isA<TimeoutException>()));
   });
 
+  test('pacing waits between writes, 10 ms by default', () async {
+    final slept = <Duration>[];
+    device([{'ok': true}]);
+    final sender = WallpaperSender(t, events.stream, sleep: (d) async => slept.add(d));
+    await sender.send(bits, 800, 480);
+    expect(sender.pace, const Duration(milliseconds: 10));
+    expect(slept.length, t.wallpaper.length);
+    expect(sender.attempts, 1);
+  });
+
   test('a wrong size is refused before anything is sent', () async {
-    await expectLater(WallpaperSender(t, events.stream).send(Uint8List(100), 800, 480), throwsArgumentError);
+    await expectLater(WallpaperSender(t, events.stream, pace: Duration.zero).send(Uint8List(100), 800, 480), throwsArgumentError);
     expect(t.wallpaper, isEmpty);
   });
 }
