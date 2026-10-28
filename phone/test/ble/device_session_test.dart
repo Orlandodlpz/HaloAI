@@ -75,6 +75,8 @@ void main() {
     expect(tr.releaseToCompleteMs, 30);
     expect(t.acks.last['final'], isTrue);
     expect(tr.logLine, startsWith('BLERESULT req=3 seg=0'));
+    // The audio rides along so the app can save it (P1).
+    expect(tr.pcm.length, 3200);
   });
 
   test('an addition keeps the request UUID, gets a new segment UUID', () async {

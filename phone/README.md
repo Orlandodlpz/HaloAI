@@ -88,6 +88,8 @@ adb pull /sdcard/Android/data/com.haloai.haloai_phone/files/recordings ./recordi
 cat recordings/log.tsv   # file, audio s, decode ms, release to text ms, text
 ```
 
+Audio from the device is saved there too (P1), as `dev_<time>_r<req>s<seg>v<rev>.wav`, exactly as decoded from the device's chunks and before Parakeet, with the same log.tsv columns; `rec_` files are the phone mic. Listen to a `dev_` file when a device transcript is wrong: bad audio is the microphone, clear audio is Parakeet.
+
 `recordings/` is gitignored. Add a good clip to `assets/clips/` and its spoken text to `test/clips_reference.txt` to make it part of the benchmark.
 
 ## Setup (macOS)
