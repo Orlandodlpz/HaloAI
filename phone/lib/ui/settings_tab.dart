@@ -65,6 +65,24 @@ class _SettingsTabState extends State<SettingsTab> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) unawaited(_refreshGoogle());
   }
 
+  // ------------------------------------------------------------ own badge
+
+  Future<void> _forgetBadge() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Forget this badge?'),
+        content: Text('The app disconnects from ${_rt.badgeId}. The next time you tap Connect, it takes the only '
+            'badge nearby, or asks which one is yours if there are several.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Keep')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Forget')),
+        ],
+      ),
+    );
+    if (ok == true) await _rt.forgetBadge();
+  }
+
   // ------------------------------------------------------------ wallpaper
 
   Future<void> _pick() async {
@@ -201,6 +219,18 @@ class _SettingsTabState extends State<SettingsTab> with WidgetsBindingObserver {
     final t = Theme.of(context).textTheme;
     final small = t.bodySmall;
     return ListView(padding: const EdgeInsets.all(16), children: [
+      Text('Your badge', style: t.titleSmall),
+      const SizedBox(height: 8),
+      Row(children: [
+        Expanded(
+          child: Text(_rt.badgeId == null
+              ? 'None remembered. The next badge you connect to becomes yours; if several are nearby, you pick.'
+              : '${_rt.badgeId}. The app only connects to this badge and ignores every other HaloAI badge.'),
+        ),
+        if (_rt.badgeId != null)
+          TextButton(onPressed: _forgetBadge, child: const Text('Forget')),
+      ]),
+      const Divider(height: 32),
       Text('Badge orientation', style: t.titleSmall),
       const SizedBox(height: 8),
       SegmentedButton<String>(

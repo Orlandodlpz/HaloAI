@@ -110,6 +110,24 @@ void main() {
     expect(File('${dir.path}/settings.json').readAsStringSync(), contains('"wallpaper_on_badge_for":"portrait"'));
   });
 
+  test('the first badge is remembered and saved; Forget clears it and disconnects (2026-10-28)', () async {
+    final file = File('${Directory.systemTemp.createTempSync('halo').path}/settings.json');
+    final transport = StopCountingTransport();
+    final rt = HaloRuntime(service: FakeService(), transport: () => transport)..settingsFile = (() async => file);
+    await rt.rememberBadge('E8:3D:C1:F6:FF:4E');
+    await rt.rememberBadge('14:C1:9F:29:CF:36'); // a later badge never replaces it
+    expect(rt.badgeId, 'E8:3D:C1:F6:FF:4E');
+    expect(file.readAsStringSync(), contains('"badge_id":"E8:3D:C1:F6:FF:4E"'));
+
+    await rt.connect();
+    await pumpEventQueue();
+    await rt.forgetBadge();
+    expect(rt.badgeId, isNull);
+    expect(file.readAsStringSync(), contains('"badge_id":null'));
+    expect(transport.stops, 1);
+    expect(rt.device, isNull);
+  });
+
   testWidgets('closing the page does not stop the session', (tester) async {
     final transport = StopCountingTransport();
     final rt = HaloRuntime(service: FakeService(), transport: () => transport);

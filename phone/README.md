@@ -25,6 +25,8 @@ adb logcat -d | grep -E 'BLERESULT|BLELOG'
 adb logcat -d | grep LOOPRESULT
 ```
 
+**Your badge only.** Every badge advertises the same HaloAI service, so the app remembers the badge it first connects to (its Bluetooth address, saved in `settings.json` as `badge_id`) and ignores every other one; with none remembered and several in range, Home asks which is yours, strongest signal first. Settings, Your badge, Forget clears it. The rules are in `lib/ble/badge_choice.dart`; the log shows `this phone's badge is now ...` and, when only another badge is around, `your badge ... not found (N other HaloAI device(s) ignored)`.
+
 Firmware check: `test/golden/adpcm_chunks.json` holds a test signal and the exact packets the phone expects; `tools/audio_reference/` is the Python reference that writes it.
 
 ```sh
