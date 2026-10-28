@@ -80,7 +80,7 @@ The fastest way to see everything working without hardware is the demo site, or 
 python3 pipeline/scripts/phone_sim.py all
 ```
 
-**Hardware:** Waveshare ESP32-S3 e-Paper 3.97 inch board (800 x 480 e-paper, microphone, battery management, rotary button), a side button, a vibration motor and a flat LiPo; firmware development also runs on an Elecrow CrowPanel ESP32 E-Paper 5.79 development board. Details and measurements: [`docs/BRIEFING.md`](docs/BRIEFING.md) section 3.3.
+**Hardware:** Waveshare ESP32-S3 e-Paper 3.97 inch board (800 x 480 e-paper, microphone, battery management, rotary knob, which is the only control: its click is the button and turning it scrolls), a vibration motor and a flat LiPo; firmware development also runs on an Elecrow CrowPanel ESP32 E-Paper 5.79 development board. Details and measurements: [`docs/BRIEFING.md`](docs/BRIEFING.md) section 3.3.
 
 ## Measured
 

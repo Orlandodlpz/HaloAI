@@ -1,7 +1,7 @@
 # CLAUDE.md: HaloAI
 
 Project context and conventions for the whole team. Read this first in every session, whatever part of the project you work on.
-**Last Updated:** 2026-10-27
+**Last Updated:** 2026-10-28
 
 ## Interaction Mode: Always On
 
@@ -11,7 +11,7 @@ Project context and conventions for the whole team. Read this first in every ses
 
 HaloAI (built by team COV: Carlos, Orlando, Victor) is a roughly credit card sized voice assistant that clips to your pants. The user holds a button, speaks a command such as "block 3 to 4 tomorrow for the gym" or "send an email to Victor saying the meeting moved to Thursday", reviews the result on a small e-ink screen, and confirms with a button press.
 
-How it works: the **device** (Waveshare ESP32-S3 e-paper board with microphone, a side button, the board's rotary button, a vibration motor, battery) sends audio over Bluetooth Low Energy to an **Android phone app**, which turns speech into text with NVIDIA Parakeet v3 on the phone and sends **text only** over HTTPS (Wi-Fi or cellular) to the **cloud backend**. The backend uses NVIDIA Nemotron 3 Ultra on Nebius Token Factory to turn the text into a calendar or email action, holds it as a draft until the user confirms on the device, then executes it.
+How it works: the **device** (Waveshare ESP32-S3 e-paper board with microphone, the board's rotary knob as the only control (its click is the button), a vibration motor, battery) sends audio over Bluetooth Low Energy to an **Android phone app**, which turns speech into text with NVIDIA Parakeet v3 on the phone and sends **text only** over HTTPS (Wi-Fi or cellular) to the **cloud backend**. The backend uses NVIDIA Nemotron 3 Ultra on Nebius Token Factory to turn the text into a calendar or email action, holds it as a draft until the user confirms on the device, then executes it.
 
 Entry: Nebius x NVIDIA Global AI Hackathon, **Personal AI track**. Submission deadline: **October 30, 2026, 10:00 AM PDT (12:00 PM in Edinburg, TX)**.
 
@@ -129,7 +129,7 @@ Entry: Nebius x NVIDIA Global AI Hackathon, **Personal AI track**. Submission de
 Decisions already made. Do not re-litigate unless new evidence is presented, and if re-opened, say so explicitly.
 
 **System wide**
-- **Device state machine: V1 (9 October 2026).** The full state and transition table is in BRIEFING.md section 2, "Device state machine". 21 states. Inputs: hold (record while held), release (finish the voice segment), single press (select or approve), double press (cancel or dismiss), rotate up/down (move the highlight or scroll). Single press, double press and hold come from the side button; the rotary switch rotates and wakes.
+- **Device state machine: V1 (9 October 2026).** The full state and transition table is in BRIEFING.md section 2, "Device state machine". 21 states. Inputs: hold (record while held), release (finish the voice segment), single press (select or approve), double press (cancel or dismiss), rotate up/down (move the highlight or scroll). Single press, double press and hold come from the click of the badge's rotary knob, which also rotates and wakes (decided 2026-10-28, team: no separate side button before the deadline; the events are unchanged, only the physical control).
 - Only a single press in REVIEW runs an action that changes anything. A double press cancels any pre-execution state; during EXECUTING it only stops waiting (EXECUTION UNCERTAIN), because the action may already have happened.
 - A hold in PROCESSING, PROCESSING SLOW, REVIEW or a conflict state records an addition to the same request (RECORD ADDITION) and raises its revision.
 - READY goes to WALLPAPER after more than 1 minute of inactivity; a press or rotation wakes it and that input is consumed. Active work never times out into WALLPAPER.

@@ -1,6 +1,6 @@
 # BRIEFING.md: HaloAI Execution Plan
 
-**Last Updated:** 2026-10-15
+**Last Updated:** 2026-10-28
 **Purpose:** The operational plan for the whole team: what we're building, how the pieces fit, and the phased sequence to get there with minimal rework.
 
 > Relationship to other docs: CLAUDE.md tracks decisions, constraints and state. This document is the **execution plan**. Each person edits only their own phase section (Backend, Phone or Device); shared sections change only after the team agrees.
@@ -230,7 +230,7 @@ On the development board the same screen shows 48 characters by 5 lines, which i
 
 **Device state machine** (V1, 9 October 2026, plus team additions)
 
-Inputs: hold (record while held), release (finish the voice segment), single press (select or approve), double press (cancel or dismiss), rotate up/down (move the highlight or scroll). Single press, double press and hold come from the side button; the rotary switch rotates and wakes. Only two numbers come from the spec: WALLPAPER after more than 1 minute of inactivity in READY, and CRITICAL BATTERY, which the spec put at 5% or less and the team raised to 10% or less on 2026-10-14 (the badge's power chip shuts down hard at 5%).
+Inputs: hold (record while held), release (finish the voice segment), single press (select or approve), double press (cancel or dismiss), rotate up/down (move the highlight or scroll). Single press, double press and hold come from the click of the badge's rotary knob, which also rotates and wakes (decided 2026-10-28, team: no separate side button before the deadline; the events are unchanged, only the physical control). Only two numbers come from the spec: WALLPAPER after more than 1 minute of inactivity in READY, and CRITICAL BATTERY, which the spec put at 5% or less and the team raised to 10% or less on 2026-10-14 (the badge's power chip shuts down hard at 5%).
 
 Request lifecycle, main path:
 1. READY, hold: PHONE / BLUETOOTH CHECK, then RECORDING (needs Bluetooth and a ready phone service, otherwise PHONE DISCONNECTED).
