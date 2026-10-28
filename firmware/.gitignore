@@ -29,3 +29,6 @@ tools/.venv/
 
 # Recordings from the bench tools. Evidence, not source.
 tools/received_*.wav
+
+# Bench builds, same reason as the two above.
+board/build.*.bench/

@@ -31,19 +31,22 @@ int32_t g_block[kBlockFrames];
 
 bool start_on(i2s_std_slot_mask_t slot, uint32_t rate = kSampleRate) {
 #if defined(HALO_PANEL_WAVESHARE)
-    // The badge's microphone is behind an ES8311 codec on the shared I2C bus,
-    // not a bare I2S microphone like the development board's INMP441. The codec
-    // has to be configured over I2C before it clocks out a single sample, and
-    // none of that is written yet. Refusing loudly beats bringing I2S up on the
-    // codec's pins and recording silence that looks like a dead microphone.
+    // The badge has a microphone on it, labelled MIC on the back. What it does
+    // not have is one this driver can talk to: it is behind an ES8311 codec on
+    // the shared I2C bus, not a bare I2S microphone like the development
+    // board's INMP441, and the codec clocks out nothing at all until it has
+    // been configured over I2C. None of that is written yet. Refusing loudly
+    // beats bringing I2S up on the codec's pins and recording silence, which
+    // looks like a dead microphone and is not one.
     //
     // Porting this is the badge half of F2: the pin map is already in
     // board_pins.hpp (MCLK 13, BCLK 14, WS 47, DIN 21, codec at I2C 0x18) and
     // everything above this file, the capture task, the ring buffer and the
     // conditioning, carries over unchanged.
     (void)slot; (void)rate;
-    ESP_LOGE(kTag, "no microphone on this board yet: the badge needs the ES8311 "
-                   "codec brought up over I2C first (F2, badge half)");
+    ESP_LOGE(kTag, "the badge HAS a microphone, but this driver cannot drive it: "
+                   "it is behind the ES8311 codec, which emits nothing until it is "
+                   "configured over I2C (F2, badge half). Not a hardware fault.");
     return false;
 #else
     if (g_rx != nullptr && slot == g_slot && rate == g_rate) return true;

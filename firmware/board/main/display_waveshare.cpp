@@ -62,11 +62,24 @@ constexpr size_t kFbBytes = kStride * kHeight;  // 48000
 
 // 1 = white, 0 = black, so a cleared screen is all ones.
 uint8_t* g_fb = nullptr;
-// What is on the glass now. Only ever read, and only to work out which region
-// changed: unlike the development board's controller, this one keeps its own
-// previous image once a baseline has been laid down, so g_fb_prev never goes
-// over the wire.
+// What is on the glass now. Two jobs: working out which region changed, and
+// being sent to the controller's previous image RAM (0x26) on every partial.
+//
+// It was briefly assumed this panel kept 0x26 in sync by itself once a baseline
+// had been laid down, so that only 0x24 needed writing. IT DOES NOT, and the
+// symptom is unmistakable once seen: sharp leftover glyphs from an earlier
+// screen, every time, wherever the old screen had ink that neither the baseline
+// nor the new screen has. 0xFF is a differential waveform and drives a pixel
+// only where 0x24 and 0x26 disagree, so a stale 0x26 means the controller
+// believes those pixels are already correct and never drives them white.
+// Caught by eye on the badge 2026-10-27, which no log could have shown.
+//
+// This is the same trap the development board's driver documents at length. The
+// two panels differ in almost everything else; they do not differ in this.
 uint8_t* g_fb_prev = nullptr;
+// One row, in internal memory, so the previous image can be streamed out of
+// g_fb_prev (which may live in PSRAM) without handing a PSRAM pointer to SPI DMA.
+uint8_t g_row[kStride];
 
 spi_device_handle_t g_spi = nullptr;
 i2c_master_bus_handle_t g_i2c = nullptr;
@@ -77,6 +90,19 @@ bool g_ready = false;
 // to be a difference from, so the first screen after boot or after sleep is
 // always a full one.
 bool g_baseline_done = false;
+// Full screen updates since the last deep clean. Residue builds up over a run of
+// them and a full refresh on its own stops being able to cover it, so the clean
+// is spent every so often rather than only at boot. Eight is inside the vendor's
+// "every 5 to 10" guidance for this panel.
+int g_since_clean = 0;
+// A safety net, not the schedule. The cadence that matters comes from the
+// refresh policy above the display boundary, which asks for a Full on WALLPAPER,
+// on BOOT / RECOVERY and every tenth screen, and a Full is a cleaned draw here.
+// Counting presents rather than user visible screens is why 8 was far too eager:
+// one command is five or six presents (phone check, recording, finalising,
+// processing, the result), so it cleaned roughly every other command and turned
+// a 2.6 s screen into a 7.7 s one for no reason.
+constexpr int kCleanEvery = 40;
 
 // ---------------------------------------------------------------- the PMU
 //
@@ -284,6 +310,30 @@ void update(uint8_t mode) {
     wait_busy();
 }
 
+// REGION PARTIAL REFRESH DOES NOT WORK ON THIS PANEL, and 0 disables it.
+//
+// Established on the badge 2026-10-27, by eye, because every one of these
+// reported a perfectly ordinary 620 to 670 ms refresh:
+//
+//   - A large region leaves the previous screen readable underneath the new
+//     one. RECORDING, FINALIZE AUDIO and REVIEW were all legible at once.
+//   - A small region changes NOTHING visible at all. A status bar update that
+//     should have replaced "Ready to confirm" left it exactly where it was.
+//
+// A refresh that reports a time and moves no pixels is the same signature the
+// development board's driver documents: an update with no waveform LUT loaded
+// runs to completion and does nothing. The vendor's partial sequence resets the
+// controller and never reloads the LUT out of OTP afterwards, which is the
+// first thing to try if this is picked up again (the full path gets its LUT
+// from the temperature read inside panel_init()).
+//
+// Until then every screen is a full screen update, which has been correct and
+// clean all along. It costs 2574 ms against the 1.5 s slot in the latency
+// budget, and that is a deliberate trade: a screen with two older screens
+// showing through it is worse than a slow one. The fast waveform is a full
+// screen update too, at 2167 ms, and is the obvious next thing to try.
+constexpr int kPartialMaxArea = 0;
+
 constexpr uint8_t kUpdateFull = 0xF7;
 constexpr uint8_t kUpdateFast = 0xD7;
 constexpr uint8_t kUpdatePartial = 0xFF;
@@ -319,6 +369,21 @@ void push_region(int byte_x0, int byte_x1, int y0, int y1) {
     cmd(0x18); dat(0x80);
     cmd(0x3C); dat(0x80);              // border waveform for a partial update
 
+    // THE DATA ENTRY MODE MUST BE SET AGAIN HERE. The hardware reset above puts
+    // 0x11 back to its power on default, which counts Y UPWARDS, while the full
+    // refresh path sets it to 0x01, which counts Y DOWNWARDS. The vendor's
+    // partial never sets it, so a region handed over as rows 4 to 24 was drawn
+    // 4 to 24 rows from the BOTTOM of the glass instead of the top: vertically
+    // mirrored, and silently, because the driver's own log reported the region
+    // it intended rather than the region the panel used.
+    //
+    // Caught by eye on the badge 2026-10-27: a status bar update that should
+    // have replaced "Ready to confirm" at the top appeared along the bottom edge
+    // with the old status bar untouched. A mirrored region also looks exactly
+    // like leftover ink from an older screen, so this was part of what made the
+    // panel appear to stack screens on top of each other.
+    cmd(0x11); dat(0x01);
+
     cmd(0x44); dat(x_start & 0xFF); dat((x_start >> 8) & 0xFF);
                dat(x_end & 0xFF); dat((x_end >> 8) & 0xFF);
     cmd(0x45); dat((y1 - 1) & 0xFF); dat(((y1 - 1) >> 8) & 0xFF);
@@ -326,9 +391,23 @@ void push_region(int byte_x0, int byte_x1, int y0, int y1) {
     cmd(0x4E); dat(x_start & 0xFF); dat((x_start >> 8) & 0xFF);
     cmd(0x4F); dat(y0 & 0xFF); dat((y0 >> 8) & 0xFF);
 
+    const size_t run = static_cast<size_t>(byte_x1 - byte_x0);
+
+    // The new image.
     cmd(0x24);
-    for (int y = y0; y < y1; ++y)
-        dat_block(g_fb + y * kStride + byte_x0, static_cast<size_t>(byte_x1 - byte_x0));
+    for (int y = y0; y < y1; ++y) dat_block(g_fb + y * kStride + byte_x0, run);
+
+    // What is actually on the glass right now, into the previous image RAM. The
+    // address counter has to be put back first: the write above left it wherever
+    // it finished. Without this the waveform is computed against a stale image
+    // and the previous screen's ink survives the refresh.
+    cmd(0x4E); dat(x_start & 0xFF); dat((x_start >> 8) & 0xFF);
+    cmd(0x4F); dat(y0 & 0xFF); dat((y0 >> 8) & 0xFF);
+    cmd(0x26);
+    for (int y = y0; y < y1; ++y) {
+        memcpy(g_row, g_fb_prev + y * kStride + byte_x0, run);
+        dat_block(g_row, run);
+    }
 
     update(kUpdatePartial);
     memcpy(g_fb_prev, g_fb, kFbBytes);
@@ -366,22 +445,41 @@ void deep_sleep() {
     vTaskDelay(pdMS_TO_TICKS(10));
 }
 
+// Stream a constant into one of the RAMs without touching the framebuffer. The
+// clear used to memset g_fb, which was fine when it only ran at boot and is not
+// fine now that it runs between a draw and its present: it would wipe the screen
+// that had just been rasterised and push a blank panel instead.
+void fill_ram(uint8_t reg, uint8_t value) {
+    static uint8_t block[256];
+    memset(block, value, sizeof(block));
+    cmd(reg);
+    size_t left = kFbBytes;
+    while (left > 0) {
+        const size_t take = left < sizeof(block) ? left : sizeof(block);
+        dat_block(block, take);
+        left -= take;
+    }
+}
+
 // Drive every pixel hard between the two extremes a few times, to flush the
 // residue a run of refreshes leaves behind. Always finishes white.
+//
+// It is needed. Confirmed on the badge 2026-10-27: after a long session of
+// screens, a full refresh alone could no longer render cleanly over what was
+// already on the glass, and older screens stayed readable underneath. One deep
+// clean fixed it and the next screen was perfect. So this runs periodically,
+// not only at boot.
 void clear_panel(int cycles) {
     if (cycles < 1) cycles = 1;
     if (cycles % 2) ++cycles;
     for (int i = 0; i < cycles; ++i) {
         panel_init();
         const uint8_t now = (i % 2) ? 0xFF : 0x00;  // black first, ending white
-        memset(g_fb, now, kFbBytes);
-        cmd(0x24);
-        dat_block(g_fb, kFbBytes);
-        cmd(0x26);
-        dat_block(g_fb, kFbBytes);
+        fill_ram(0x24, now);
+        fill_ram(0x26, now);
         update(kUpdateFull);
     }
-    memset(g_fb, 0xFF, kFbBytes);
+    // The glass is white now; the framebuffer is left exactly as it was.
     memset(g_fb_prev, 0xFF, kFbBytes);
     g_baseline_done = true;
 }
@@ -592,16 +690,37 @@ public:
         // A partial is a difference from a baseline the controller holds. After
         // boot, after a panel sleep, or after a full clear there is no baseline,
         // so the intent is quietly promoted rather than drawing nothing.
-        const bool can_partial = g_baseline_done && intent == Refresh::Partial;
+        bool can_partial = g_baseline_done && intent == Refresh::Partial;
+        int bx0 = 0, bx1 = 0, y0 = 0, y1 = 0;
 
         if (can_partial) {
-            int bx0 = 0, bx1 = 0, y0 = 0, y1 = 0;
             if (!dirty_region(&bx0, &bx1, &y0, &y1)) {
                 ESP_LOGI(kTag, "present skipped: nothing changed");
                 if (on_presented)
                     on_presented(ctx, static_cast<uint32_t>(esp_timer_get_time() / 1000));
                 return;
             }
+            // A region partial drives only the pixels inside its region, and this
+            // panel's partial waveform does not fully erase what was there: the
+            // residue is faint after one screen and plainly readable after three.
+            // Photographed on the badge 2026-10-27 with RECORDING, FINALIZE AUDIO
+            // and REVIEW all legible on the glass at once.
+            //
+            // That is what a region partial IS: it is built for a clock digit
+            // changing, not for replacing an entire screen. So it is used only
+            // when the change really is small, and anything bigger is promoted to
+            // a full screen update, which drives every pixel and cannot leave an
+            // older screen showing through.
+            const int area = (bx1 - bx0) * 8 * (y1 - y0);
+            if (area > kPartialMaxArea) {
+                ESP_LOGI(kTag, "%d x %d changed: drawing the whole screen, because a "
+                               "region partial does not move pixels on this panel",
+                         (bx1 - bx0) * 8, y1 - y0);
+                can_partial = false;
+            }
+        }
+
+        if (can_partial) {
             push_region(bx0, bx1, y0, y1);
             ESP_LOGI(kTag, "present partial: %d x %d region at (%d,%d), %lld ms",
                      (bx1 - bx0) * 8, y1 - y0, bx0 * 8, y0,
@@ -611,7 +730,16 @@ public:
             return;
         }
 
-        if (intent == Refresh::Fast && g_baseline_done) {
+        // A deep clean first when one is due, or when the caller asked for a
+        // Full on purpose (WALLPAPER and BOOT / RECOVERY, where nobody is
+        // waiting on a confirm and the time is free).
+        const bool want_clean = intent == Refresh::Full || g_since_clean >= kCleanEvery;
+        if (want_clean) {
+            clear_panel(2);
+            g_since_clean = 0;
+        }
+
+        if (intent == Refresh::Fast && g_baseline_done && !want_clean) {
             panel_init_fast();
             push_whole_screen(true, kUpdateFast);
             what = "fast";
@@ -620,8 +748,9 @@ public:
             // ghosting: a fast refresh does not, whatever its name suggests.
             panel_init();
             push_whole_screen(true, kUpdateFull);
-            what = g_baseline_done ? "full" : "full (first, no baseline yet)";
+            what = want_clean ? "full (cleaned first)" : "full";
         }
+        ++g_since_clean;
 
         ESP_LOGI(kTag, "present %s: %lld ms", what, (esp_timer_get_time() - t0) / 1000);
         if (on_presented)
