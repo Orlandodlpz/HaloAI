@@ -335,8 +335,6 @@ void update(uint8_t mode) {
 // Ghosting still accumulates over a run of partials. The refresh policy above
 // the display boundary spends a Full every tenth screen, and a Full here is a
 // cleaned draw, which is what keeps the glass honest.
-constexpr int kPartialMaxArea = kWidth * kHeight;
-
 constexpr uint8_t kUpdateFull = 0xF7;
 constexpr uint8_t kUpdateFast = 0xD7;
 constexpr uint8_t kUpdatePartial = 0xFF;
@@ -418,30 +416,17 @@ void push_region(int byte_x0, int byte_x1, int y0, int y1) {
     memcpy(g_fb_prev, g_fb, kFbBytes);
 }
 
-// Which bytes changed since what is on the glass, as a byte aligned box.
-// Returns false when nothing changed at all, which is worth skipping: a refresh
-// that moves no pixels still takes hundreds of milliseconds and still ages the
-// panel.
-bool dirty_region(int* byte_x0, int* byte_x1, int* y0, int* y1) {
-    int bx0 = kStride, bx1 = 0, ry0 = kHeight, ry1 = 0;
-    for (int y = 0; y < kHeight; ++y) {
-        const uint8_t* a = g_fb + y * kStride;
-        const uint8_t* b = g_fb_prev + y * kStride;
-        if (memcmp(a, b, kStride) == 0) continue;
-        if (y < ry0) ry0 = y;
-        if (y + 1 > ry1) ry1 = y + 1;
-        for (int x = 0; x < kStride; ++x) {
-            if (a[x] == b[x]) continue;
-            if (x < bx0) bx0 = x;
-            if (x + 1 > bx1) bx1 = x + 1;
-        }
-    }
-    if (ry1 == 0) return false;
-    *byte_x0 = bx0;
-    *byte_x1 = bx1;
-    *y0 = ry0;
-    *y1 = ry1;
-    return true;
+// Has anything changed since what is on the glass? That is the only question
+// asked of the framebuffer now.
+//
+// This used to return a bounding box of the changed bytes, so a partial could be
+// clipped to it. It cannot: this panel places a sub-region wrong in both axes
+// (see push_region), and clipping would save about 20 ms out of 655 because the
+// refresh time is in the waveform rather than the bytes. So the box went and the
+// boolean stayed. Worth skipping, though: a refresh that moves no pixels still
+// takes two thirds of a second and still ages the panel.
+bool anything_changed() {
+    return memcmp(g_fb, g_fb_prev, kFbBytes) != 0;
 }
 
 void deep_sleep() {
@@ -780,7 +765,7 @@ void partial_probe_old() {
     for (const PartialVariant& v : kVariants) {
         const int y0 = y, y1 = y + 80;
         // Only the band changes; everything else stays as OLD, which is what a
-        // real screen change looks like to dirty_region.
+        // real screen change looks like.
         for (int yy = y0; yy < y1; ++yy)
             memset(g_fb + yy * kStride, 0xFF, kStride);
         char line[49];
@@ -922,68 +907,25 @@ public:
     void present(Refresh intent, PresentedFn on_presented, void* ctx) override {
         if (!g_ready) return;
         const int64_t t0 = esp_timer_get_time();
-        const char* what = "partial";
 
         // A partial is a difference from a baseline the controller holds. After
         // boot, after a panel sleep, or after a full clear there is no baseline,
-        // so the intent is quietly promoted rather than drawing nothing.
-        bool can_partial = g_baseline_done && intent == Refresh::Partial;
-        int bx0 = 0, bx1 = 0, y0 = 0, y1 = 0;
+        // so the intent is quietly promoted to a full refresh rather than
+        // drawing nothing.
+        const bool can_partial = g_baseline_done && intent == Refresh::Partial;
 
-        if (can_partial) {
-            if (!dirty_region(&bx0, &bx1, &y0, &y1)) {
-                ESP_LOGI(kTag, "present skipped: nothing changed");
-                if (on_presented)
-                    on_presented(ctx, static_cast<uint32_t>(esp_timer_get_time() / 1000));
-                return;
-            }
-            // A region partial drives only the pixels inside its region, and this
-            // panel's partial waveform does not fully erase what was there: the
-            // residue is faint after one screen and plainly readable after three.
-            // Photographed on the badge 2026-10-27 with RECORDING, FINALIZE AUDIO
-            // and REVIEW all legible on the glass at once.
-            //
-            // That is what a region partial IS: it is built for a clock digit
-            // changing, not for replacing an entire screen. So it is used only
-            // when the change really is small, and anything bigger is promoted to
-            // a full screen update, which drives every pixel and cannot leave an
-            // older screen showing through.
-            // ALWAYS THE WHOLE SCREEN.
-            //
-            // Not a region at all, in the end: a partial over the entire panel.
-            //
-            // The refresh time here is set by the waveform, not by how many
-            // bytes are sent. Measured on the badge: a 768 x 16 strip took
-            // 620 ms and a 768 x 366 block 643 ms, so clipping the region buys
-            // about 20 ms and costs every geometry bug this panel has. And it
-            // has them. A window narrower than the panel comes out shifted
-            // sideways (a REVIEW screen lost about 21 characters off the left
-            // of every line while the tail sat in the right place), and a
-            // window shorter than the panel leaves the rows outside it holding
-            // whatever was there before (the old status bar stayed legible
-            // above a region that started at row 4). Both were photographed on
-            // the glass 2026-10-27.
-            //
-            // So the dirty region is used for ONE decision only, taken above:
-            // whether anything changed at all. If something did, the whole
-            // screen is redrawn with the partial waveform, which is still four
-            // times faster than a full refresh and leaves nothing behind.
-            bx0 = 0;
-            bx1 = kStride;
-            y0 = 0;
-            y1 = kHeight;
-
-            const int area = (bx1 - bx0) * 8 * (y1 - y0);
-            if (area > kPartialMaxArea) {
-                ESP_LOGI(kTag, "too much changed for a partial: full refresh");
-                can_partial = false;
-            }
+        if (can_partial && !anything_changed()) {
+            ESP_LOGI(kTag, "present skipped: nothing changed");
+            if (on_presented)
+                on_presented(ctx, static_cast<uint32_t>(esp_timer_get_time() / 1000));
+            return;
         }
 
         if (can_partial) {
-            push_region(bx0, bx1, y0, y1);
-            ESP_LOGI(kTag, "present partial: %d x %d region at (%d,%d), %lld ms",
-                     (bx1 - bx0) * 8, y1 - y0, bx0 * 8, y0,
+            // The whole panel, every time. The dirty region decided one thing
+            // and that decision is already made above.
+            push_region(0, kStride, 0, kHeight);
+            ESP_LOGI(kTag, "present partial: %d x %d, %lld ms", kWidth, kHeight,
                      (esp_timer_get_time() - t0) / 1000);
             if (on_presented)
                 on_presented(ctx, static_cast<uint32_t>(esp_timer_get_time() / 1000));
@@ -999,6 +941,7 @@ public:
             g_since_clean = 0;
         }
 
+        const char* what;
         if (intent == Refresh::Fast && g_baseline_done && !want_clean) {
             panel_init_fast();
             push_whole_screen(true, kUpdateFast);
