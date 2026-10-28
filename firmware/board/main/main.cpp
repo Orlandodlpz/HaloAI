@@ -218,6 +218,12 @@ void draw_screen(State to, bool status_only, bool same_screen = false) {
         log_transition(pt, Event::at(EventKind::ScreenPresented, at));
     }, nullptr);
     if (!same_screen) g_refresh.note_presented(intent);
+
+    // The wallpaper is the one screen that sits there for hours, and e-paper
+    // needs no power at all to keep showing it. Dropping the panel's rail here
+    // is the whole reason for choosing e-ink. Anything that draws next brings
+    // it back by itself.
+    if (to == State::Wallpaper) board::display().sleep();
 }
 
 // Turns one transition into the events the contract says the phone gets. Nothing
