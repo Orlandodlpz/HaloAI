@@ -1,0 +1,12 @@
+# Waveshare ESP32-S3 e-Paper 3.97: the badge. 16 MB flash, verified on the
+# board itself with esptool (device 4018, "Detected flash size: 16MB"), not
+# taken from the product page.
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions_waveshare.csv"
+
+# There is NO USB to serial bridge on this board: the ESP32-S3's own
+# USB-Serial/JTAG peripheral is the console, which is why it enumerates as
+# /dev/cu.usbmodem* and not /dev/cu.usbserial* like the development board.
+# Leaving the UART console selected here produces a board that boots, runs and
+# prints absolutely nothing, which looks like a dead board.
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y

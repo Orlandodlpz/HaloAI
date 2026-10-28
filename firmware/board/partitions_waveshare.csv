@@ -1,0 +1,14 @@
+# The badge: 16 MB of flash, twice the development board's.
+#
+# nvs holds the pending execution key that BOOT / RECOVERY reconciles, so it is
+# sized generously and kept away from anything we rewrite often.
+#
+# The app gets 4 MB rather than the development board's 3 MB. The vendor's own
+# integrated demo is 13.6 MB with Bluetooth NOT enabled, almost all of it
+# embedded CJK fonts, which we do not ship; ours needs room for BLE instead.
+# Name,    Type, SubType, Offset,   Size,     Flags
+nvs,       data, nvs,     0x9000,   0x6000,
+phy_init,  data, phy,     0xf000,   0x1000,
+factory,   app,  factory, 0x10000,  0x400000,
+wallpaper, data, spiffs,  0x410000, 0x200000,
+coredump,  data, coredump,0x610000, 0x10000,

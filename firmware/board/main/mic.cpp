@@ -30,6 +30,22 @@ int32_t g_block[kBlockFrames];
 }  // namespace
 
 bool start_on(i2s_std_slot_mask_t slot, uint32_t rate = kSampleRate) {
+#if defined(HALO_PANEL_WAVESHARE)
+    // The badge's microphone is behind an ES8311 codec on the shared I2C bus,
+    // not a bare I2S microphone like the development board's INMP441. The codec
+    // has to be configured over I2C before it clocks out a single sample, and
+    // none of that is written yet. Refusing loudly beats bringing I2S up on the
+    // codec's pins and recording silence that looks like a dead microphone.
+    //
+    // Porting this is the badge half of F2: the pin map is already in
+    // board_pins.hpp (MCLK 13, BCLK 14, WS 47, DIN 21, codec at I2C 0x18) and
+    // everything above this file, the capture task, the ring buffer and the
+    // conditioning, carries over unchanged.
+    (void)slot; (void)rate;
+    ESP_LOGE(kTag, "no microphone on this board yet: the badge needs the ES8311 "
+                   "codec brought up over I2C first (F2, badge half)");
+    return false;
+#else
     if (g_rx != nullptr && slot == g_slot && rate == g_rate) return true;
     stop();
     g_slot = slot;
@@ -77,6 +93,7 @@ bool start_on(i2s_std_slot_mask_t slot, uint32_t rate = kSampleRate) {
              g_slot == I2S_STD_SLOT_LEFT ? "left"
                                          : (g_slot == I2S_STD_SLOT_RIGHT ? "right" : "both"));
     return true;
+#endif
 }
 
 bool start() { return start_on(I2S_STD_SLOT_LEFT); }

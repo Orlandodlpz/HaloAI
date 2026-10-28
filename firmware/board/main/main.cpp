@@ -18,6 +18,9 @@
 #include "display_backends.hpp"
 #include "driver/gpio.h"
 #include "driver/uart.h"
+#if CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+#include "driver/usb_serial_jtag.h"
+#endif
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_random.h"
@@ -98,6 +101,10 @@ uint32_t now_ms() { return static_cast<uint32_t>(esp_timer_get_time() / 1000); }
 // does: without one the pin floats, reads as pressed at random, and the device
 // starts recording on its own. That is exactly what happened on first boot.
 void configure_input(gpio_num_t pin, bool internal_pullup) {
+    // The badge has no MENU and no EXIT button, so their pins are kBtnNone.
+    // Skipping them here and in pressed() keeps the input loop free of board
+    // conditionals: an absent button simply never reports a press.
+    if (pin == board::kBtnNone) return;
     gpio_config_t cfg = {};
     cfg.pin_bit_mask = 1ULL << pin;
     cfg.mode = GPIO_MODE_INPUT;
@@ -107,7 +114,10 @@ void configure_input(gpio_num_t pin, bool internal_pullup) {
     ESP_ERROR_CHECK(gpio_config(&cfg));
 }
 
-bool pressed(gpio_num_t pin) { return gpio_get_level(pin) == 0; }
+bool pressed(gpio_num_t pin) {
+    if (pin == board::kBtnNone) return false;
+    return gpio_get_level(pin) == 0;
+}
 
 void log_transition(const Transition& t, const Event& e) {
     if (!t.handled) {
@@ -941,13 +951,37 @@ void drain_inbox() {
 
 // Everything the phone will eventually send, injected by a keystroke so the whole
 // state machine can be walked on the bench with no radio.
+// The console is a different peripheral on each board, and it is read directly
+// rather than through getchar(): the default console VFS ignores O_NONBLOCK, so
+// getchar() blocks forever, the poll loop never reaches its vTaskDelay, and the
+// task watchdog kills the idle task. Found on real hardware; it cannot happen in
+// the host tests because there is no loop.
+//
+// The development board talks through a CH340 bridge on UART0. The badge has no
+// bridge at all: the ESP32-S3's own USB-Serial/JTAG peripheral is the console,
+// which is why it enumerates as /dev/cu.usbmodem* rather than
+// /dev/cu.usbserial*. Reading UART0 there returns nothing for ever, so every
+// bench key would be silently dead.
+#if CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+void console_init() {
+    usb_serial_jtag_driver_config_t cfg = USB_SERIAL_JTAG_DRIVER_CONFIG_DEFAULT();
+    ESP_ERROR_CHECK(usb_serial_jtag_driver_install(&cfg));
+}
+bool console_read(uint8_t* byte) { return usb_serial_jtag_read_bytes(byte, 1, 0) == 1; }
+#else
+void console_init() {
+    ESP_ERROR_CHECK(uart_driver_install(UART_NUM_0, 256, 0, 0, nullptr, 0));
+}
+bool console_read(uint8_t* byte) { return uart_read_bytes(UART_NUM_0, byte, 1, 0) == 1; }
+#endif
+
 // Read the console through the UART driver rather than getchar(). The default
 // console VFS ignores O_NONBLOCK, so getchar() blocks forever, the poll loop
 // never reaches its vTaskDelay, and the task watchdog kills the idle task. Found
 // on real hardware; it cannot happen in the host tests because there is no loop.
 void handle_serial() {
     uint8_t byte = 0;
-    if (uart_read_bytes(UART_NUM_0, &byte, 1, 0) != 1) return;
+    if (!console_read(&byte)) return;
     switch (byte) {
         case 'p': feed(Event::at(EventKind::PhoneReady, now_ms())); break;
         case 'P': feed(Event::at(EventKind::PhoneAbsent, now_ms())); break;
@@ -1073,10 +1107,67 @@ void handle_serial() {
                      static_cast<char>('A' + n - 1), w);
             break;
         }
+        case 'F': {
+            // Refresh benchmark. The product page and Waveshare's own tutorial
+            // disagree about this panel by nearly a factor of two (3.5 s / 2.8 s
+            // / 0.6 s against 2.10 s / 1.70 s / 370 ms), and neither set is ours,
+            // so measure all three waveforms on our own board with our own
+            // framebuffer and SPI settings.
+            //
+            // Each pass changes the text, because a refresh that moves no pixels
+            // is not a refresh: the partial path skips an unchanged screen
+            // outright, and a "measurement" of it would be meaningless.
+            // The last pass is the one that matters most in the latency budget:
+            // a single line changing, which is what a status bar update is.
+            static DisplayList bench;
+            const Caps caps = board::display().caps();
+            const TextMetrics tm = board::display().metrics(TextStyle::Body);
+            const int rows = tm.line_h ? caps.visible_h / tm.line_h : 0;
+            const int cols = tm.char_w ? caps.logical_w / tm.char_w - 1 : 0;
+            const int n = rows > 12 ? 12 : rows;
+            const int w = cols > 78 ? 78 : cols;
+            static char bench_lines[12][80];
+
+            // `fill` goes on every row; `row_fill` overrides just `only_row`, so
+            // the last pass can differ from the one before it by a single line
+            // instead of repainting everything around it. Getting that wrong
+            // makes the "one line" case dirty the whole screen and measure the
+            // same thing as the pass before it.
+            auto paint = [&](char fill, int only_row, char row_fill) {
+                bench.clear();
+                for (int r = 0; r < n; ++r) {
+                    for (int i = 0; i < w; ++i)
+                        bench_lines[r][i] = (r == only_row) ? row_fill : fill;
+                    bench_lines[r][0] = static_cast<char>('A' + r);
+                    bench_lines[r][w] = '\0';
+                    TextCmd t;
+                    t.box = Box{0, static_cast<int16_t>(r * tm.line_h), caps.logical_w, tm.line_h};
+                    t.text = bench_lines[r];
+                    bench.text(t);
+                }
+                board::display().draw(bench);
+            };
+
+            ESP_LOGI(kTag, "refresh benchmark on %s, %d rows of %d columns",
+                     board::panel_name(), n, w);
+            paint('#', -1, '#');
+            board::display().present(Refresh::Full, nullptr, nullptr);
+            paint('=', -1, '=');
+            board::display().present(Refresh::Fast, nullptr, nullptr);
+            paint('.', -1, '.');
+            board::display().present(Refresh::Partial, nullptr, nullptr);
+            // Identical to the pass above except for one row: the status bar case.
+            paint('.', n / 2, '*');
+            board::display().present(Refresh::Partial, nullptr, nullptr);
+            ESP_LOGI(kTag, "refresh benchmark done: full, fast, partial whole screen, "
+                           "partial one line, in that order above");
+            break;
+        }
         case '?':
             ESP_LOGI(kTag, "p/P phone ready|absent, a audio acked, r/c/s/o results, "
                            "k/f/u execution, x transport fail, b/B battery, "
-                           "A stream the clip, q/w/e/d/z/v patterns, C clean, T text probe");
+                           "A stream the clip, q/w/e/d/z/v patterns, C clean, T text probe, "
+                           "F refresh benchmark");
             break;
         default: break;
     }
@@ -1119,7 +1210,7 @@ extern "C" void app_main() {
     configure_input(board::kBtnSide, true);  // breadboard: needs the internal one
 
     // Non blocking console reads, see handle_serial().
-    ESP_ERROR_CHECK(uart_driver_install(UART_NUM_0, 256, 0, 0, nullptr, 0));
+    console_init();
 
     board::display().init();
 
