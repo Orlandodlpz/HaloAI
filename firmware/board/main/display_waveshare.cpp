@@ -119,6 +119,12 @@ constexpr uint8_t kRegAldo3Vol = 0x94;   // low 5 bits, 100 mV steps from 500 mV
 constexpr uint8_t kAldo3Bit = 2;
 constexpr uint16_t kPanelMilliVolts = 3300;
 
+// Battery, from the on chip fuel gauge. No ADC pin, no divider, no calibration
+// curve: the PMU does the counting and hands over a percentage.
+constexpr uint8_t kRegStatus1 = 0x00;      // bit 3: a battery is connected
+constexpr uint8_t kRegStatus2 = 0x01;      // bits 7..5: the charge state
+constexpr uint8_t kRegBatPercent = 0xA4;
+
 bool pmu_read(uint8_t reg, uint8_t* value) {
     return g_pmu != nullptr &&
            i2c_master_transmit_receive(g_pmu, &reg, 1, value, 1, 100) == ESP_OK;
@@ -158,6 +164,27 @@ bool pmu_init() {
     pmu_write(kRegLdoOnOff0, static_cast<uint8_t>(onoff | (1u << kAldo3Bit)));
     vTaskDelay(pdMS_TO_TICKS(20));  // let the rail come up before the reset
     return true;
+}
+
+// -1 when there is no battery on the connector, which on this board is the
+// normal state while it is being bench powered over USB. The caller keeps its
+// last reading rather than reporting a device at 0%.
+int pmu_battery_percent() {
+    uint8_t status1 = 0;
+    if (!pmu_read(kRegStatus1, &status1)) return -1;
+    if (((status1 >> 3) & 1) == 0) return -1;   // nothing on the battery connector
+
+    uint8_t pct = 0;
+    if (!pmu_read(kRegBatPercent, &pct)) return -1;
+    // The gauge reports 0xFF while it is still working out a new cell.
+    if (pct > 100) return -1;
+    return pct;
+}
+
+bool pmu_charging() {
+    uint8_t status2 = 0;
+    if (!pmu_read(kRegStatus2, &status2)) return false;
+    return ((status2 >> 5) & 0x07) == 0x01;
 }
 
 void pmu_panel_rail(bool on) {
@@ -491,6 +518,17 @@ Font font_for(TextStyle style) {
 void draw_text(const TextCmd& c) {
     const Font f = font_for(c.style);
     int x = c.box.x;
+    // Alignment was advisory and ignored here, so layout had to place every run
+    // by hand. Honouring it keeps the status bar's right hand block flush with
+    // the margin whatever the number of digits.
+    if (c.align != Align::Left) {
+        int n = 0;
+        for (const char* p = c.text; *p; ++p) ++n;
+        const int text_w = n * f.w;
+        if (c.align == Align::Right) x = c.box.x + c.box.w - text_w;
+        else x = c.box.x + (c.box.w - text_w) / 2;
+        if (x < c.box.x) x = c.box.x;
+    }
     for (const char* p = c.text; *p && x + f.w <= c.box.x + c.box.w; ++p, x += f.w) {
         const uint8_t ch = static_cast<uint8_t>(*p);
         if (ch < f.first || ch > f.last) continue;
@@ -995,6 +1033,8 @@ void deep_clean(int cycles) { g_display.deep_clean(cycles); }
 void probe_partial() { partial_probe(); }
 void probe_partial_x() { partial_probe_x(); }
 void probe_partial_old() { partial_probe_old(); }
+int battery_percent() { return pmu_battery_percent(); }
+bool battery_charging() { return pmu_charging(); }
 void debug_pattern(int which) { g_display.fill_pattern(which); }
 
 }  // namespace halo::board

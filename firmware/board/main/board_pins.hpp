@@ -57,19 +57,33 @@ constexpr uint8_t kEs8311Addr = 0x18;    // the microphone and speaker codec
 // and down is IO4. Getting this backwards moves the highlight the wrong way
 // and is easy to miss, because everything still "works".
 constexpr gpio_num_t kKnobUp = GPIO_NUM_4;
-constexpr gpio_num_t kKnobPress = GPIO_NUM_5;   // wake, never a gesture
 constexpr gpio_num_t kKnobDown = GPIO_NUM_6;
 
-// The side button the badge ships with is still Planned and not soldered, so
-// BOOT stands in for it: it is the only free momentary button on the board and
-// it drives the whole gesture path (hold to record, press to confirm, double
-// press to cancel). When the real side button arrives this is the one line
-// that changes.
+// THE ROTARY'S OWN CLICK IS THE BUTTON (decided 2026-10-28, Victor).
 //
-// BOOT is IO0, a strapping pin. Holding it through a reset puts the chip in the
-// ROM loader instead of booting, so a hold started before the board is up looks
-// like a dead board. Press it after boot, not through one.
-constexpr gpio_num_t kBtnSide = GPIO_NUM_0;
+// The V1 spec gave the badge a separate side button and made the rotary press
+// "wake, never a gesture". Nothing is soldered to a side button, nothing is
+// going to be before the deadline, and BOOT standing in for it is worse than it
+// sounds: IO0 is a strapping pin, so holding it through a reset drops the chip
+// into the ROM loader and looks exactly like a dead board. One control that
+// already exists beats a second one that does not.
+//
+// So IO5 drives the whole gesture path: hold to record, single press to
+// confirm, double press to cancel. Waking still works, because a press and a
+// hold are both wake inputs already and are consumed in WALLPAPER the same way
+// a rotation is; that is why this does not need a separate wake source.
+//
+// The thing to watch is that rotating and confirming are now the same control,
+// so a clumsy rotate could become a press on a screen where a press approves.
+// Two things stand in the way and both already existed: a single press is only
+// reported once the double press window closes, and the 1 s confirm guard
+// restarts on every present, which includes the redraw a scroll causes. Scroll
+// and then press immediately and the press is swallowed, which is the failure
+// direction we want.
+constexpr gpio_num_t kBtnSide = GPIO_NUM_5;
+
+// No longer a separate wake-only input: it is kBtnSide above.
+constexpr gpio_num_t kKnobPress = kBtnNone;
 
 // The badge has no MENU or EXIT button. The PWR button is NOT on a GPIO at all:
 // it is the PMU's PWRKEY, with its on and off hold times set over I2C, so

@@ -320,6 +320,17 @@ Font font_for(TextStyle style) {
 void draw_text(const TextCmd& c) {
     const Font f = font_for(c.style);
     int x = c.box.x;
+    // Alignment was advisory and ignored here, so layout had to place every run
+    // by hand. Honouring it keeps the status bar's right hand block flush with
+    // the margin whatever the number of digits.
+    if (c.align != Align::Left) {
+        int n = 0;
+        for (const char* p = c.text; *p; ++p) ++n;
+        const int text_w = n * f.w;
+        if (c.align == Align::Right) x = c.box.x + c.box.w - text_w;
+        else x = c.box.x + (c.box.w - text_w) / 2;
+        if (x < c.box.x) x = c.box.x;
+    }
     for (const char* p = c.text; *p && x + f.w <= c.box.x + c.box.w; ++p, x += f.w) {
         const uint8_t ch = static_cast<uint8_t>(*p);
         if (ch < f.first || ch > f.last) continue;
@@ -560,5 +571,11 @@ void debug_pattern(int which) { g_display.fill_pattern(which); }
 void probe_partial() { ESP_LOGI(kTag, "partial probe is badge only"); }
 void probe_partial_x() { ESP_LOGI(kTag, "partial probe is badge only"); }
 void probe_partial_old() { ESP_LOGI(kTag, "partial probe is badge only"); }
+
+// This board charges a cell but has no PMU to ask about it, so there is no
+// percentage to be had. The device keeps its last reading, which on the bench
+// is whatever the console keys set.
+int battery_percent() { return -1; }
+bool battery_charging() { return false; }
 
 }  // namespace halo::board

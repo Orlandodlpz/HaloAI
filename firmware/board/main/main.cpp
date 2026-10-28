@@ -65,6 +65,10 @@ uint8_t g_scroll = 0;       // first body line drawn
 uint8_t g_overflow = 0;     // body lines that did not fit, from layout_screen
 uint32_t g_boot = 0;        // random per power up: tells a reconnect from a restart
 uint8_t g_battery_pct = 100;
+// Whether anything has actually measured it. Until the PMU answers, the status
+// bar says nothing rather than showing a number that is only a default.
+bool g_battery_known = false;
+bool g_battery_charging = false;
 uint8_t g_battery_sent = 255;
 
 // The wallpaper the user picked on the phone. The store owns the flash; the
@@ -150,7 +154,13 @@ void log_transition(const Transition& t, const Event& e) {
 // state, the phone's text wins: the backend owns the words, the device owns the
 // pixels. `status_only` is the partial refresh path, about 495 ms on this panel
 // against 4.3 s for a full clear and redraw.
-void draw_screen(State to, bool status_only) {
+// `same_screen` means this is a re-render of the screen already on the glass
+// rather than a new one: today that is scrolling, which moves the window over
+// the body without changing state. Those never spend a full refresh and never
+// count towards the next one. Rotating through a long draft on the badge
+// otherwise hits the every-tenth-screen ghost clear mid-scroll and freezes for
+// 7.7 s, which is a long time to stand there holding a knob.
+void draw_screen(State to, bool status_only, bool same_screen = false) {
     // Static, not on the stack: a DisplayList is close to a kilobyte and the
     // main task does not have that to spare. Single threaded, so sharing one
     // is safe, and it makes the memory cost visible at link time.
@@ -168,6 +178,12 @@ void draw_screen(State to, bool status_only) {
     // which case WALLPAPER says the device's name instead of showing a sideways
     // photo, and the phone can send a new one.
     st.wallpaper = g_wallpaper.current(g_settings.portrait);
+    // The right hand end of the status bar, on every screen rather than only the
+    // device's own: a badge that cannot tell you how much battery it has is a
+    // badge you cannot trust to be awake when you need it.
+    m.battery_pct = g_battery_known ? static_cast<int8_t>(g_battery_pct) : -1;
+    m.charging = g_battery_charging;
+
     const bool ours = local_screen(to, st, m);
 
     if (!ours) m.status_line = name(to);
@@ -189,14 +205,14 @@ void draw_screen(State to, bool status_only) {
 
     g_overflow = layout_screen(board::display(), m, list);
     board::display().draw(list);
-    const Refresh intent = g_refresh.choose(to, status_only);
+    const Refresh intent = same_screen ? Refresh::Partial : g_refresh.choose(to, status_only);
     board::display().present(intent, [](void*, uint32_t at) {
         // The REVIEW confirm guard starts here, when the panel says the pixels
         // are there, never when the screen was queued.
         const Transition pt = g_machine.handle(Event::at(EventKind::ScreenPresented, at));
         log_transition(pt, Event::at(EventKind::ScreenPresented, at));
     }, nullptr);
-    g_refresh.note_presented(intent);
+    if (!same_screen) g_refresh.note_presented(intent);
 }
 
 // Turns one transition into the events the contract says the phone gets. Nothing
@@ -243,8 +259,20 @@ Transition feed(const Event& e) {
         if (answered.changed()) return t;  // the nested call drew where we landed
     }
 
-    if (t.changed() && (t.actions.has(Action::DrawScreen) || t.actions.has(Action::ShowWallpaper)))
-        draw_screen(t.to, false);
+    // The ACTION decides, not whether the state changed.
+    //
+    // This used to be gated on t.changed(), so a transition that stayed where it
+    // was could ask for a draw and be ignored. That is exactly what scrolling
+    // does: the state is still REVIEW, the window over the body has moved, and
+    // the glass is wrong until it is redrawn. On the badge, 2026-10-28, eight
+    // rotations on an 18 line draft logged "scroll proposal" eight times and
+    // never touched the panel. The knob was dead on every screen longer than
+    // the panel, which is every long draft.
+    //
+    // Same shape as the tick bug: the state machine said what to do and the
+    // thing that applies its actions quietly dropped it on the floor.
+    if (t.actions.has(Action::DrawScreen) || t.actions.has(Action::ShowWallpaper))
+        draw_screen(t.to, false, !t.changed());
     return t;
 }
 
@@ -730,6 +758,15 @@ void emit_events(const Transition& t, const Event& e) {
             case Action::StopCapture:
                 mic::capture_stop();
                 g_audio.finish();
+                // Push the remaining chunks and the final marker out NOW, before
+                // this transition's screen is drawn. The panel blocks the main
+                // loop for 650 ms and the streamer only runs on the main loop,
+                // so the marker used to wait behind the FINALIZE AUDIO draw and
+                // every command carried that 650 ms. The phone is timing the
+                // delivery from the release; the screen is not what it is
+                // waiting for. Measured by Carlos on the badge 2026-10-28:
+                // release at 177538, marker out at 178831.
+                g_audio.poll();
                 break;
             case Action::SendFinalMarker:
                 // record_end is sent by the streamer, when the last chunk is
@@ -776,6 +813,41 @@ void emit_events(const Transition& t, const Event& e) {
 // Battery goes to the phone on threshold crossings, not on every reading: without
 // it, a device entering CRITICAL BATTERY looks to the phone exactly like a device
 // that went quiet.
+void note_battery(uint8_t percent);
+
+// The real battery, read from the PMU's fuel gauge every few seconds.
+//
+// Until now `g_battery_pct` only ever moved when someone pressed `b` or `B` on
+// the console, so the status bar showed a number nobody had measured and
+// CRITICAL BATTERY could only be reached by typing it. The gauge is on the
+// badge's PMU; the development board has no PMU and answers -1 for ever, which
+// leaves the console keys as the only source there, exactly as before.
+//
+// Slowly on purpose. It is an I2C round trip on the bus the panel shares, the
+// reading moves over minutes, and note_battery() only tells the phone on a
+// threshold crossing anyway.
+constexpr uint32_t kBatteryPollMs = 5000;
+
+void poll_battery(uint32_t now) {
+    static uint32_t next_at = 1000;   // not at boot: the panel is still clearing
+    if (now < next_at) return;
+    next_at = now + kBatteryPollMs;
+
+    const int pct = board::battery_percent();
+    if (pct < 0) return;   // no cell on the connector, keep the last reading
+    g_battery_known = true;
+    g_battery_charging = board::battery_charging();
+
+    static bool announced = false;
+    if (!announced) {
+        ESP_LOGI(kTag, "battery is real now: %d%%, %s", pct,
+                 board::battery_charging() ? "charging" : "on the cell");
+        announced = true;
+    }
+    if (static_cast<uint8_t>(pct) != g_battery_pct)
+        note_battery(static_cast<uint8_t>(pct));
+}
+
 void note_battery(uint8_t percent) {
     g_battery_pct = percent;
     g_link.battery = percent;
@@ -1353,6 +1425,7 @@ extern "C" void app_main() {
         // delivered and FINALIZE AUDIO is over. The radio task cannot say so
         // itself without touching the state machine, so it is said here.
         if (g_audio.take_completed()) feed(Event::at(EventKind::AudioComplete, t));
+        poll_battery(t);
         // Through feed(), not g_machine.tick(): the transition carries the
         // actions, and feed() is the only thing that applies them. Calling tick()
         // and dropping what it returned moved the state and drew nothing, told

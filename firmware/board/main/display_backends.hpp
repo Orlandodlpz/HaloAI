@@ -29,4 +29,11 @@ void probe_partial_x();
 
 // Whether pushing the previous image into 0x26 is what breaks a real partial.
 void probe_partial_old();
+
+// The battery, from the PMU's own fuel gauge. -1 means there is no cell on the
+// connector, which is the normal state on USB power, and the caller should keep
+// whatever it had rather than report a device at 0%. The development board has
+// no PMU and always answers -1.
+int battery_percent();
+bool battery_charging();
 }  // namespace halo::board

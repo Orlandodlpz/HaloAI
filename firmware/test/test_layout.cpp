@@ -3,6 +3,7 @@
 // screen model, unchanged, lays out correctly on two panels with different sizes.
 #include "fake_display.hpp"
 #include "halo/layout.hpp"
+#include "halo/screens.hpp"
 #include "halo/state_machine.hpp"
 #include "harness.hpp"
 
@@ -95,6 +96,165 @@ HALO_TEST(layout_scrolling_advances_through_the_body) {
         if (scrolled[i].kind == CmdKind::Text && scrolled[i].text.style != TextStyle::Status)
             first_body = scrolled[i].text.text;
     CHECK(first_body == kReviewLines[3]);
+}
+
+// A contact the backend could not match: CONFLICT-AMBIGUOUS arrives with no
+// candidates at all. Its lines explain that; the way out is to say the address
+// instead, which is a gesture, so the device names it (team addition,
+// 2026-10-09).
+HALO_TEST(layout_empty_candidate_list_offers_the_spoken_address) {
+    FakeDisplay d = FakeDisplay::badge();
+    DisplayList out;
+    ScreenModel m = review_model();
+    m.state = State::ConflictAmbiguous;
+    m.candidate_count = 0;
+    layout_screen(d, m, out);
+
+    const char* found = nullptr;
+    for (uint8_t i = 0; i < out.size(); ++i)
+        if (out[i].kind == CmdKind::Text && out[i].text.text == no_candidates_hint())
+            found = out[i].text.text;
+    CHECK(found == no_candidates_hint());
+}
+
+// With candidates to choose from there is nothing to say out loud, so the hint
+// would be telling the user to do the wrong thing.
+HALO_TEST(layout_candidates_present_get_no_spoken_address_hint) {
+    FakeDisplay d = FakeDisplay::badge();
+    DisplayList out;
+    ScreenModel m = review_model();
+    m.state = State::ConflictAmbiguous;
+    m.candidates = kCandidates;
+    m.candidate_count = 3;
+    layout_screen(d, m, out);
+
+    for (uint8_t i = 0; i < out.size(); ++i)
+        if (out[i].kind == CmdKind::Text)
+            CHECK(out[i].text.text != no_candidates_hint());
+}
+
+// A hint the screen brought itself is never overwritten.
+HALO_TEST(layout_an_explicit_hint_beats_the_default) {
+    FakeDisplay d = FakeDisplay::badge();
+    DisplayList out;
+    ScreenModel m = review_model();
+    m.state = State::ConflictAmbiguous;
+    m.candidate_count = 0;
+    m.hint = "Say it again";
+    layout_screen(d, m, out);
+
+    for (uint8_t i = 0; i < out.size(); ++i)
+        if (out[i].kind == CmdKind::Text)
+            CHECK(out[i].text.text != no_candidates_hint());
+}
+
+// Scrolled to the bottom: nothing is left below the fold, and the last source
+// line is on the glass. The device clamps its scroll to exactly this point, so
+// this is the position a user reaches by holding the knob down.
+HALO_TEST(layout_scrolling_to_the_end_shows_the_last_line_and_nothing_remains) {
+    FakeDisplay d = FakeDisplay::crowpanel();
+    DisplayList first, last;
+    ScreenModel m = review_model();
+    const uint8_t over = layout_screen(d, m, first);
+    CHECK(over > 0);                 // the body really is longer than this panel
+
+    m.scroll_line = over;            // what the device's clamp allows
+    CHECK(layout_screen(d, m, last) == 0);
+
+    const char* lowest = nullptr;
+    for (uint8_t i = 0; i < last.size(); ++i)
+        if (last[i].kind == CmdKind::Text && last[i].text.style != TextStyle::Status)
+            lowest = last[i].text.text;
+    CHECK(lowest == kReviewLines[kReviewCount - 1]);
+}
+
+// The right hand end of the status bar. Both of these lived in ScreenModel
+// without ever being drawn, and expires_in_s even documented itself as being
+// shown there.
+HALO_TEST(layout_status_bar_shows_the_battery) {
+    FakeDisplay d = FakeDisplay::badge();
+    DisplayList out;
+    ScreenModel m = review_model();
+    m.battery_pct = 87;
+    layout_screen(d, m, out);
+
+    const char* found = nullptr;
+    for (uint8_t i = 0; i < out.size(); ++i)
+        if (out[i].kind == CmdKind::Text && out[i].text.style == TextStyle::Status &&
+            out[i].text.text != m.status_line)
+            found = out[i].text.text;
+    CHECK(found != nullptr);
+    CHECK(found[0] == '8' && found[1] == '7' && found[2] == '%');
+}
+
+HALO_TEST(layout_status_bar_marks_charging) {
+    FakeDisplay d = FakeDisplay::badge();
+    DisplayList out;
+    ScreenModel m = review_model();
+    m.battery_pct = 50;
+    m.charging = true;
+    layout_screen(d, m, out);
+
+    const char* found = nullptr;
+    for (uint8_t i = 0; i < out.size(); ++i)
+        if (out[i].kind == CmdKind::Text && out[i].text.style == TextStyle::Status &&
+            out[i].text.text != m.status_line)
+            found = out[i].text.text;
+    CHECK(found != nullptr);
+    CHECK(found[0] == '+');
+}
+
+// An unknown battery draws nothing rather than claiming 0%.
+HALO_TEST(layout_status_bar_says_nothing_when_the_battery_is_unknown) {
+    FakeDisplay d = FakeDisplay::badge();
+    DisplayList out;
+    ScreenModel m = review_model();   // battery_pct defaults to -1
+    layout_screen(d, m, out);
+
+    for (uint8_t i = 0; i < out.size(); ++i)
+        if (out[i].kind == CmdKind::Text && out[i].text.style == TextStyle::Status)
+            CHECK(out[i].text.text == m.status_line);
+}
+
+HALO_TEST(layout_status_bar_counts_down_a_decision) {
+    FakeDisplay d = FakeDisplay::badge();
+    DisplayList out;
+    ScreenModel m = review_model();
+    m.battery_pct = 90;
+    m.expires_in_s = 42;
+    layout_screen(d, m, out);
+
+    const char* found = nullptr;
+    for (uint8_t i = 0; i < out.size(); ++i)
+        if (out[i].kind == CmdKind::Text && out[i].text.style == TextStyle::Status &&
+            out[i].text.text != m.status_line)
+            found = out[i].text.text;
+    CHECK(found != nullptr);
+    // "90%  42s"
+    bool has_42s = false;
+    for (uint8_t i = 0; found[i] != '\0'; ++i)
+        if (found[i] == '4' && found[i + 1] == '2' && found[i + 2] == 's') has_42s = true;
+    CHECK(has_42s);
+}
+
+// A long status line is clipped by its own box rather than running into the
+// battery at the other end.
+HALO_TEST(layout_status_line_box_stops_short_of_the_battery) {
+    FakeDisplay d = FakeDisplay::badge();
+    DisplayList wide, narrow;
+    ScreenModel m = review_model();
+    layout_screen(d, m, wide);
+    m.battery_pct = 100;
+    layout_screen(d, m, narrow);
+
+    int16_t w_wide = 0, w_narrow = 0;
+    for (uint8_t i = 0; i < wide.size(); ++i)
+        if (wide[i].kind == CmdKind::Text && wide[i].text.text == m.status_line)
+            w_wide = wide[i].text.box.w;
+    for (uint8_t i = 0; i < narrow.size(); ++i)
+        if (narrow[i].kind == CmdKind::Text && narrow[i].text.text == m.status_line)
+            w_narrow = narrow[i].text.box.w;
+    CHECK(w_narrow < w_wide);
 }
 
 HALO_TEST(layout_never_rewraps_text_the_backend_already_wrapped) {
@@ -208,8 +368,11 @@ HALO_TEST(refresh_goes_full_periodically_to_clear_ghosting) {
 // while audio is streaming it stalls the stream behind it: on 2026-10-28 one
 // landed on FINALIZE AUDIO and pushed the final marker from 0.65 s after the
 // release to 7.6 s, against an 8 s delivery deadline, and the request failed.
+// On PROCESSING it is the same cost in a different place: the backend's answer
+// arrives and waits in the inbox, and the command takes 8.4 s instead of 3.
 HALO_TEST(refresh_never_goes_full_while_audio_is_in_flight) {
-    for (State s : {State::Recording, State::RecordAddition, State::FinalizeAudio}) {
+    for (State s : {State::Recording, State::RecordAddition, State::FinalizeAudio,
+                    State::Processing, State::ProcessingSlow}) {
         RefreshPolicy p(3);
         for (int i = 0; i < 10; ++i) {
             CHECK(p.choose(s, false) == Refresh::Partial);

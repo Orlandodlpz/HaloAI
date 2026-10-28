@@ -34,6 +34,16 @@ struct DeviceStatus {
 // valid until the next call. One caller, on the task that owns the display.
 bool local_screen(State s, const DeviceStatus& st, ScreenModel& out);
 
+// CONFLICT-AMBIGUOUS with nothing in its candidate list means the backend found
+// no contact matching what was said. The way out is to say the address instead,
+// and that is a gesture on the device, so the device says so: the backend's
+// lines explain the situation and this names the way out.
+//
+// It lives here with the rest of the device's words rather than next to the
+// layout that draws it, because two places holding the words a user reads is
+// how they drift apart.
+const char* no_candidates_hint();
+
 // The device's own lines are written here rather than by the backend, so nothing
 // else checks them against the budget. These are the limits a test holds them to:
 // the narrower portrait width, so one set of words fits both orientations.

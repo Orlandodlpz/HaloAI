@@ -1,5 +1,7 @@
 #include "halo/layout.hpp"
 
+#include "halo/screens.hpp"
+
 namespace halo {
 
 namespace {
@@ -16,6 +18,18 @@ constexpr int16_t kFooterH = 36;
 // below the glass where nothing can scroll to them.
 int16_t view_h(const Caps& c) {
     return c.visible_h < c.logical_h ? c.visible_h : c.logical_h;
+}
+
+// Writes an unsigned number and returns how many characters it took. stdio is
+// not worth pulling in for two numbers on a status bar.
+uint8_t write_uint(char* out, size_t cap, uint16_t v) {
+    char digits[6];
+    uint8_t d = 0;
+    do { digits[d++] = static_cast<char>('0' + (v % 10)); v = static_cast<uint16_t>(v / 10); }
+    while (v != 0 && d < sizeof(digits));
+    uint8_t n = 0;
+    while (d-- > 0 && n + 1 < cap) out[n++] = digits[d];
+    return n;
 }
 
 Box body_box(const Caps& c) {
@@ -87,13 +101,50 @@ uint8_t layout_screen(const Display& d, const ScreenModel& m, DisplayList& out) 
     const Box body = body_box(c);
 
     // Status bar. Its own region so a status-only change can be a partial refresh.
+    // The right hand end of the status bar: how long is left to decide, and how
+    // much battery there is. Both were in ScreenModel and neither was ever
+    // drawn; `expires_in_s` even said "shown in the status bar" in its own
+    // comment. Same family as the scroll that never redrew.
+    //
+    // Built right to left into one small buffer and placed by hand, because
+    // TextCmd::align is advisory and neither display backend honours it: they
+    // both start at box.x.
+    static char right[16];
+    uint8_t rn = 0;
+    if (m.battery_pct >= 0) {
+        if (m.charging && rn + 1 < sizeof(right)) right[rn++] = '+';
+        rn = static_cast<uint8_t>(rn + write_uint(right + rn, sizeof(right) - rn,
+                                                  static_cast<uint16_t>(m.battery_pct)));
+        if (rn + 1 < sizeof(right)) right[rn++] = '%';
+    }
+    if (m.expires_in_s > 0) {
+        if (rn > 0 && rn + 2 < sizeof(right)) { right[rn++] = ' '; right[rn++] = ' '; }
+        rn = static_cast<uint8_t>(rn + write_uint(right + rn, sizeof(right) - rn, m.expires_in_s));
+        if (rn + 1 < sizeof(right)) right[rn++] = 's';
+    }
+    right[rn] = '\0';
+
+    const TextMetrics sm = d.metrics(TextStyle::Status);
+    const int16_t right_w = static_cast<int16_t>(rn * sm.char_w);
+
     if (m.status_line != nullptr && m.status_line[0] != '\0') {
         TextCmd t;
-        t.box = Box{kMargin, 0, static_cast<int16_t>(c.logical_w - 2 * kMargin), kStatusH};
+        // Stops short of the right hand block, so a long status line is clipped
+        // by its own box rather than running into the battery.
+        t.box = Box{kMargin, 0,
+                    static_cast<int16_t>(c.logical_w - 2 * kMargin - right_w), kStatusH};
         t.text = m.status_line;
         t.style = TextStyle::Status;
         out.text(t);
         out.line(LineCmd{kMargin, kDividerY, static_cast<int16_t>(c.logical_w - kMargin), kDividerY, 0});
+    }
+    if (rn > 0) {
+        TextCmd t;
+        t.box = Box{static_cast<int16_t>(c.logical_w - kMargin - right_w), 0, right_w, kStatusH};
+        t.text = right;
+        t.style = TextStyle::Status;
+        t.align = Align::Right;
+        out.text(t);
     }
 
     int16_t y = body.y;
@@ -132,6 +183,14 @@ uint8_t layout_screen(const Display& d, const ScreenModel& m, DisplayList& out) 
 
     const int16_t remaining_h = static_cast<int16_t>(body.bottom() - y);
 
+    // No candidates at all on CONFLICT-AMBIGUOUS: the backend found nothing
+    // matching the name that was said. Its lines say so; the way out is a
+    // gesture, so the device names it. Only when the screen did not bring its
+    // own hint, so this can never overwrite something deliberate.
+    const char* hint = m.hint;
+    if (m.state == State::ConflictAmbiguous && m.candidate_count == 0 && hint == nullptr)
+        hint = no_candidates_hint();
+
     // Candidates: one row each, the highlighted one drawn inverted.
     if (m.candidate_count > 0 && m.candidates != nullptr) {
         const TextMetrics tm = d.metrics(TextStyle::Body);
@@ -148,10 +207,10 @@ uint8_t layout_screen(const Display& d, const ScreenModel& m, DisplayList& out) 
             t.invert = on;
             out.text(t);
         }
-        if (m.hint != nullptr) {
+        if (hint != nullptr) {
             TextCmd t;
             t.box = Box{body.x, static_cast<int16_t>(view_h(c) - kFooterH), body.w, kFooterH};
-            t.text = m.hint;
+            t.text = hint;
             t.style = TextStyle::Status;
             out.text(t);
         }
@@ -173,10 +232,10 @@ uint8_t layout_screen(const Display& d, const ScreenModel& m, DisplayList& out) 
             t.style = (i == 0 && m.state == State::Review) ? TextStyle::Title : TextStyle::Body;
             out.text(t);
         }
-        if (m.hint != nullptr) {
+        if (hint != nullptr) {
             TextCmd t;
             t.box = Box{body.x, static_cast<int16_t>(view_h(c) - kFooterH), body.w, kFooterH};
-            t.text = m.hint;
+            t.text = hint;
             t.style = TextStyle::Status;
             out.text(t);
         }
@@ -204,14 +263,23 @@ Refresh RefreshPolicy::choose(State to, bool status_only) {
     // release instead of 0.65 s, which is almost the whole 8 s delivery
     // deadline, and the request failed. Found by Carlos on the real phone.
     //
-    // Only these three, not every state the device is busy in. REVIEW and the
-    // conflict states are busy too, but nothing is streaming: a slow refresh
-    // there only means the confirm guard starts later, which is exactly what it
-    // is supposed to do.
+    // PROCESSING and PROCESSING SLOW are here for the same reason even though
+    // nothing is streaming: the user is waiting, the backend's answer is in
+    // flight, and the main loop does not drain the inbox while the panel is
+    // being driven, so the result screen arrives and sits in the queue. Carlos
+    // measured it on the badge 2026-10-28: 5 of 7 commands reached the glass in
+    // 2.9 to 3.2 s and the other 2 took 8.4 s, every time because the full
+    // refresh landed on PROCESSING.
+    //
+    // Not every state the device is busy in. REVIEW and the conflict states are
+    // busy too, but nobody is waiting on a round trip: a slow refresh there only
+    // means the confirm guard starts later, which is exactly what it is for.
     //
     // The counter keeps running, so the ghost clearing is deferred to the next
     // screen that can afford it, not skipped.
-    if (to == State::Recording || to == State::RecordAddition || to == State::FinalizeAudio)
+    if (to == State::Recording || to == State::RecordAddition ||
+        to == State::FinalizeAudio || to == State::Processing ||
+        to == State::ProcessingSlow)
         return Refresh::Partial;
 
     if (full_every_ != 0 && partials_since_full_ >= full_every_) return Refresh::Full;

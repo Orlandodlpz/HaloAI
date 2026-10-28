@@ -327,7 +327,12 @@ Transition StateMachine::handle(const Event& e) {
                 return go(State::RecordAddition, e, "hold: change details by voice");
             if (is_rotate(e.kind)) {
                 expires_at_ = e.at_ms + cfg_.decision_expiry_ms;
+                // A scroll moves the window over the body, so the glass is
+                // wrong until it is redrawn. Without this the scroll position
+                // advanced and nothing ever appeared to happen: the knob was
+                // dead on every screen longer than the panel.
                 Transition t = stay(e, "scroll");
+                t.actions.add(Action::DrawScreen);
                 if (rate_limited_activity(e.at_ms)) t.actions.add(Action::SendActivity);
                 return t;
             }
@@ -350,6 +355,7 @@ Transition StateMachine::handle(const Event& e) {
             if (is_rotate(e.kind)) {
                 expires_at_ = e.at_ms + cfg_.decision_expiry_ms;
                 Transition t = stay(e, "scroll proposal");
+                t.actions.add(Action::DrawScreen);
                 if (rate_limited_activity(e.at_ms)) t.actions.add(Action::SendActivity);
                 return t;
             }
@@ -367,7 +373,11 @@ Transition StateMachine::handle(const Event& e) {
             return stay(e, "", false);
 
         case State::ReadOnlyResult:
-            if (is_rotate(e.kind)) return stay(e, "scroll result");
+            if (is_rotate(e.kind)) {
+                Transition t = stay(e, "scroll result");
+                t.actions.add(Action::DrawScreen);
+                return t;
+            }
             if (e.kind == EventKind::SinglePress) return go(State::Ready, e, "acknowledged");
             return stay(e, "", false);
 
