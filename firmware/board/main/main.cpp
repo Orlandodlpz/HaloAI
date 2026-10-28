@@ -7,14 +7,21 @@
 //
 // Anything the phone would send can still be injected over serial (type a letter
 // in idf.py monitor), so all 21 states can be walked with no phone in the room.
+#include <atomic>
 #include <cstdio>
+#include <cstring>
 
 #include "ble.hpp"
+#include "mic.hpp"
 #include "wallpaper_store.hpp"
 #include "board_pins.hpp"
 #include "display_backends.hpp"
 #include "driver/gpio.h"
 #include "driver/uart.h"
+#if CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+#include "driver/usb_serial_jtag.h"
+#endif
+#include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_random.h"
 #include "esp_timer.h"
@@ -35,6 +42,7 @@ using namespace halo;
 namespace {
 
 namespace ble = halo::board::ble;
+namespace mic = halo::board::mic;
 
 constexpr const char* kTag = "halo";
 // Reported in `hello`, so the phone can tell which firmware it is talking to.
@@ -63,9 +71,10 @@ uint8_t g_battery_sent = 255;
 // receiver owns every decision about what to accept, and is tested on a laptop.
 board::WallpaperStore g_wallpaper;
 wp::Receiver g_wallpaper_rx(g_wallpaper);
-// Counted on the radio task. Against the bytes the receiver accepted, it says
-// whether a missing chunk was lost on the air or lost inside this firmware.
-volatile uint32_t g_wallpaper_writes = 0;
+// Counted on the radio task and read on the main one. Against the bytes the
+// receiver accepted, it says whether a missing chunk was lost on the air or lost
+// inside this firmware.
+std::atomic<uint32_t> g_wallpaper_writes{0};
 
 // Everything from the phone arrives on the NimBLE host task. The state machine,
 // the gesture detector and the display all live on the main task and not one of
@@ -92,6 +101,10 @@ uint32_t now_ms() { return static_cast<uint32_t>(esp_timer_get_time() / 1000); }
 // does: without one the pin floats, reads as pressed at random, and the device
 // starts recording on its own. That is exactly what happened on first boot.
 void configure_input(gpio_num_t pin, bool internal_pullup) {
+    // The badge has no MENU and no EXIT button, so their pins are kBtnNone.
+    // Skipping them here and in pressed() keeps the input loop free of board
+    // conditionals: an absent button simply never reports a press.
+    if (pin == board::kBtnNone) return;
     gpio_config_t cfg = {};
     cfg.pin_bit_mask = 1ULL << pin;
     cfg.mode = GPIO_MODE_INPUT;
@@ -101,7 +114,10 @@ void configure_input(gpio_num_t pin, bool internal_pullup) {
     ESP_ERROR_CHECK(gpio_config(&cfg));
 }
 
-bool pressed(gpio_num_t pin) { return gpio_get_level(pin) == 0; }
+bool pressed(gpio_num_t pin) {
+    if (pin == board::kBtnNone) return false;
+    return gpio_get_level(pin) == 0;
+}
 
 void log_transition(const Transition& t, const Event& e) {
     if (!t.handled) {
@@ -258,6 +274,7 @@ public:
 
     void start(uint16_t req, uint8_t rev, uint8_t seg, const int16_t* pcm, size_t samples) {
         req_ = req; rev_ = rev; seg_ = seg;
+        live_ = false; capture_open_ = false;
         pcm_ = pcm; samples_ = samples;
         total_chunks_ = static_cast<int>((samples + kSamplesPerChunk - 1) / kSamplesPerChunk);
         if (total_chunks_ > kMaxChunks) total_chunks_ = kMaxChunks;
@@ -278,6 +295,111 @@ public:
         ESP_LOGI(kTag, "audio: %u samples, %d chunks, %.1f s",
                  static_cast<unsigned>(samples), total_chunks_, samples / 16000.0);
     }
+
+    // ---- live capture: the microphone fills this while the button is held ----
+    //
+    // start() above is the flash clip's path: every sample is known up front, so
+    // every chunk's encoder state can be computed in one pass. A recording is the
+    // other way round, and the contract streams it while the hold is still going,
+    // so the chunks appear as the samples do.
+
+    // 8 s at 16 kHz, which is also what kMaxChunks allows. Taken from PSRAM when
+    // the board has any; a board without falls back to 2 s of internal memory,
+    // and a recording that runs past the buffer stops rather than wrapping over
+    // speech that has not been sent.
+    static constexpr size_t kLiveSamplesPsram = 16000 * 8;
+    static constexpr size_t kLiveSamplesInternal = 16000 * 2;
+
+    bool start_live(uint16_t req, uint8_t rev, uint8_t seg) {
+        if (live_buf_ == nullptr) {
+            live_capacity_ = kLiveSamplesPsram;
+            live_buf_ = static_cast<int16_t*>(
+                heap_caps_malloc(live_capacity_ * sizeof(int16_t), MALLOC_CAP_SPIRAM));
+            if (live_buf_ == nullptr) {
+                live_capacity_ = kLiveSamplesInternal;
+                live_buf_ = static_cast<int16_t*>(
+                    heap_caps_malloc(live_capacity_ * sizeof(int16_t), MALLOC_CAP_8BIT));
+            }
+            if (live_buf_ == nullptr) {
+                live_capacity_ = 0;
+                ESP_LOGE(kTag, "no room for a recording buffer");
+                return false;
+            }
+            ESP_LOGI(kTag, "recording buffer: %u samples (%.1f s), %s",
+                     static_cast<unsigned>(live_capacity_),
+                     static_cast<double>(live_capacity_) / 16000.0,
+                     esp_ptr_external_ram(live_buf_) ? "PSRAM" : "internal");
+        }
+        req_ = req; rev_ = rev; seg_ = seg;
+        pcm_ = live_buf_;
+        samples_ = 0;
+        written_.store(0, std::memory_order_relaxed);
+        total_chunks_ = 0; next_ = 0; acked_ = -1;
+        final_sent_ = false; done_ = false; record_end_sent_ = false;
+        final_resends_ = 0; final_first_us_ = 0; final_last_us_ = 0;
+        started_us_ = esp_timer_get_time();
+        bytes_ = 0; resends_ = 0;
+        live_ = true; capture_open_ = true;
+        live_enc_ = AdpcmEncoder();
+        overflowed_ = false;
+        return true;
+    }
+
+    // Called from the microphone's task and from nowhere else. Copies, publishes
+    // how much is there, and does nothing else: the encoding stays on the main
+    // task, so there is one writer and one reader and no lock between them.
+    void write_captured(const int16_t* s, size_t n) {
+        if (!capture_open_ || live_buf_ == nullptr) return;
+        size_t at = written_.load(std::memory_order_relaxed);
+        if (at + n > live_capacity_) {
+            n = live_capacity_ - at;
+            overflowed_ = true;
+        }
+        if (n == 0) return;
+        memcpy(live_buf_ + at, s, n * sizeof(int16_t));
+        written_.store(at + n, std::memory_order_release);
+    }
+
+    // Main task. Turns whatever the microphone has produced into whole chunks,
+    // recording the encoder state each one starts from so a resend does not have
+    // to replay the segment.
+    void catch_up() {
+        if (!live_) return;
+        const size_t have = written_.load(std::memory_order_acquire);
+        static int16_t part[kSamplesPerChunk];
+        while (total_chunks_ < kMaxChunks &&
+               have >= static_cast<size_t>(total_chunks_ + 1) * kSamplesPerChunk) {
+            const size_t start = static_cast<size_t>(total_chunks_) * kSamplesPerChunk;
+            memcpy(part, live_buf_ + start, kSamplesPerChunk * sizeof(int16_t));
+            state_[total_chunks_] = live_enc_.state();
+            static uint8_t scratch[kChunkPayloadBytes];
+            live_enc_.encode(part, kSamplesPerChunk, scratch);
+            ++total_chunks_;
+            samples_ = start + kSamplesPerChunk;
+        }
+        if (overflowed_ && capture_open_) {
+            ESP_LOGE(kTag, "recording filled the buffer: capture stopped, nothing overwritten");
+            finish();
+        }
+    }
+
+    // The button came up. Whatever is left over becomes one last short chunk, and
+    // only now may the final marker go out.
+    void finish() {
+        if (!live_ || !capture_open_) return;
+        capture_open_ = false;
+        catch_up();
+        const size_t have = written_.load(std::memory_order_acquire);
+        if (have > samples_ && total_chunks_ < kMaxChunks) {
+            state_[total_chunks_] = live_enc_.state();
+            ++total_chunks_;
+            samples_ = have;
+        }
+        ESP_LOGI(kTag, "recorded %u samples, %.2f s, %d chunks",
+                 static_cast<unsigned>(samples_), samples_ / 16000.0, total_chunks_);
+    }
+
+    bool live_capture_open() const { return live_ && capture_open_; }
 
     bool active() const { return pcm_ != nullptr && !done_; }
     // Chunks handed to the radio so far. On the badge this is the real count for
@@ -320,6 +442,10 @@ public:
             ++next_;
         }
         if (next_ < total_chunks_) return;
+        // Still recording: there is more to come, so neither record_end nor the
+        // final marker may go out yet. The final marker is what tells the phone
+        // the segment is complete, and it is only complete on release.
+        if (live_ && capture_open_) return;
 
         // Every chunk is queued. That is the moment the recording is over, so
         // record_end goes out here: on the badge this is the button release, and
@@ -382,9 +508,19 @@ private:
     int64_t started_us_ = 0, final_first_us_ = 0, final_last_us_ = 0;
     size_t bytes_ = 0;
     AdpcmState state_[kMaxChunks];
+
+    // Live capture only.
+    bool live_ = false, capture_open_ = false, overflowed_ = false;
+    int16_t* live_buf_ = nullptr;
+    size_t live_capacity_ = 0;
+    std::atomic<size_t> written_{0};   // written by the microphone task, read here
+    AdpcmEncoder live_enc_;
 };
 
 AudioTx g_audio;
+
+// Called on the microphone's task. One memcpy and a counter, nothing else.
+void capture_sink(const int16_t* samples, size_t count) { g_audio.write_captured(samples, count); }
 
 // One buffer for every outgoing event. The build step returns 0 when the message
 // did not fit, and 0 means do not send: a truncated object is not JSON.
@@ -564,6 +700,16 @@ void emit_events(const Transition& t, const Event& e) {
                 send(msg::record_start(g_tx, sizeof(g_tx), g_link,
                                        t.to == State::RecordAddition),
                      "record_start");
+                // The microphone, if there is one. A board with nothing wired to
+                // the header records silence and the segment ends on the delivery
+                // deadline, which is visible now rather than a hang.
+                if (g_audio.start_live(g_link.req, g_link.rev, g_link.seg) &&
+                    !mic::capture_start(capture_sink))
+                    ESP_LOGE(kTag, "no microphone: this segment will be empty");
+                break;
+            case Action::StopCapture:
+                mic::capture_stop();
+                g_audio.finish();
                 break;
             case Action::SendFinalMarker:
                 // record_end is sent by the streamer, when the last chunk is
@@ -664,9 +810,9 @@ void apply_wallpaper(const char* js, size_t len) {
     // got. Equal means nothing was lost on the way in and the gap is ours; fewer
     // means the write never arrived at all.
     ESP_LOGI(kTag, "wallpaper: %u writes arrived since the last answer, %u bytes accepted",
-             static_cast<unsigned>(g_wallpaper_writes),
+             static_cast<unsigned>(g_wallpaper_writes.load(std::memory_order_relaxed)),
              static_cast<unsigned>(g_wallpaper_rx.received()));
-    g_wallpaper_writes = 0;
+    g_wallpaper_writes.store(0, std::memory_order_relaxed);
 
     const uint32_t from = a.resend_from;
     send(msg::wallpaper_answer(g_tx, sizeof(g_tx), a.wp, a.ok, a.resend ? &from : nullptr),
@@ -766,7 +912,7 @@ void on_settings(const char* js, size_t len) {
     feed_fragment(g_settings_rx, Incoming::Settings, "settings", js, len);
 }
 void on_wallpaper(const uint8_t* data, size_t len) {
-    ++g_wallpaper_writes;
+    g_wallpaper_writes.fetch_add(1, std::memory_order_relaxed);
     feed_fragment(g_wallpaper_frag, Incoming::Wallpaper, "wallpaper",
                   reinterpret_cast<const char*>(data), len);
 }
@@ -805,13 +951,37 @@ void drain_inbox() {
 
 // Everything the phone will eventually send, injected by a keystroke so the whole
 // state machine can be walked on the bench with no radio.
+// The console is a different peripheral on each board, and it is read directly
+// rather than through getchar(): the default console VFS ignores O_NONBLOCK, so
+// getchar() blocks forever, the poll loop never reaches its vTaskDelay, and the
+// task watchdog kills the idle task. Found on real hardware; it cannot happen in
+// the host tests because there is no loop.
+//
+// The development board talks through a CH340 bridge on UART0. The badge has no
+// bridge at all: the ESP32-S3's own USB-Serial/JTAG peripheral is the console,
+// which is why it enumerates as /dev/cu.usbmodem* rather than
+// /dev/cu.usbserial*. Reading UART0 there returns nothing for ever, so every
+// bench key would be silently dead.
+#if CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+void console_init() {
+    usb_serial_jtag_driver_config_t cfg = USB_SERIAL_JTAG_DRIVER_CONFIG_DEFAULT();
+    ESP_ERROR_CHECK(usb_serial_jtag_driver_install(&cfg));
+}
+bool console_read(uint8_t* byte) { return usb_serial_jtag_read_bytes(byte, 1, 0) == 1; }
+#else
+void console_init() {
+    ESP_ERROR_CHECK(uart_driver_install(UART_NUM_0, 256, 0, 0, nullptr, 0));
+}
+bool console_read(uint8_t* byte) { return uart_read_bytes(UART_NUM_0, byte, 1, 0) == 1; }
+#endif
+
 // Read the console through the UART driver rather than getchar(). The default
 // console VFS ignores O_NONBLOCK, so getchar() blocks forever, the poll loop
 // never reaches its vTaskDelay, and the task watchdog kills the idle task. Found
 // on real hardware; it cannot happen in the host tests because there is no loop.
 void handle_serial() {
     uint8_t byte = 0;
-    if (uart_read_bytes(UART_NUM_0, &byte, 1, 0) != 1) return;
+    if (!console_read(&byte)) return;
     switch (byte) {
         case 'p': feed(Event::at(EventKind::PhoneReady, now_ms())); break;
         case 'P': feed(Event::at(EventKind::PhoneAbsent, now_ms())); break;
@@ -824,6 +994,18 @@ void handle_serial() {
         case 'f': feed(Event::at(EventKind::ExecutionRejected, now_ms())); break;
         case 'u': feed(Event::at(EventKind::ExecutionUnknown, now_ms())); break;
         case 'x': feed(Event::at(EventKind::TransportFailure, now_ms())); break;
+        case 'M':  // is the external microphone alive and hearing?
+            mic::probe(5);
+            break;
+        case 'N':  // which physical header pin is which, found with a multimeter
+            mic::identify_pins();
+            break;
+        case 'J':  // is anything out there on the microphone's three pins at all?
+            mic::line_check();
+            break;
+        case 'L':  // with a jumper from IO21 to IO19: is the framing really running?
+            mic::loopback_check();
+            break;
         case 'b': note_battery(4); break;   // critical
         case 'B': note_battery(80); break;  // recovered
         // Gesture injection, bench only. These bypass the gesture detector, NOT the
@@ -925,10 +1107,79 @@ void handle_serial() {
                      static_cast<char>('A' + n - 1), w);
             break;
         }
+        case 'Y':
+            ESP_LOGI(kTag, "partial refresh probe, about 20 s ...");
+            board::probe_partial();
+            break;
+        case 'X':
+            ESP_LOGI(kTag, "partial refresh X probe, about 20 s ...");
+            board::probe_partial_x();
+            break;
+        case 'Z':
+            ESP_LOGI(kTag, "partial refresh 0x26 probe, about 25 s ...");
+            board::probe_partial_old();
+            break;
+        case 'F': {
+            // Refresh benchmark. The product page and Waveshare's own tutorial
+            // disagree about this panel by nearly a factor of two (3.5 s / 2.8 s
+            // / 0.6 s against 2.10 s / 1.70 s / 370 ms), and neither set is ours,
+            // so measure all three waveforms on our own board with our own
+            // framebuffer and SPI settings.
+            //
+            // Each pass changes the text, because a refresh that moves no pixels
+            // is not a refresh: the partial path skips an unchanged screen
+            // outright, and a "measurement" of it would be meaningless.
+            // The last pass is the one that matters most in the latency budget:
+            // a single line changing, which is what a status bar update is.
+            static DisplayList bench;
+            const Caps caps = board::display().caps();
+            const TextMetrics tm = board::display().metrics(TextStyle::Body);
+            const int rows = tm.line_h ? caps.visible_h / tm.line_h : 0;
+            const int cols = tm.char_w ? caps.logical_w / tm.char_w - 1 : 0;
+            const int n = rows > 12 ? 12 : rows;
+            const int w = cols > 78 ? 78 : cols;
+            static char bench_lines[12][80];
+
+            // `fill` goes on every row; `row_fill` overrides just `only_row`, so
+            // the last pass can differ from the one before it by a single line
+            // instead of repainting everything around it. Getting that wrong
+            // makes the "one line" case dirty the whole screen and measure the
+            // same thing as the pass before it.
+            auto paint = [&](char fill, int only_row, char row_fill) {
+                bench.clear();
+                for (int r = 0; r < n; ++r) {
+                    for (int i = 0; i < w; ++i)
+                        bench_lines[r][i] = (r == only_row) ? row_fill : fill;
+                    bench_lines[r][0] = static_cast<char>('A' + r);
+                    bench_lines[r][w] = '\0';
+                    TextCmd t;
+                    t.box = Box{0, static_cast<int16_t>(r * tm.line_h), caps.logical_w, tm.line_h};
+                    t.text = bench_lines[r];
+                    bench.text(t);
+                }
+                board::display().draw(bench);
+            };
+
+            ESP_LOGI(kTag, "refresh benchmark on %s, %d rows of %d columns",
+                     board::panel_name(), n, w);
+            paint('#', -1, '#');
+            board::display().present(Refresh::Full, nullptr, nullptr);
+            paint('=', -1, '=');
+            board::display().present(Refresh::Fast, nullptr, nullptr);
+            paint('.', -1, '.');
+            board::display().present(Refresh::Partial, nullptr, nullptr);
+            // Identical to the pass above except for one row: the status bar case.
+            paint('.', n / 2, '*');
+            board::display().present(Refresh::Partial, nullptr, nullptr);
+            ESP_LOGI(kTag, "refresh benchmark done: full, fast, partial whole screen, "
+                           "partial one line, in that order above");
+            break;
+        }
         case '?':
             ESP_LOGI(kTag, "p/P phone ready|absent, a audio acked, r/c/s/o results, "
                            "k/f/u execution, x transport fail, b/B battery, "
-                           "A stream the clip, q/w/e/d/z/v patterns, C clean, T text probe");
+                           "A stream the clip, q/w/e/d/z/v patterns, C clean, T text probe, "
+                           "F refresh benchmark, Y/X/Z partial probes");
             break;
         default: break;
     }
@@ -971,7 +1222,7 @@ extern "C" void app_main() {
     configure_input(board::kBtnSide, true);  // breadboard: needs the internal one
 
     // Non blocking console reads, see handle_serial().
-    ESP_ERROR_CHECK(uart_driver_install(UART_NUM_0, 256, 0, 0, nullptr, 0));
+    console_init();
 
     board::display().init();
 
@@ -1066,6 +1317,7 @@ extern "C" void app_main() {
 #endif
 
         drain_inbox();
+        g_audio.catch_up();   // new samples become whole chunks here, on this task
         g_audio.poll();
         // Through feed(), not g_machine.tick(): the transition carries the
         // actions, and feed() is the only thing that applies them. Calling tick()

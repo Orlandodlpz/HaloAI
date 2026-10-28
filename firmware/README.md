@@ -4,16 +4,34 @@ The device: hold the side button, speak, read the e-paper screen, confirm with a
 single press. See `docs/BRIEFING.md` section 2 for the V1 state machine and the BLE
 contract, and section 3.3 for the phases.
 
-**State: F0 done, F1 built (the wallpaper has not been on the glass yet), part of
-F2 built early.** Framework is ESP-IDF
-(v5.5.5). The board app runs on the development board: the state machine drives real
-buttons, the e-paper renders real screens, and BLE streams audio to a phone.
+**State: F0 done, F1 done on both boards, F2 capture working on the development
+board, F3 in progress.** Framework is ESP-IDF (v5.5.5). The state machine drives
+real buttons, the e-paper renders real screens, and BLE streams audio to a phone.
 
-Everything measured here is on the **Elecrow CrowPanel 5.79**, the development board.
-The badge (Waveshare ESP32-S3 e-Paper 3.97) is not in hand, so no number below
-closes a phase gate for the product.
+**The badge (Waveshare ESP32-S3 e-Paper 3.97) is in hand and drawing its own
+screens as of 2026-10-27.** One build flag picks the board:
 
-| | Measured |
+```sh
+idf.py -DHALO_PANEL=waveshare build    # the badge
+idf.py -DHALO_PANEL=crowpanel build    # the development board (the default)
+```
+
+It picks the display backend, the pin map, the flash size, the console and the
+partition table, and each board keeps its own generated `sdkconfig` so the two
+cannot poison each other. Numbers below are tagged with the board they came
+from; only the badge's close a gate for the product.
+
+| Badge (Waveshare 3.97) | Measured |
+| --- | --- |
+| Ordinary screen (whole-panel partial) | 655 ms |
+| Every ~10th screen (full refresh + deep clean) | 7746 ms |
+| Full refresh on its own | 2573 ms |
+| Fast refresh, unused so far | 2167 ms |
+| Sub-region partial | never used: this panel places them wrong |
+| Text at 235 DPI | Spleen 16 x 32 readable, budget 48 x 12 stands |
+| State screens drawn and checked by eye | 19 of 21 |
+
+| Development board (CrowPanel 5.79) | Measured |
 | --- | --- |
 | Partial refresh (every ordinary screen) | 495 ms |
 | Full refresh (clear then draw, ghost flush) | 4309 ms |
@@ -57,15 +75,32 @@ Needs only CMake 3.16 and a C++17 compiler. 194 tests, about 20 ms.
 ```sh
 source ~/esp/esp-idf/export.sh
 cd firmware/board
-idf.py build                                  # the real build
-idf.py -DHALO_BENCH_INJECT=1 build            # bench build, console keys, never ship it
-idf.py -p /dev/cu.usbserial-210 flash monitor
+idf.py -DHALO_PANEL=waveshare build                       # the badge
+idf.py -DHALO_PANEL=waveshare -B build.waveshare build    # or keep the two apart
+idf.py -DHALO_BENCH_INJECT=1 build                        # bench build, never ship it
+idf.py -DHALO_PANEL=waveshare -p /dev/cu.usbmodem101 flash monitor
 ```
 
-The serial port number is not stable across replugs: check `ls /dev/cu.usbserial-*`.
-`?` lists the console keys. `C` deep cleans the panel and `T` draws the full panel
-probe: 8 rows labelled A to H, each starting and ending with its own letter, and a
-black block inside each of the four corners. Anything missing can then be named.
+The port is not stable across replugs, and the two boards do not even look alike:
+the badge has no USB to serial bridge, so it is **`/dev/cu.usbmodem*`** (the chip's
+own USB-Serial/JTAG), while the development board's CH340 is `/dev/cu.usbserial-*`.
+Check `ls /dev/cu.*`. If the badge's port vanishes, give it a minute before blaming
+the cable: with no battery attached its PMU can drop the system rail, and the USB
+peripheral is inside the chip.
+
+`?` lists the console keys. `C` deep cleans the panel, `T` draws the full panel
+probe (rows labelled from A, each starting and ending with its own letter, and a
+black block inside each of the four corners; 8 rows on the development board, 12
+on the badge), so a region that does not update can be named rather than
+described. `F` runs the refresh benchmark.
+
+`Y`, `X` and `Z` are the three partial refresh probes, badge only. Each draws
+labelled bands with a different register convention and lets the glass say which
+one this panel obeys: `Y` the window order, `X` whether the X window is in
+pixels or byte addresses, `Z` whether writing the previous image into 0x26 is
+what stops a partial from erasing. They are kept because they are the only way
+to ask this panel a question and get an answer rather than a guess; the vendor's
+own two ports of it contradict each other.
 In the bench build, `?` also lists the keys that inject gestures. `-DHALO_BENCH_INJECT=1` is a CMake
 cache variable and therefore **sticky**: once passed, later plain builds stay bench
 builds until `idf.py fullclean`. The boot log names the build it is running.
@@ -81,6 +116,8 @@ tools/phone_sim.py 9      # drop every 9th chunk, exercising resend_from
 tools/phone_sim.py 0 2    # drop the first two final markers, exercising the 300 ms resend
 tools/screen_sim.py       # fragmented Screen and Settings writes, and a broken sequence
 tools/screen_tour.py      # walk the nine screens the device owns, to look at them
+tools/backend_tour.py     # walk the twelve the backend owns, as real Screen writes
+tools/backend_tour.py REVIEW CANCELLED   # or just the ones named
 tools/flow_sim.py         # a whole request to an approve, then power cycle and reconcile
 tools/wallpaper_sim.py    # send a wallpaper the way the phone does, check the answer
 tools/wallpaper_sim.py --drop 7       # drop every 7th chunk: it must ask for a resend

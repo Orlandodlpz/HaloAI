@@ -1,6 +1,18 @@
 # An external microphone on the development board
 
-**Status:** agreed by the team 2026-10-20 as insurance, not as the plan. Not started.
+**Status: DONE on the development board, 2026-10-27.** An INMP441 on the header captures
+live speech, and the capture pipeline this document exists to rehearse now works: 190
+chunks, 3.79 s, streaming while the button was held, zero CRC failures, 69 kbit/s.
+Verify: flash, then `tools/mic_sim.py`, hold MENU and speak; it writes a WAV to listen to.
+
+Two things learned doing it. **The first module was dead** (soldered without flux) and the
+second worked immediately, so buy spares and suspect the joint before the part. **The
+probe keys matter more than they look**: M, N, J and L in the console separate a dead
+module from a wrong pin from a wrong slot configuration, and the loopback on L proved the
+board side before anyone touched the soldering iron again.
+
+Still not done by ear: nobody has confirmed the recording is intelligible as words, and
+Parakeet has never been given one. That is the remaining question, not the plumbing.
 
 The CrowPanel has no microphone, so F2's capture half has never run and **a real spoken
 command has never been tested anywhere**. If the Waveshare badge does not arrive, the
@@ -21,9 +33,12 @@ So this is a rehearsal. If the badge lands late, the capture code is already deb
 and only the codec layer changes.
 
 **What ports to the badge:** the ring buffer, backpressure, the 2 s window, chunk
-pacing, the release path, and everything already in `core/src/audio.cpp`.
+pacing, the release path, and everything already in `core/src/audio.cpp`. Also the parts
+built on 2026-10-27: the capture task, `AudioTx::start_live`/`catch_up`/`finish`, and the
+conditioning (50 ms transient skip, DC blocker, one bit of headroom).
 **What does not:** the driver itself. An INMP441 is a direct I2S MEMS microphone; the
-badge uses an ES8311 codec on the PMU's rail, driven through Waveshare's examples.
+badge uses an ES8311 codec on the PMU's rail, driven through Waveshare's examples. On the
+badge, `mic.cpp` is replaced and everything above it stays.
 
 ## Hardware
 
@@ -32,10 +47,14 @@ needs three.
 
 | Signal | Pin | Note |
 | --- | --- | --- |
-| BCLK (SCK) | IO15 | |
+| BCLK (SCK) | IO21 | |
 | WS (LRCL) | IO17 | |
 | DOUT (SD) | IO19 | |
 | L/R | GND | left channel, which is what the driver should read |
+
+**Corrected 2026-10-27: BCLK was IO15 in the first version of this table, and IO15 is
+`kBtnSide`,** the breadboard side button the F0 gesture timings were measured on. Sharing
+it would have broken both. The clock is IO21; IO9 is the one header pin still free.
 
 **Do not use IO3.** It is an ESP32-S3 strapping pin and anything holding it at reset
 stops the board booting, which presents as a dead board rather than a wiring mistake.

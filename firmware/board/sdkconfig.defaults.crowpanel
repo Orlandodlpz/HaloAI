@@ -1,0 +1,8 @@
+# Elecrow CrowPanel ESP32 E-Paper 5.79: ESP32-S3-WROOM-1-N8R8, 8 MB flash.
+# The development board. Nothing ships on it.
+CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# The CH340 bridge is on UART0, not native USB.
+CONFIG_ESP_CONSOLE_UART_DEFAULT=y
+CONFIG_ESP_CONSOLE_UART_BAUDRATE=115200
