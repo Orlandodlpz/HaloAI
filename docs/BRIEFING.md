@@ -636,7 +636,7 @@ Target dates (agreed by the team 2026-10-19): **I1 by October 22** (Carlos; `pip
 - [ ] README with setup instructions and clear guidance for running backend, phone app and firmware, **highlighting how we use Nemotron and Parakeet, where Token Factory sped up our work (for example comparing four Nemotron models on the same eval in one afternoon), and any other Nebius tools**
 - [ ] URL to a working demo: the demo site, free and without restriction, **kept working until December 15, 12:00 PM Pacific**
 - [ ] Written description of features and functionality, naming Nemotron, Parakeet, Nebius Token Factory and Tavily, and making a specific case for a real audience
-- [ ] YouTube video, public, **under 3 minutes**, with footage of HaloAI working on the device it was built for (the badge and the phone), the demo site and one search then act moment. **No third party trademarks or copyrighted music without permission**: no sports teams or leagues in the examples, keep other companies' logos (Google included) off screen as much as possible, no unlicensed music. A bilingual moment only if Spanish is ready
+- [ ] YouTube video, public, **under 3 minutes**, with footage of HaloAI working on the device it was built for (the badge and the phone), the demo site and one search then act moment. **No third party trademarks or copyrighted music without permission**: no sports teams or leagues in the examples, keep other companies' logos (Google included) off screen as much as possible, no unlicensed music. English only (Spanish dropped 2026-10-26)
 - [ ] Track selected: Personal AI
 - [ ] Feedback on Nebius Token Factory, AI Cloud and the NVIDIA models and tools we used (required; also eligible for Most Valuable Feedback)
 - [ ] All materials in English
