@@ -23,11 +23,12 @@ from; only the badge's close a gate for the product.
 
 | Badge (Waveshare 3.97) | Measured |
 | --- | --- |
-| Partial refresh, a whole screen | 643 ms |
-| Partial refresh, one line changed | 620 ms |
-| Fast refresh | 2167 ms |
-| Full refresh (clears ghosting) | 2572 ms |
+| Every screen (full refresh) | 2573 ms |
+| Every ~10th screen (deep clean first) | 7746 ms |
+| Fast refresh, unused so far | 2167 ms |
+| Region partial | **disabled: does not work on this panel** |
 | Text at 235 DPI | Spleen 16 x 32 readable, budget 48 x 12 stands |
+| State screens drawn and checked by eye | 19 of 21 |
 
 | Development board (CrowPanel 5.79) | Measured |
 | --- | --- |
@@ -107,6 +108,8 @@ tools/phone_sim.py 9      # drop every 9th chunk, exercising resend_from
 tools/phone_sim.py 0 2    # drop the first two final markers, exercising the 300 ms resend
 tools/screen_sim.py       # fragmented Screen and Settings writes, and a broken sequence
 tools/screen_tour.py      # walk the nine screens the device owns, to look at them
+tools/backend_tour.py     # walk the twelve the backend owns, as real Screen writes
+tools/backend_tour.py REVIEW CANCELLED   # or just the ones named
 tools/flow_sim.py         # a whole request to an approve, then power cycle and reconcile
 tools/wallpaper_sim.py    # send a wallpaper the way the phone does, check the answer
 tools/wallpaper_sim.py --drop 7       # drop every 7th chunk: it must ask for a resend
