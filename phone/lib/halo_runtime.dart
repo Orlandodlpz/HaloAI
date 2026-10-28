@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 
 import 'backend/backend_client.dart';
 import 'backend/request_controller.dart';
+import 'ble/badge_choice.dart';
 import 'ble/device_session.dart';
 import 'ble/device_transport.dart';
 import 'ble/fbp_transport.dart';
@@ -35,8 +36,9 @@ class Entry {
 /// is in flight.
 class HaloRuntime {
   HaloRuntime({HaloService? service, DeviceTransport Function()? transport})
-      : service = service ?? HaloService(),
-        _transport = transport ?? FbpTransport.new {
+      : service = service ?? HaloService() {
+    _transport = transport ??
+        () => FbpTransport(mine: () => badgeId, choose: _askWhichBadge, onConnected: (id) => unawaited(rememberBadge(id)));
     lock = WorkLock(this.service, log: (l) => record('P3LOG $l'));
   }
 
@@ -44,7 +46,18 @@ class HaloRuntime {
 
   final HaloService service;
   late final WorkLock lock;
-  final DeviceTransport Function() _transport;
+  late final DeviceTransport Function() _transport;
+
+  /// This phone's own badge (its Bluetooth address), remembered on the first
+  /// connect and saved; the scan ignores every other HaloAI badge
+  /// (`ble/badge_choice.dart`). Null until the first connect or after
+  /// [forgetBadge].
+  String? badgeId;
+
+  /// Set while the scan heard several badges and none is remembered: Home
+  /// asks which one is this phone's ([chooseBadge] answers).
+  List<FoundBadge>? badgeChoices;
+  Completer<String?>? _badgeAnswer;
 
   SttWorker? stt;
   String? baseDir;
@@ -98,6 +111,7 @@ class HaloRuntime {
         orientation = m['orientation'] as String? ?? orientation;
         wallpaperFit = WallpaperFit.values.asNameMap()[m['wallpaper_fit']] ?? wallpaperFit;
         wallpaperOnBadgeFor = m['wallpaper_on_badge_for'] as String?;
+        badgeId = m['badge_id'] as String?;
       }
       final photo = await _photoFile();
       if (photo.existsSync()) wallpaperPhoto = photo.readAsBytesSync();
@@ -271,7 +285,48 @@ class HaloRuntime {
     }
   }
 
+  // ------------------------------------------------------------ own badge
+
+  /// Remembers [id] as this phone's badge if none is remembered yet.
+  Future<void> rememberBadge(String id) async {
+    if (badgeId != null) return;
+    badgeId = id;
+    record('BLELOG this phone\'s badge is now $id; other HaloAI badges are ignored');
+    changed();
+    await _saveSettings();
+  }
+
+  /// Forgets the remembered badge and disconnects, so the next Connect
+  /// takes the only badge in range or asks.
+  Future<void> forgetBadge() async {
+    final was = badgeId;
+    badgeId = null;
+    record('BLELOG forgot badge $was');
+    await _saveSettings();
+    await disconnect();
+    changed();
+  }
+
+  Future<String?> _askWhichBadge(List<FoundBadge> badges) {
+    record('BLELOG ${badges.length} HaloAI badges in range and none remembered, asking: ${badges.join(', ')}');
+    badgeChoices = badges;
+    _badgeAnswer = Completer<String?>();
+    changed();
+    return _badgeAnswer!.future;
+  }
+
+  /// The user's answer to [badgeChoices]: the badge that is theirs, or null.
+  void chooseBadge(String? id) {
+    final answer = _badgeAnswer;
+    _badgeAnswer = null;
+    badgeChoices = null;
+    if (id != null) record('BLELOG chosen as this phone\'s badge: $id');
+    changed();
+    if (answer != null && !answer.isCompleted) answer.complete(id);
+  }
+
   Future<void> disconnect() async {
+    chooseBadge(null); // a pending question has no answer once disconnected
     final session = device;
     if (session == null) return;
     for (final s in _deviceSubs) {
@@ -341,6 +396,7 @@ class HaloRuntime {
             'orientation': orientation,
             'wallpaper_fit': wallpaperFit.name,
             'wallpaper_on_badge_for': wallpaperOnBadgeFor,
+            'badge_id': badgeId,
           }),
           flush: true);
     } catch (e) {
