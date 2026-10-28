@@ -279,6 +279,92 @@ void loopback_check() {
     start_on(I2S_STD_SLOT_LEFT);
 }
 
+// ---------------------------------------------------------------- capture
+
+namespace {
+TaskHandle_t g_capture_task = nullptr;
+SampleSink g_sink = nullptr;
+volatile bool g_capturing = false;
+
+// A single pole DC blocker, and one bit of headroom.
+//
+// Both come from the first real recording (2026-10-27, 3.79 s of speech): RMS
+// was -10.9 dBFS, about 10 dB hotter than a speech recording wants, with 26
+// samples already clipped and a DC offset of 326. Taking the top 16 bits of the
+// microphone's 24 is full gain, so a louder voice clips properly, and clipping
+// is one of the few things that really costs transcription accuracy. A bit of
+// headroom is cheaper than a clipped consonant, and ADPCM should not spend its
+// precision tracking a constant.
+int32_t g_dc_x1 = 0, g_dc_y1 = 0;
+
+int16_t condition(int32_t raw) {
+    const int32_t x = raw >> 17;             // 24 bit sample, one bit of headroom
+    // y[n] = x[n] - x[n-1] + 0.995 * y[n-1], at 16 kHz: about 13 Hz corner.
+    const int32_t y = x - g_dc_x1 + ((g_dc_y1 * 4079) >> 12);
+    g_dc_x1 = x;
+    g_dc_y1 = y;
+    return static_cast<int16_t>(y > 32767 ? 32767 : (y < -32768 ? -32768 : y));
+}
+
+void capture_task(void*) {
+    static int32_t raw[kBlockFrames];
+    static int16_t pcm[kBlockFrames];
+    size_t total = 0;
+    // The first samples after the receiver is enabled are a startup transient,
+    // not sound: measured full scale on the probe (-4.9 dBFS, peak 32753) while
+    // the room was quiet, settling about 50 ms later. Recording it would start
+    // every command with a pop and spend the first ADPCM chunk chasing it.
+    size_t skip = kSampleRate / 20;
+    g_dc_x1 = g_dc_y1 = 0;   // the filter starts fresh for every recording
+    while (g_capturing) {
+        size_t got = 0;
+        // A timeout rather than forever, so stopping is never stuck in a read.
+        if (i2s_channel_read(g_rx, raw, sizeof(raw), &got, pdMS_TO_TICKS(100)) != ESP_OK)
+            continue;
+        size_t n = got / sizeof(int32_t);
+        const int32_t* from = raw;
+        if (skip > 0) {
+            const size_t drop = skip < n ? skip : n;
+            skip -= drop;
+            from += drop;
+            n -= drop;
+        }
+        for (size_t i = 0; i < n; ++i) pcm[i] = condition(from[i]);
+        if (n > 0 && g_sink != nullptr) g_sink(pcm, n);
+        total += n;
+    }
+    ESP_LOGI(kTag, "capture ended, %u samples (%.2f s)", static_cast<unsigned>(total),
+             static_cast<double>(total) / kSampleRate);
+    g_capture_task = nullptr;
+    vTaskDelete(nullptr);
+}
+}  // namespace
+
+bool capturing() { return g_capturing; }
+
+bool capture_start(SampleSink sink) {
+    if (g_capturing) return true;
+    if (!start_on(I2S_STD_SLOT_LEFT)) return false;
+    g_sink = sink;
+    g_capturing = true;
+    // Above the main loop's priority: a sample missed is speech lost, and the
+    // main loop can wait a few microseconds for a screen.
+    if (xTaskCreate(capture_task, "halo_mic", 4096, nullptr, 6, &g_capture_task) != pdPASS) {
+        g_capturing = false;
+        ESP_LOGE(kTag, "could not start the capture task");
+        return false;
+    }
+    ESP_LOGI(kTag, "capture started");
+    return true;
+}
+
+void capture_stop() {
+    if (!g_capturing) return;
+    g_capturing = false;
+    // The task clears its own handle as it exits; give it the one read timeout.
+    for (int i = 0; i < 20 && g_capture_task != nullptr; ++i) vTaskDelay(pdMS_TO_TICKS(10));
+}
+
 void line_check() {
     stop();   // I2S owns these pins while it is running
 

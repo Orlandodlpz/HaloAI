@@ -32,6 +32,21 @@ struct Reading {
     int slot = 0;            // which slot configuration produced this
 };
 
+// ---------------------------------------------------------------- capture
+
+// Where captured samples go, called from the microphone's own task. It must do
+// nothing but copy: no encoding, no radio, no display.
+using SampleSink = void (*)(const int16_t* samples, size_t count);
+
+// Starts a task that reads the microphone continuously and hands 16 bit samples
+// to `sink` until capture_stop(). A task of its own on purpose: the main loop
+// stops for about half a second whenever the panel refreshes, and the I2S DMA
+// ring holds about 90 ms, so capturing from the main loop would lose speech
+// every time a screen was drawn.
+bool capture_start(SampleSink sink);
+void capture_stop();
+bool capturing();
+
 // Reads `frames` samples and measures them. Blocks for frames/16000 seconds.
 Reading read(size_t frames);
 

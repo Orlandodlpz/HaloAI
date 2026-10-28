@@ -264,6 +264,7 @@ public:
 
     void start(uint16_t req, uint8_t rev, uint8_t seg, const int16_t* pcm, size_t samples) {
         req_ = req; rev_ = rev; seg_ = seg;
+        live_ = false; capture_open_ = false;
         pcm_ = pcm; samples_ = samples;
         total_chunks_ = static_cast<int>((samples + kSamplesPerChunk - 1) / kSamplesPerChunk);
         if (total_chunks_ > kMaxChunks) total_chunks_ = kMaxChunks;
@@ -284,6 +285,111 @@ public:
         ESP_LOGI(kTag, "audio: %u samples, %d chunks, %.1f s",
                  static_cast<unsigned>(samples), total_chunks_, samples / 16000.0);
     }
+
+    // ---- live capture: the microphone fills this while the button is held ----
+    //
+    // start() above is the flash clip's path: every sample is known up front, so
+    // every chunk's encoder state can be computed in one pass. A recording is the
+    // other way round, and the contract streams it while the hold is still going,
+    // so the chunks appear as the samples do.
+
+    // 8 s at 16 kHz, which is also what kMaxChunks allows. Taken from PSRAM when
+    // the board has any; a board without falls back to 2 s of internal memory,
+    // and a recording that runs past the buffer stops rather than wrapping over
+    // speech that has not been sent.
+    static constexpr size_t kLiveSamplesPsram = 16000 * 8;
+    static constexpr size_t kLiveSamplesInternal = 16000 * 2;
+
+    bool start_live(uint16_t req, uint8_t rev, uint8_t seg) {
+        if (live_buf_ == nullptr) {
+            live_capacity_ = kLiveSamplesPsram;
+            live_buf_ = static_cast<int16_t*>(
+                heap_caps_malloc(live_capacity_ * sizeof(int16_t), MALLOC_CAP_SPIRAM));
+            if (live_buf_ == nullptr) {
+                live_capacity_ = kLiveSamplesInternal;
+                live_buf_ = static_cast<int16_t*>(
+                    heap_caps_malloc(live_capacity_ * sizeof(int16_t), MALLOC_CAP_8BIT));
+            }
+            if (live_buf_ == nullptr) {
+                live_capacity_ = 0;
+                ESP_LOGE(kTag, "no room for a recording buffer");
+                return false;
+            }
+            ESP_LOGI(kTag, "recording buffer: %u samples (%.1f s), %s",
+                     static_cast<unsigned>(live_capacity_),
+                     static_cast<double>(live_capacity_) / 16000.0,
+                     esp_ptr_external_ram(live_buf_) ? "PSRAM" : "internal");
+        }
+        req_ = req; rev_ = rev; seg_ = seg;
+        pcm_ = live_buf_;
+        samples_ = 0;
+        written_.store(0, std::memory_order_relaxed);
+        total_chunks_ = 0; next_ = 0; acked_ = -1;
+        final_sent_ = false; done_ = false; record_end_sent_ = false;
+        final_resends_ = 0; final_first_us_ = 0; final_last_us_ = 0;
+        started_us_ = esp_timer_get_time();
+        bytes_ = 0; resends_ = 0;
+        live_ = true; capture_open_ = true;
+        live_enc_ = AdpcmEncoder();
+        overflowed_ = false;
+        return true;
+    }
+
+    // Called from the microphone's task and from nowhere else. Copies, publishes
+    // how much is there, and does nothing else: the encoding stays on the main
+    // task, so there is one writer and one reader and no lock between them.
+    void write_captured(const int16_t* s, size_t n) {
+        if (!capture_open_ || live_buf_ == nullptr) return;
+        size_t at = written_.load(std::memory_order_relaxed);
+        if (at + n > live_capacity_) {
+            n = live_capacity_ - at;
+            overflowed_ = true;
+        }
+        if (n == 0) return;
+        memcpy(live_buf_ + at, s, n * sizeof(int16_t));
+        written_.store(at + n, std::memory_order_release);
+    }
+
+    // Main task. Turns whatever the microphone has produced into whole chunks,
+    // recording the encoder state each one starts from so a resend does not have
+    // to replay the segment.
+    void catch_up() {
+        if (!live_) return;
+        const size_t have = written_.load(std::memory_order_acquire);
+        static int16_t part[kSamplesPerChunk];
+        while (total_chunks_ < kMaxChunks &&
+               have >= static_cast<size_t>(total_chunks_ + 1) * kSamplesPerChunk) {
+            const size_t start = static_cast<size_t>(total_chunks_) * kSamplesPerChunk;
+            memcpy(part, live_buf_ + start, kSamplesPerChunk * sizeof(int16_t));
+            state_[total_chunks_] = live_enc_.state();
+            static uint8_t scratch[kChunkPayloadBytes];
+            live_enc_.encode(part, kSamplesPerChunk, scratch);
+            ++total_chunks_;
+            samples_ = start + kSamplesPerChunk;
+        }
+        if (overflowed_ && capture_open_) {
+            ESP_LOGE(kTag, "recording filled the buffer: capture stopped, nothing overwritten");
+            finish();
+        }
+    }
+
+    // The button came up. Whatever is left over becomes one last short chunk, and
+    // only now may the final marker go out.
+    void finish() {
+        if (!live_ || !capture_open_) return;
+        capture_open_ = false;
+        catch_up();
+        const size_t have = written_.load(std::memory_order_acquire);
+        if (have > samples_ && total_chunks_ < kMaxChunks) {
+            state_[total_chunks_] = live_enc_.state();
+            ++total_chunks_;
+            samples_ = have;
+        }
+        ESP_LOGI(kTag, "recorded %u samples, %.2f s, %d chunks",
+                 static_cast<unsigned>(samples_), samples_ / 16000.0, total_chunks_);
+    }
+
+    bool live_capture_open() const { return live_ && capture_open_; }
 
     bool active() const { return pcm_ != nullptr && !done_; }
     // Chunks handed to the radio so far. On the badge this is the real count for
@@ -326,6 +432,10 @@ public:
             ++next_;
         }
         if (next_ < total_chunks_) return;
+        // Still recording: there is more to come, so neither record_end nor the
+        // final marker may go out yet. The final marker is what tells the phone
+        // the segment is complete, and it is only complete on release.
+        if (live_ && capture_open_) return;
 
         // Every chunk is queued. That is the moment the recording is over, so
         // record_end goes out here: on the badge this is the button release, and
@@ -388,9 +498,19 @@ private:
     int64_t started_us_ = 0, final_first_us_ = 0, final_last_us_ = 0;
     size_t bytes_ = 0;
     AdpcmState state_[kMaxChunks];
+
+    // Live capture only.
+    bool live_ = false, capture_open_ = false, overflowed_ = false;
+    int16_t* live_buf_ = nullptr;
+    size_t live_capacity_ = 0;
+    std::atomic<size_t> written_{0};   // written by the microphone task, read here
+    AdpcmEncoder live_enc_;
 };
 
 AudioTx g_audio;
+
+// Called on the microphone's task. One memcpy and a counter, nothing else.
+void capture_sink(const int16_t* samples, size_t count) { g_audio.write_captured(samples, count); }
 
 // One buffer for every outgoing event. The build step returns 0 when the message
 // did not fit, and 0 means do not send: a truncated object is not JSON.
@@ -570,6 +690,16 @@ void emit_events(const Transition& t, const Event& e) {
                 send(msg::record_start(g_tx, sizeof(g_tx), g_link,
                                        t.to == State::RecordAddition),
                      "record_start");
+                // The microphone, if there is one. A board with nothing wired to
+                // the header records silence and the segment ends on the delivery
+                // deadline, which is visible now rather than a hang.
+                if (g_audio.start_live(g_link.req, g_link.rev, g_link.seg) &&
+                    !mic::capture_start(capture_sink))
+                    ESP_LOGE(kTag, "no microphone: this segment will be empty");
+                break;
+            case Action::StopCapture:
+                mic::capture_stop();
+                g_audio.finish();
                 break;
             case Action::SendFinalMarker:
                 // record_end is sent by the streamer, when the last chunk is
@@ -1084,6 +1214,7 @@ extern "C" void app_main() {
 #endif
 
         drain_inbox();
+        g_audio.catch_up();   // new samples become whole chunks here, on this task
         g_audio.poll();
         // Through feed(), not g_machine.tick(): the transition carries the
         // actions, and feed() is the only thing that applies them. Calling tick()
