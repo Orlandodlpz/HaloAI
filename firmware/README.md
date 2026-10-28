@@ -58,6 +58,29 @@ host tests pass happily while the device build fails to link.
 The split exists so the part that must never be wrong (nothing irreversible without
 a deliberate confirm) can be tested exhaustively without hardware in the loop.
 
+## The controls
+
+**On the badge there is one button, and it is the rotary's own click** (decided
+2026-10-28). It does every gesture; the same control still rotates.
+
+| | |
+| --- | --- |
+| Hold the click | record while held, release to send |
+| One press | confirm. In REVIEW this is what sends the email or creates the event |
+| Two presses | cancel, or dismiss an outcome screen |
+| Rotate | move the highlight, or scroll a body longer than the panel |
+| Rotate or press in WALLPAPER | wake, and the input is consumed rather than acted on |
+
+There is no separate side button. One was planned and never soldered, and BOOT
+is a poor stand in: IO0 is a strapping pin, so holding it through a reset drops
+the chip into the ROM loader and looks exactly like a dead board.
+
+On the development board the gestures come from the onboard MENU button
+instead, because its rotary click is wired differently.
+
+**If this ever changes again, change it here in the same commit.** Carlos lost
+time at the bench pressing a button that had quietly stopped being the button.
+
 ## Build and test on a computer
 
 ```sh

@@ -351,16 +351,34 @@ HALO_TEST(refresh_final_screens_are_partial_not_full) {
     CHECK(p.choose(State::Success, false) == Refresh::Partial);
 }
 
+// Only READY, and only between commands. Everywhere else the user is waiting.
 HALO_TEST(refresh_goes_full_periodically_to_clear_ghosting) {
     RefreshPolicy p(3);
     for (int i = 0; i < 3; ++i) {
-        CHECK(p.choose(State::Review, false) == Refresh::Partial);
+        CHECK(p.choose(State::Ready, false) == Refresh::Partial);
         p.note_presented(Refresh::Partial);
     }
-    CHECK(p.choose(State::Review, false) == Refresh::Full);
+    CHECK(p.choose(State::Ready, false) == Refresh::Full);
     p.note_presented(Refresh::Full);
     CHECK(p.partials_since_full() == 0);
-    CHECK(p.choose(State::Review, false) == Refresh::Partial);
+    CHECK(p.choose(State::Ready, false) == Refresh::Partial);
+}
+
+// A screen showing a result is never interrupted by the ghost clear, however
+// long the counter has been running. Measured twice on the badge: on PROCESSING
+// it cost 8.4 s a command, and once PROCESSING was excluded it moved to REVIEW
+// and cost 9.0 to 9.6 s, which is the screen the latency budget is about.
+HALO_TEST(refresh_never_goes_full_on_a_screen_the_user_is_waiting_for) {
+    for (State s : {State::Review, State::ConflictAmbiguous, State::ConflictSchedule,
+                    State::ReadOnlyResult, State::Success, State::Failure,
+                    State::Processing, State::ProcessingSlow, State::Recording,
+                    State::FinalizeAudio, State::RecordAddition, State::Executing}) {
+        RefreshPolicy p(3);
+        for (int i = 0; i < 20; ++i) {
+            CHECK(p.choose(s, false) == Refresh::Partial);
+            p.note_presented(Refresh::Partial);
+        }
+    }
 }
 
 // A full refresh is 2.5 s on the badge, nearly 8 s when it clears ghosting
@@ -370,26 +388,17 @@ HALO_TEST(refresh_goes_full_periodically_to_clear_ghosting) {
 // release to 7.6 s, against an 8 s delivery deadline, and the request failed.
 // On PROCESSING it is the same cost in a different place: the backend's answer
 // arrives and waits in the inbox, and the command takes 8.4 s instead of 3.
-HALO_TEST(refresh_never_goes_full_while_audio_is_in_flight) {
-    for (State s : {State::Recording, State::RecordAddition, State::FinalizeAudio,
-                    State::Processing, State::ProcessingSlow}) {
-        RefreshPolicy p(3);
-        for (int i = 0; i < 10; ++i) {
-            CHECK(p.choose(s, false) == Refresh::Partial);
-            p.note_presented(Refresh::Partial);
-        }
-    }
-}
 
-// Deferred, not skipped: the count keeps running underneath, so the ghost
-// clearing happens on the next screen that can afford it.
-HALO_TEST(refresh_defers_the_full_until_audio_is_done) {
+// Deferred, not skipped: the count keeps running underneath, so the clearing
+// still happens, at the next gap between commands rather than inside one.
+HALO_TEST(refresh_defers_the_full_until_nobody_is_waiting) {
     RefreshPolicy p(3);
     for (int i = 0; i < 6; ++i) {
         CHECK(p.choose(State::FinalizeAudio, false) == Refresh::Partial);
         p.note_presented(Refresh::Partial);
     }
-    CHECK(p.choose(State::Review, false) == Refresh::Full);
+    CHECK(p.choose(State::Review, false) == Refresh::Partial);   // still not here
+    CHECK(p.choose(State::Ready, false) == Refresh::Full);       // here
 }
 
 HALO_TEST(refresh_wallpaper_and_boot_are_always_full) {

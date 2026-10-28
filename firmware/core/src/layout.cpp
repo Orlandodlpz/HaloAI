@@ -263,26 +263,25 @@ Refresh RefreshPolicy::choose(State to, bool status_only) {
     // release instead of 0.65 s, which is almost the whole 8 s delivery
     // deadline, and the request failed. Found by Carlos on the real phone.
     //
-    // PROCESSING and PROCESSING SLOW are here for the same reason even though
-    // nothing is streaming: the user is waiting, the backend's answer is in
-    // flight, and the main loop does not drain the inbox while the panel is
-    // being driven, so the result screen arrives and sits in the queue. Carlos
-    // measured it on the badge 2026-10-28: 5 of 7 commands reached the glass in
-    // 2.9 to 3.2 s and the other 2 took 8.4 s, every time because the full
-    // refresh landed on PROCESSING.
+    // THE GHOST CLEAR ONLY HAPPENS WHERE NOBODY IS WAITING.
     //
-    // Not every state the device is busy in. REVIEW and the conflict states are
-    // busy too, but nobody is waiting on a round trip: a slow refresh there only
-    // means the confirm guard starts later, which is exactly what it is for.
+    // A full refresh costs 2.5 s, or 7.6 s when it clears ghosting first, and
+    // the main loop does not run while the panel is being driven. Anywhere in a
+    // command that is time the user spends staring at a stale screen.
     //
-    // The counter keeps running, so the ghost clearing is deferred to the next
-    // screen that can afford it, not skipped.
-    if (to == State::Recording || to == State::RecordAddition ||
-        to == State::FinalizeAudio || to == State::Processing ||
-        to == State::ProcessingSlow)
-        return Refresh::Partial;
-
-    if (full_every_ != 0 && partials_since_full_ >= full_every_) return Refresh::Full;
+    // Deferring it was not enough and that was the wrong shape: the counter
+    // simply fired on the next screen that was allowed, which turned out to be
+    // REVIEW, the one screen the whole latency budget is about. Carlos measured
+    // it twice on the badge. First it landed on PROCESSING and 2 of 7 commands
+    // took 8.4 s; once PROCESSING was excluded it moved to REVIEW and 4 of 7
+    // took 9.0 to 9.6 s, against 2.1 to 3.1 s for the rest.
+    //
+    // So it is not a list of states to avoid. It is a list of two where there is
+    // nothing in flight: READY between commands, and WALLPAPER above. The
+    // counter keeps running underneath, so a long run of screens still gets its
+    // clearing, at the next gap rather than in the middle of someone's command.
+    if (to == State::Ready && full_every_ != 0 && partials_since_full_ >= full_every_)
+        return Refresh::Full;
     return Refresh::Partial;
 }
 
