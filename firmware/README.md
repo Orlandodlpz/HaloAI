@@ -23,10 +23,11 @@ from; only the badge's close a gate for the product.
 
 | Badge (Waveshare 3.97) | Measured |
 | --- | --- |
-| Every screen (full refresh) | 2573 ms |
-| Every ~10th screen (deep clean first) | 7746 ms |
+| Ordinary screen (whole-panel partial) | 655 ms |
+| Every ~10th screen (full refresh + deep clean) | 7746 ms |
+| Full refresh on its own | 2573 ms |
 | Fast refresh, unused so far | 2167 ms |
-| Region partial | **disabled: does not work on this panel** |
+| Sub-region partial | never used: this panel places them wrong |
 | Text at 235 DPI | Spleen 16 x 32 readable, budget 48 x 12 stands |
 | State screens drawn and checked by eye | 19 of 21 |
 
