@@ -40,7 +40,7 @@
 #include "board_pins.hpp"
 #include "display_backends.hpp"
 #include "driver/gpio.h"
-#include "driver/i2c_master.h"
+#include "board_i2c.hpp"
 #include "driver/spi_master.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
@@ -80,7 +80,6 @@ uint8_t* g_fb_prev = nullptr;
 
 
 spi_device_handle_t g_spi = nullptr;
-i2c_master_bus_handle_t g_i2c = nullptr;
 i2c_master_dev_handle_t g_pmu = nullptr;
 bool g_ready = false;
 // Partial refresh is differential against a baseline the controller holds. Until
@@ -133,26 +132,10 @@ bool pmu_write(uint8_t reg, uint8_t value) {
 // Returns false if the PMU could not be reached at all, which on this board
 // means the panel will not light up and nothing further is worth trying.
 bool pmu_init() {
-    i2c_master_bus_config_t bus = {};
-    bus.i2c_port = I2C_NUM_0;
-    bus.sda_io_num = kI2cSda;
-    bus.scl_io_num = kI2cScl;
-    bus.clk_source = I2C_CLK_SRC_DEFAULT;
-    bus.glitch_ignore_cnt = 7;
-    bus.flags.enable_internal_pullup = true;
-    if (i2c_new_master_bus(&bus, &g_i2c) != ESP_OK) {
-        ESP_LOGE(kTag, "I2C bus init failed on SDA %d / SCL %d", kI2cSda, kI2cScl);
-        return false;
-    }
-
-    i2c_device_config_t dev = {};
-    dev.dev_addr_length = I2C_ADDR_BIT_LEN_7;
-    dev.device_address = kAxp2101Addr;
-    dev.scl_speed_hz = 400000;
-    if (i2c_master_bus_add_device(g_i2c, &dev, &g_pmu) != ESP_OK) {
-        ESP_LOGE(kTag, "could not add the PMU at 0x%02x to the I2C bus", kAxp2101Addr);
-        return false;
-    }
+    // The bus belongs to nobody: the audio codec is on it too, and ESP-IDF
+    // allows one master per port. See board_i2c.hpp.
+    g_pmu = i2c_device(kAxp2101Addr);
+    if (g_pmu == nullptr) return false;
 
     uint8_t onoff = 0;
     if (!pmu_read(kRegLdoOnOff0, &onoff)) {

@@ -11,6 +11,11 @@
 #include "driver/gpio.h"
 #include "driver/i2s_std.h"
 #include "esp_log.h"
+#if defined(HALO_PANEL_WAVESHARE)
+#include "board_i2c.hpp"
+#include "esp_codec_dev.h"
+#include "esp_codec_dev_defaults.h"
+#endif
 
 namespace halo::board::mic {
 namespace {
@@ -29,26 +34,162 @@ int32_t g_block[kBlockFrames];
 
 }  // namespace
 
-bool start_on(i2s_std_slot_mask_t slot, uint32_t rate = kSampleRate) {
 #if defined(HALO_PANEL_WAVESHARE)
-    // The badge has a microphone on it, labelled MIC on the back. What it does
-    // not have is one this driver can talk to: it is behind an ES8311 codec on
-    // the shared I2C bus, not a bare I2S microphone like the development
-    // board's INMP441, and the codec clocks out nothing at all until it has
-    // been configured over I2C. None of that is written yet. Refusing loudly
-    // beats bringing I2S up on the codec's pins and recording silence, which
-    // looks like a dead microphone and is not one.
-    //
-    // Porting this is the badge half of F2: the pin map is already in
-    // board_pins.hpp (MCLK 13, BCLK 14, WS 47, DIN 21, codec at I2C 0x18) and
-    // everything above this file, the capture task, the ring buffer and the
-    // conditioning, carries over unchanged.
-    (void)slot; (void)rate;
-    ESP_LOGE(kTag, "the badge HAS a microphone, but this driver cannot drive it: "
-                   "it is behind the ES8311 codec, which emits nothing until it is "
-                   "configured over I2C (F2, badge half). Not a hardware fault.");
-    return false;
+
+// ---------------------------------------------------------------- the badge
+//
+// The badge's microphone is not a bare I2S part. It is behind an ES8311 codec
+// that has to be configured over I2C before it clocks out a single sample, so
+// bringing it up is two jobs: an I2S channel as MASTER (the ESP32 drives the
+// clocks and provides MCLK, the codec follows), and the codec itself.
+//
+// Register level ES8311 setup is a clock coefficient table and a dozen
+// interdependent registers, which is exactly the kind of thing the development
+// board's panel taught us not to reconstruct. Espressif publish a driver for it
+// (`espressif/esp_codec_dev`), it is what Waveshare's own demo uses, and the
+// pin map and settings below are taken from that demo:
+// 08_ESP32-S3_e-Paper-3.97/components/es8311_bsp/es8311_bsp.c.
+//
+// Everything above this file is unchanged: the capture task, the ring buffer,
+// AudioTx, the conditioning and the probes all work the same whichever part is
+// on the other end. The one thing this layer guarantees is the sample format
+// the rest of the file expects: one 16 bit mono sample per frame, left aligned
+// in an int32_t, so `raw >> 16` recovers it exactly as it does for the INMP441.
+
+constexpr int kMicGainDb = 12;          // the vendor's MIC_GAIN 4 x 3.0 dB
+constexpr int kMclkMultiple = 384;      // the vendor's EXAMPLE_MCLK_MULTIPLE
+
+i2s_chan_handle_t g_tx = nullptr;       // created with rx and left enabled: the
+                                        // codec is in BOTH mode and wants its
+                                        // clocks running, but nothing is played
+esp_codec_dev_handle_t g_codec = nullptr;
+const audio_codec_data_if_t* g_data_if = nullptr;
+const audio_codec_ctrl_if_t* g_ctrl_if = nullptr;
+const audio_codec_gpio_if_t* g_gpio_if = nullptr;
+const audio_codec_if_t* g_dev_if = nullptr;
+
+bool start_on(i2s_std_slot_mask_t slot, uint32_t rate = kSampleRate) {
+    (void)slot;  // the codec hands us mono; there is no slot to choose
+    if (g_codec != nullptr && rate == g_rate) return true;
+    stop();
+    g_rate = rate;
+    g_slot = I2S_STD_SLOT_LEFT;
+
+    i2s_chan_config_t chan = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_0, I2S_ROLE_MASTER);
+    chan.auto_clear = true;
+    if (i2s_new_channel(&chan, &g_tx, &g_rx) != ESP_OK) {
+        ESP_LOGE(kTag, "no free I2S channel");
+        return false;
+    }
+
+    i2s_std_config_t std = {
+        .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(rate),
+        .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT,
+                                                        I2S_SLOT_MODE_STEREO),
+        .gpio_cfg = {
+            .mclk = kMicMclk,
+            .bclk = kMicBclk,
+            .ws = kMicWs,
+            .dout = kSpkData,
+            .din = kMicData,
+            .invert_flags = {false, false, false},
+        },
+    };
+    std.clk_cfg.mclk_multiple = static_cast<i2s_mclk_multiple_t>(kMclkMultiple);
+    if (i2s_channel_init_std_mode(g_tx, &std) != ESP_OK ||
+        i2s_channel_init_std_mode(g_rx, &std) != ESP_OK) {
+        ESP_LOGE(kTag, "I2S standard mode config rejected");
+        stop();
+        return false;
+    }
+    i2s_channel_enable(g_tx);
+    i2s_channel_enable(g_rx);
+
+    // The codec shares the panel's I2C bus; see board_i2c.hpp.
+    if (i2c_bus() == nullptr) { stop(); return false; }
+    audio_codec_i2c_cfg_t i2c_cfg = {};
+    i2c_cfg.port = I2C_NUM_0;
+    i2c_cfg.addr = kEs8311Addr << 1;   // esp_codec_dev wants the 8 bit form
+    i2c_cfg.bus_handle = reinterpret_cast<void*>(i2c_bus());
+    g_ctrl_if = audio_codec_new_i2c_ctrl(&i2c_cfg);
+    g_gpio_if = audio_codec_new_gpio();
+    if (g_ctrl_if == nullptr || g_gpio_if == nullptr) {
+        ESP_LOGE(kTag, "could not reach the ES8311 at 0x%02x over I2C", kEs8311Addr);
+        stop();
+        return false;
+    }
+
+    es8311_codec_cfg_t es = {};
+    es.ctrl_if = g_ctrl_if;
+    es.gpio_if = g_gpio_if;
+    es.codec_mode = ESP_CODEC_DEV_WORK_MODE_BOTH;
+    es.pa_pin = kSpkEnable;
+    es.pa_reverted = false;
+    es.master_mode = false;      // the ESP32 is the I2S master, the codec follows
+    es.use_mclk = true;
+    es.digital_mic = false;
+    es.invert_mclk = false;
+    es.invert_sclk = false;
+    es.hw_gain.pa_voltage = 5.0f;
+    es.hw_gain.codec_dac_voltage = 3.3f;
+    es.no_dac_ref = false;
+    es.mclk_div = 0;             // 0 means the default, 256
+    g_dev_if = es8311_codec_new(&es);
+    if (g_dev_if == nullptr) {
+        ESP_LOGE(kTag, "ES8311 did not initialise");
+        stop();
+        return false;
+    }
+
+    audio_codec_i2s_cfg_t i2s_cfg = {};
+    i2s_cfg.port = I2S_NUM_0;
+    i2s_cfg.rx_handle = g_rx;
+    i2s_cfg.tx_handle = g_tx;
+    g_data_if = audio_codec_new_i2s_data(&i2s_cfg);
+    if (g_data_if == nullptr) { stop(); return false; }
+
+    esp_codec_dev_cfg_t dev_cfg = {};
+    dev_cfg.codec_if = g_dev_if;
+    dev_cfg.data_if = g_data_if;
+    dev_cfg.dev_type = ESP_CODEC_DEV_TYPE_IN;
+    g_codec = esp_codec_dev_new(&dev_cfg);
+    if (g_codec == nullptr) { stop(); return false; }
+
+    esp_codec_dev_sample_info_t fs = {};
+    fs.sample_rate = rate;
+    fs.channel = 1;              // mono in, which is what everything downstream wants
+    fs.bits_per_sample = 16;
+    if (esp_codec_dev_open(g_codec, &fs) != ESP_OK) {
+        ESP_LOGE(kTag, "the ES8311 refused to open for recording");
+        stop();
+        return false;
+    }
+    esp_codec_dev_set_in_gain(g_codec, static_cast<float>(kMicGainDb));
+
+    ESP_LOGI(kTag, "ES8311 up: %lu Hz mono, MCLK IO%d, BCLK IO%d, WS IO%d, DIN IO%d, "
+                   "%d dB gain",
+             static_cast<unsigned long>(g_rate), kMicMclk, kMicBclk, kMicWs, kMicData,
+             kMicGainDb);
+    return true;
+}
+
+// One 16 bit mono sample per frame, left aligned into the int32_t block, so the
+// rest of this file cannot tell which microphone it is reading.
+bool hw_read(size_t want_frames, size_t* got_frames) {
+    *got_frames = 0;
+    if (g_codec == nullptr) return false;
+    static int16_t raw[kBlockFrames];
+    const int bytes = static_cast<int>(want_frames * sizeof(int16_t));
+    if (esp_codec_dev_read(g_codec, raw, bytes) != ESP_OK) return false;
+    for (size_t i = 0; i < want_frames; ++i)
+        g_block[i] = static_cast<int32_t>(raw[i]) << 16;
+    *got_frames = want_frames;
+    return true;
+}
+
 #else
+
+bool start_on(i2s_std_slot_mask_t slot, uint32_t rate = kSampleRate) {
     if (g_rx != nullptr && slot == g_slot && rate == g_rate) return true;
     stop();
     g_slot = slot;
@@ -96,12 +237,44 @@ bool start_on(i2s_std_slot_mask_t slot, uint32_t rate = kSampleRate) {
              g_slot == I2S_STD_SLOT_LEFT ? "left"
                                          : (g_slot == I2S_STD_SLOT_RIGHT ? "right" : "both"));
     return true;
-#endif
 }
+
+// The INMP441 sends 24 bits MSB aligned inside a 32 bit slot, which is already
+// the format the rest of the file expects.
+bool hw_read(size_t want_frames, size_t* got_frames) {
+    *got_frames = 0;
+    if (g_rx == nullptr) return false;
+    size_t got = 0;
+    if (i2s_channel_read(g_rx, g_block, want_frames * sizeof(int32_t), &got, 200) != ESP_OK)
+        return false;
+    *got_frames = got / sizeof(int32_t);
+    return true;
+}
+
+#endif
 
 bool start() { return start_on(I2S_STD_SLOT_LEFT); }
 
 void stop() {
+#if defined(HALO_PANEL_WAVESHARE)
+    // Tear down in the reverse order of start_on(). Leaving any of it behind
+    // makes the next open fail rather than the current one leak, which is a
+    // confusing place for the failure to appear.
+    if (g_codec != nullptr) {
+        esp_codec_dev_close(g_codec);
+        esp_codec_dev_delete(g_codec);
+        g_codec = nullptr;
+    }
+    if (g_data_if != nullptr) { audio_codec_delete_data_if(g_data_if); g_data_if = nullptr; }
+    if (g_dev_if != nullptr) { audio_codec_delete_codec_if(g_dev_if); g_dev_if = nullptr; }
+    if (g_ctrl_if != nullptr) { audio_codec_delete_ctrl_if(g_ctrl_if); g_ctrl_if = nullptr; }
+    if (g_gpio_if != nullptr) { audio_codec_delete_gpio_if(g_gpio_if); g_gpio_if = nullptr; }
+    if (g_tx != nullptr) {
+        i2s_channel_disable(g_tx);
+        i2s_del_channel(g_tx);
+        g_tx = nullptr;
+    }
+#endif
     if (g_rx == nullptr) return;
     i2s_channel_disable(g_rx);
     i2s_del_channel(g_rx);
@@ -119,10 +292,8 @@ Reading read(size_t frames) {
 
     while (r.frames < frames) {
         const size_t want = frames - r.frames < kBlockFrames ? frames - r.frames : kBlockFrames;
-        size_t got = 0;
-        if (i2s_channel_read(g_rx, g_block, want * sizeof(int32_t), &got, 200) != ESP_OK)
-            return r;
-        const size_t n = got / sizeof(int32_t);
+        size_t n = 0;
+        if (!hw_read(want, &n)) return r;
         if (n == 0) break;
 
         for (size_t i = 0; i < n; ++i) {
@@ -327,7 +498,6 @@ int16_t condition(int32_t raw) {
 }
 
 void capture_task(void*) {
-    static int32_t raw[kBlockFrames];
     static int16_t pcm[kBlockFrames];
     size_t total = 0;
     // The first samples after the receiver is enabled are a startup transient,
@@ -337,12 +507,13 @@ void capture_task(void*) {
     size_t skip = kSampleRate / 20;
     g_dc_x1 = g_dc_y1 = 0;   // the filter starts fresh for every recording
     while (g_capturing) {
-        size_t got = 0;
-        // A timeout rather than forever, so stopping is never stuck in a read.
-        if (i2s_channel_read(g_rx, raw, sizeof(raw), &got, pdMS_TO_TICKS(100)) != ESP_OK)
-            continue;
-        size_t n = got / sizeof(int32_t);
-        const int32_t* from = raw;
+        // Through hw_read, so this task does not know or care whether it is
+        // reading a bare I2S microphone or a codec. Both hand back one sample
+        // per frame, left aligned in an int32_t. It has its own read timeout,
+        // so stopping is never stuck in a read.
+        size_t n = 0;
+        if (!hw_read(kBlockFrames, &n)) continue;
+        const int32_t* from = g_block;
         if (skip > 0) {
             const size_t drop = skip < n ? skip : n;
             skip -= drop;
