@@ -243,7 +243,19 @@ Transition feed(const Event& e) {
         if (answered.changed()) return t;  // the nested call drew where we landed
     }
 
-    if (t.changed() && (t.actions.has(Action::DrawScreen) || t.actions.has(Action::ShowWallpaper)))
+    // The ACTION decides, not whether the state changed.
+    //
+    // This used to be gated on t.changed(), so a transition that stayed where it
+    // was could ask for a draw and be ignored. That is exactly what scrolling
+    // does: the state is still REVIEW, the window over the body has moved, and
+    // the glass is wrong until it is redrawn. On the badge, 2026-10-28, eight
+    // rotations on an 18 line draft logged "scroll proposal" eight times and
+    // never touched the panel. The knob was dead on every screen longer than
+    // the panel, which is every long draft.
+    //
+    // Same shape as the tick bug: the state machine said what to do and the
+    // thing that applies its actions quietly dropped it on the floor.
+    if (t.actions.has(Action::DrawScreen) || t.actions.has(Action::ShowWallpaper))
         draw_screen(t.to, false);
     return t;
 }

@@ -40,6 +40,12 @@ const char* battery_line(uint8_t pct) {
 
 }  // namespace
 
+// CONFLICT-AMBIGUOUS with an empty candidate list: the backend matched no
+// contact, and the way out is to say the address instead, which is a gesture on
+// the device. Kept with the rest of the device's words so the budget test holds
+// it to the same limit as every other line the device writes.
+const char* no_candidates_hint() { return "Hold to say the address"; }
+
 bool local_screen(State s, const DeviceStatus& st, ScreenModel& out) {
     out.state = s;
     switch (s) {

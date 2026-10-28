@@ -878,3 +878,20 @@ HALO_TEST(an_authoritative_outcome_resolves_execution_uncertain) {
         CHECK(r.sm.has_pending_execution());
     }
 }
+
+// A scroll moves the window over the body, so it has to redraw. Without the
+// draw the scroll position advanced and nothing appeared to happen: on the
+// badge, 2026-10-28, eight rotations on an 18 line REVIEW logged "scroll
+// proposal" eight times and never once touched the panel.
+HALO_TEST(scrolling_redraws_in_every_state_that_scrolls) {
+    for (State s : {State::Review, State::ConflictSchedule, State::ReadOnlyResult}) {
+        for (EventKind k : {EventKind::RotateUp, EventKind::RotateDown}) {
+            Rig r;
+            drive_to(r, s);
+            const Transition t = r.send(k);
+            CHECK(t.handled);
+            CHECK(t.to == s);
+            CHECK(t.actions.has(Action::DrawScreen));
+        }
+    }
+}

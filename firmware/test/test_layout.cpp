@@ -3,6 +3,7 @@
 // screen model, unchanged, lays out correctly on two panels with different sizes.
 #include "fake_display.hpp"
 #include "halo/layout.hpp"
+#include "halo/screens.hpp"
 #include "halo/state_machine.hpp"
 #include "harness.hpp"
 
@@ -95,6 +96,76 @@ HALO_TEST(layout_scrolling_advances_through_the_body) {
         if (scrolled[i].kind == CmdKind::Text && scrolled[i].text.style != TextStyle::Status)
             first_body = scrolled[i].text.text;
     CHECK(first_body == kReviewLines[3]);
+}
+
+// A contact the backend could not match: CONFLICT-AMBIGUOUS arrives with no
+// candidates at all. Its lines explain that; the way out is to say the address
+// instead, which is a gesture, so the device names it (team addition,
+// 2026-10-09).
+HALO_TEST(layout_empty_candidate_list_offers_the_spoken_address) {
+    FakeDisplay d = FakeDisplay::badge();
+    DisplayList out;
+    ScreenModel m = review_model();
+    m.state = State::ConflictAmbiguous;
+    m.candidate_count = 0;
+    layout_screen(d, m, out);
+
+    const char* found = nullptr;
+    for (uint8_t i = 0; i < out.size(); ++i)
+        if (out[i].kind == CmdKind::Text && out[i].text.text == no_candidates_hint())
+            found = out[i].text.text;
+    CHECK(found == no_candidates_hint());
+}
+
+// With candidates to choose from there is nothing to say out loud, so the hint
+// would be telling the user to do the wrong thing.
+HALO_TEST(layout_candidates_present_get_no_spoken_address_hint) {
+    FakeDisplay d = FakeDisplay::badge();
+    DisplayList out;
+    ScreenModel m = review_model();
+    m.state = State::ConflictAmbiguous;
+    m.candidates = kCandidates;
+    m.candidate_count = 3;
+    layout_screen(d, m, out);
+
+    for (uint8_t i = 0; i < out.size(); ++i)
+        if (out[i].kind == CmdKind::Text)
+            CHECK(out[i].text.text != no_candidates_hint());
+}
+
+// A hint the screen brought itself is never overwritten.
+HALO_TEST(layout_an_explicit_hint_beats_the_default) {
+    FakeDisplay d = FakeDisplay::badge();
+    DisplayList out;
+    ScreenModel m = review_model();
+    m.state = State::ConflictAmbiguous;
+    m.candidate_count = 0;
+    m.hint = "Say it again";
+    layout_screen(d, m, out);
+
+    for (uint8_t i = 0; i < out.size(); ++i)
+        if (out[i].kind == CmdKind::Text)
+            CHECK(out[i].text.text != no_candidates_hint());
+}
+
+// Scrolled to the bottom: nothing is left below the fold, and the last source
+// line is on the glass. The device clamps its scroll to exactly this point, so
+// this is the position a user reaches by holding the knob down.
+HALO_TEST(layout_scrolling_to_the_end_shows_the_last_line_and_nothing_remains) {
+    FakeDisplay d = FakeDisplay::crowpanel();
+    DisplayList first, last;
+    ScreenModel m = review_model();
+    const uint8_t over = layout_screen(d, m, first);
+    CHECK(over > 0);                 // the body really is longer than this panel
+
+    m.scroll_line = over;            // what the device's clamp allows
+    CHECK(layout_screen(d, m, last) == 0);
+
+    const char* lowest = nullptr;
+    for (uint8_t i = 0; i < last.size(); ++i)
+        if (last[i].kind == CmdKind::Text && last[i].text.style != TextStyle::Status)
+            lowest = last[i].text.text;
+    CHECK(lowest == kReviewLines[kReviewCount - 1]);
 }
 
 HALO_TEST(layout_never_rewraps_text_the_backend_already_wrapped) {

@@ -1,5 +1,7 @@
 #include "halo/layout.hpp"
 
+#include "halo/screens.hpp"
+
 namespace halo {
 
 namespace {
@@ -132,6 +134,14 @@ uint8_t layout_screen(const Display& d, const ScreenModel& m, DisplayList& out) 
 
     const int16_t remaining_h = static_cast<int16_t>(body.bottom() - y);
 
+    // No candidates at all on CONFLICT-AMBIGUOUS: the backend found nothing
+    // matching the name that was said. Its lines say so; the way out is a
+    // gesture, so the device names it. Only when the screen did not bring its
+    // own hint, so this can never overwrite something deliberate.
+    const char* hint = m.hint;
+    if (m.state == State::ConflictAmbiguous && m.candidate_count == 0 && hint == nullptr)
+        hint = no_candidates_hint();
+
     // Candidates: one row each, the highlighted one drawn inverted.
     if (m.candidate_count > 0 && m.candidates != nullptr) {
         const TextMetrics tm = d.metrics(TextStyle::Body);
@@ -148,10 +158,10 @@ uint8_t layout_screen(const Display& d, const ScreenModel& m, DisplayList& out) 
             t.invert = on;
             out.text(t);
         }
-        if (m.hint != nullptr) {
+        if (hint != nullptr) {
             TextCmd t;
             t.box = Box{body.x, static_cast<int16_t>(view_h(c) - kFooterH), body.w, kFooterH};
-            t.text = m.hint;
+            t.text = hint;
             t.style = TextStyle::Status;
             out.text(t);
         }
@@ -173,10 +183,10 @@ uint8_t layout_screen(const Display& d, const ScreenModel& m, DisplayList& out) 
             t.style = (i == 0 && m.state == State::Review) ? TextStyle::Title : TextStyle::Body;
             out.text(t);
         }
-        if (m.hint != nullptr) {
+        if (hint != nullptr) {
             TextCmd t;
             t.box = Box{body.x, static_cast<int16_t>(view_h(c) - kFooterH), body.w, kFooterH};
-            t.text = m.hint;
+            t.text = hint;
             t.style = TextStyle::Status;
             out.text(t);
         }
