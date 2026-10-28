@@ -168,6 +168,95 @@ HALO_TEST(layout_scrolling_to_the_end_shows_the_last_line_and_nothing_remains) {
     CHECK(lowest == kReviewLines[kReviewCount - 1]);
 }
 
+// The right hand end of the status bar. Both of these lived in ScreenModel
+// without ever being drawn, and expires_in_s even documented itself as being
+// shown there.
+HALO_TEST(layout_status_bar_shows_the_battery) {
+    FakeDisplay d = FakeDisplay::badge();
+    DisplayList out;
+    ScreenModel m = review_model();
+    m.battery_pct = 87;
+    layout_screen(d, m, out);
+
+    const char* found = nullptr;
+    for (uint8_t i = 0; i < out.size(); ++i)
+        if (out[i].kind == CmdKind::Text && out[i].text.style == TextStyle::Status &&
+            out[i].text.text != m.status_line)
+            found = out[i].text.text;
+    CHECK(found != nullptr);
+    CHECK(found[0] == '8' && found[1] == '7' && found[2] == '%');
+}
+
+HALO_TEST(layout_status_bar_marks_charging) {
+    FakeDisplay d = FakeDisplay::badge();
+    DisplayList out;
+    ScreenModel m = review_model();
+    m.battery_pct = 50;
+    m.charging = true;
+    layout_screen(d, m, out);
+
+    const char* found = nullptr;
+    for (uint8_t i = 0; i < out.size(); ++i)
+        if (out[i].kind == CmdKind::Text && out[i].text.style == TextStyle::Status &&
+            out[i].text.text != m.status_line)
+            found = out[i].text.text;
+    CHECK(found != nullptr);
+    CHECK(found[0] == '+');
+}
+
+// An unknown battery draws nothing rather than claiming 0%.
+HALO_TEST(layout_status_bar_says_nothing_when_the_battery_is_unknown) {
+    FakeDisplay d = FakeDisplay::badge();
+    DisplayList out;
+    ScreenModel m = review_model();   // battery_pct defaults to -1
+    layout_screen(d, m, out);
+
+    for (uint8_t i = 0; i < out.size(); ++i)
+        if (out[i].kind == CmdKind::Text && out[i].text.style == TextStyle::Status)
+            CHECK(out[i].text.text == m.status_line);
+}
+
+HALO_TEST(layout_status_bar_counts_down_a_decision) {
+    FakeDisplay d = FakeDisplay::badge();
+    DisplayList out;
+    ScreenModel m = review_model();
+    m.battery_pct = 90;
+    m.expires_in_s = 42;
+    layout_screen(d, m, out);
+
+    const char* found = nullptr;
+    for (uint8_t i = 0; i < out.size(); ++i)
+        if (out[i].kind == CmdKind::Text && out[i].text.style == TextStyle::Status &&
+            out[i].text.text != m.status_line)
+            found = out[i].text.text;
+    CHECK(found != nullptr);
+    // "90%  42s"
+    bool has_42s = false;
+    for (uint8_t i = 0; found[i] != '\0'; ++i)
+        if (found[i] == '4' && found[i + 1] == '2' && found[i + 2] == 's') has_42s = true;
+    CHECK(has_42s);
+}
+
+// A long status line is clipped by its own box rather than running into the
+// battery at the other end.
+HALO_TEST(layout_status_line_box_stops_short_of_the_battery) {
+    FakeDisplay d = FakeDisplay::badge();
+    DisplayList wide, narrow;
+    ScreenModel m = review_model();
+    layout_screen(d, m, wide);
+    m.battery_pct = 100;
+    layout_screen(d, m, narrow);
+
+    int16_t w_wide = 0, w_narrow = 0;
+    for (uint8_t i = 0; i < wide.size(); ++i)
+        if (wide[i].kind == CmdKind::Text && wide[i].text.text == m.status_line)
+            w_wide = wide[i].text.box.w;
+    for (uint8_t i = 0; i < narrow.size(); ++i)
+        if (narrow[i].kind == CmdKind::Text && narrow[i].text.text == m.status_line)
+            w_narrow = narrow[i].text.box.w;
+    CHECK(w_narrow < w_wide);
+}
+
 HALO_TEST(layout_never_rewraps_text_the_backend_already_wrapped) {
     // screen_lines arrive pre-wrapped and already checked against the text budget.
     // Layout must draw those exact strings, never re-flow them.

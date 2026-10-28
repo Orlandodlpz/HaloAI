@@ -38,6 +38,12 @@ struct ScreenModel {
 
     uint16_t expires_in_s = 0;           // decision states: shown in the status bar
     uint8_t scroll_line = 0;             // first body line to show, for rotate to scroll
+
+    // Right hand end of the status bar. -1 means the device does not know yet,
+    // which is the ordinary state on USB power with no cell on the connector,
+    // and nothing is drawn rather than claiming 0%.
+    int8_t battery_pct = -1;
+    bool charging = false;
 };
 
 // Fills `out` with the screen. Returns the number of body lines that did not fit,

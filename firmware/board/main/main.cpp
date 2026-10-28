@@ -65,6 +65,10 @@ uint8_t g_scroll = 0;       // first body line drawn
 uint8_t g_overflow = 0;     // body lines that did not fit, from layout_screen
 uint32_t g_boot = 0;        // random per power up: tells a reconnect from a restart
 uint8_t g_battery_pct = 100;
+// Whether anything has actually measured it. Until the PMU answers, the status
+// bar says nothing rather than showing a number that is only a default.
+bool g_battery_known = false;
+bool g_battery_charging = false;
 uint8_t g_battery_sent = 255;
 
 // The wallpaper the user picked on the phone. The store owns the flash; the
@@ -174,6 +178,12 @@ void draw_screen(State to, bool status_only, bool same_screen = false) {
     // which case WALLPAPER says the device's name instead of showing a sideways
     // photo, and the phone can send a new one.
     st.wallpaper = g_wallpaper.current(g_settings.portrait);
+    // The right hand end of the status bar, on every screen rather than only the
+    // device's own: a badge that cannot tell you how much battery it has is a
+    // badge you cannot trust to be awake when you need it.
+    m.battery_pct = g_battery_known ? static_cast<int8_t>(g_battery_pct) : -1;
+    m.charging = g_battery_charging;
+
     const bool ours = local_screen(to, st, m);
 
     if (!ours) m.status_line = name(to);
@@ -816,6 +826,8 @@ void poll_battery(uint32_t now) {
 
     const int pct = board::battery_percent();
     if (pct < 0) return;   // no cell on the connector, keep the last reading
+    g_battery_known = true;
+    g_battery_charging = board::battery_charging();
 
     static bool announced = false;
     if (!announced) {
