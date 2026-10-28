@@ -561,4 +561,10 @@ void probe_partial() { ESP_LOGI(kTag, "partial probe is badge only"); }
 void probe_partial_x() { ESP_LOGI(kTag, "partial probe is badge only"); }
 void probe_partial_old() { ESP_LOGI(kTag, "partial probe is badge only"); }
 
+// This board charges a cell but has no PMU to ask about it, so there is no
+// percentage to be had. The device keeps its last reading, which on the bench
+// is whatever the console keys set.
+int battery_percent() { return -1; }
+bool battery_charging() { return false; }
+
 }  // namespace halo::board

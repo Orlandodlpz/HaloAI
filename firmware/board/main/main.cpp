@@ -776,6 +776,39 @@ void emit_events(const Transition& t, const Event& e) {
 // Battery goes to the phone on threshold crossings, not on every reading: without
 // it, a device entering CRITICAL BATTERY looks to the phone exactly like a device
 // that went quiet.
+void note_battery(uint8_t percent);
+
+// The real battery, read from the PMU's fuel gauge every few seconds.
+//
+// Until now `g_battery_pct` only ever moved when someone pressed `b` or `B` on
+// the console, so the status bar showed a number nobody had measured and
+// CRITICAL BATTERY could only be reached by typing it. The gauge is on the
+// badge's PMU; the development board has no PMU and answers -1 for ever, which
+// leaves the console keys as the only source there, exactly as before.
+//
+// Slowly on purpose. It is an I2C round trip on the bus the panel shares, the
+// reading moves over minutes, and note_battery() only tells the phone on a
+// threshold crossing anyway.
+constexpr uint32_t kBatteryPollMs = 5000;
+
+void poll_battery(uint32_t now) {
+    static uint32_t next_at = 1000;   // not at boot: the panel is still clearing
+    if (now < next_at) return;
+    next_at = now + kBatteryPollMs;
+
+    const int pct = board::battery_percent();
+    if (pct < 0) return;   // no cell on the connector, keep the last reading
+
+    static bool announced = false;
+    if (!announced) {
+        ESP_LOGI(kTag, "battery is real now: %d%%, %s", pct,
+                 board::battery_charging() ? "charging" : "on the cell");
+        announced = true;
+    }
+    if (static_cast<uint8_t>(pct) != g_battery_pct)
+        note_battery(static_cast<uint8_t>(pct));
+}
+
 void note_battery(uint8_t percent) {
     g_battery_pct = percent;
     g_link.battery = percent;
@@ -1353,6 +1386,7 @@ extern "C" void app_main() {
         // delivered and FINALIZE AUDIO is over. The radio task cannot say so
         // itself without touching the state machine, so it is said here.
         if (g_audio.take_completed()) feed(Event::at(EventKind::AudioComplete, t));
+        poll_battery(t);
         // Through feed(), not g_machine.tick(): the transition carries the
         // actions, and feed() is the only thing that applies them. Calling tick()
         // and dropping what it returned moved the state and drew nothing, told
