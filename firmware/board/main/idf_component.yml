@@ -1,0 +1,16 @@
+## Managed component dependencies.
+##
+## esp_codec_dev is Espressif's own audio codec driver and is only needed for
+## the BADGE, whose microphone sits behind an ES8311 that has to be configured
+## over I2C before it produces a sample. Register level ES8311 setup is a clock
+## coefficient table and a dozen interdependent registers; this is the same
+## judgement as the panel drivers, where the vendor's init sequence is followed
+## rather than reconstructed. It is also what Waveshare's own demo for this
+## board uses.
+##
+## The component manager fetches it into board/managed_components/, which is
+## gitignored. The development board build pulls it too and does not use it.
+dependencies:
+  idf:
+    version: '>=5.0'
+  espressif/esp_codec_dev: '^1.3.6'

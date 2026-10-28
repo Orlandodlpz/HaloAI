@@ -32,7 +32,7 @@ tools/__pycache__/
 tools/.venv/
 
 # Recordings from the bench tools. Evidence, not source.
-tools/received_*.wav
+tools/received*.wav
 
 # Bench builds, same reason as the two above.
 board/build.*.bench/

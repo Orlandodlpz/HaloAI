@@ -8,7 +8,8 @@
 string(TOUPPER "${HALO_PANEL}" HALO_PANEL_UPPER)
 
 idf_component_register(
-    SRCS "main.cpp" "ble.cpp" "wallpaper_store.cpp" "mic.cpp" "display_${HALO_PANEL}.cpp"
+    SRCS "main.cpp" "ble.cpp" "wallpaper_store.cpp" "mic.cpp" "board_i2c.cpp"
+         "display_${HALO_PANEL}.cpp"
     INCLUDE_DIRS "."
     REQUIRES driver esp_timer core bt nvs_flash esp_driver_i2c
     EMBED_FILES "test_clip.pcm")

@@ -6,7 +6,7 @@ This is NOT a replacement for testing against the real phone. It speaks the same
 contract, so it measures the device side of the link honestly, but Android's BLE
 stack is not CoreBluetooth and the throughput numbers will differ.
 """
-import asyncio, json, struct, sys, time, wave
+import asyncio, json, os, struct, sys, time, wave
 
 import serial
 from bleak import BleakClient, BleakScanner
@@ -17,6 +17,7 @@ BASE = "78450000-6bb6-46e1-be3c-499c2950b6ac"
 AUDIO = BASE.replace("0000", "0001", 1)
 AUDIO_ACK = BASE.replace("0000", "0002", 1)
 EVENTS = BASE.replace("0000", "0003", 1)
+SETTINGS = BASE.replace("0000", "0006", 1)
 
 HEADER = struct.Struct("<BBHBBHHHhBB")
 INDEX_TABLE = [-1, -1, -1, -1, 2, 4, 6, 8, -1, -1, -1, -1, 2, 4, 6, 8]
@@ -28,6 +29,19 @@ STEP_TABLE = [
     7845, 8630, 9493, 10442, 11487, 12635, 13899, 15289, 16818, 18500, 20350, 22385, 24623,
     27086, 29794, 32767,
 ]
+
+# --live N records from the real microphone for N seconds instead of streaming
+# the clip embedded in flash. It needs the bench build, because it injects the
+# hold and the release over serial. This is the only way to exercise capture and
+# the link together: the flash clip proves the link alone.
+LIVE_SECONDS = 0.0
+_args = []
+for _a in sys.argv[1:]:
+    if _a.startswith("--live"):
+        LIVE_SECONDS = float(_a.split("=", 1)[1]) if "=" in _a else 3.0
+    else:
+        _args.append(_a)
+sys.argv = [sys.argv[0]] + _args
 
 DROP_EVERY = int(sys.argv[1]) if len(sys.argv) > 1 else 0  # 0 = drop nothing
 # Pretend the first N final markers never arrived. The device must resend the
@@ -180,7 +194,35 @@ async def main():
         if DROP_EVERY: what.append(f"dropping every {DROP_EVERY}th chunk")
         if DROP_FINALS: what.append(f"dropping the first {DROP_FINALS} final marker(s)")
         print("triggering the stream" + (" (" + ", ".join(what) + ") on purpose" if what else ""))
-        ser.write(b"A")
+        if LIVE_SECONDS > 0:
+            # The device asks whether the phone is there before it records, and
+            # answers "phone absent" if nothing has said so. The real phone sends
+            # this on connect; the 'A' shortcut never needed it.
+            await client.write_gatt_char(
+                SETTINGS,
+                bytes([1, 0x80]) + json.dumps(
+                    {"phone_ready": True, "orientation": "landscape"}).encode(),
+                response=True)
+            await asyncio.sleep(0.3)
+            print(f"LIVE: holding the button for {LIVE_SECONDS:.1f} s. SPEAK AT THE BADGE NOW.")
+            # Wake first. A hold in WALLPAPER wakes the screen and is consumed,
+            # by design, so it does not start a recording. Then hold, then
+            # phone_ready: a hold alone stops in PHONE / BLUETOOTH CHECK waiting
+            # for the phone to say it is there, and nothing is captured. The 'A'
+            # shortcut skips the state machine; this path does not.
+            ser.write(b"2")
+            ser.flush()
+            await asyncio.sleep(1.2)
+            ser.write(b"h")
+            ser.flush()
+            await asyncio.sleep(0.3)
+            ser.write(b"p")
+            ser.flush()
+            await asyncio.sleep(LIVE_SECONDS)
+            ser.write(b"R")
+            print("released")
+        else:
+            ser.write(b"A")
         try:
             await asyncio.wait_for(done.wait(), timeout=60)
         except asyncio.TimeoutError:
@@ -204,7 +246,11 @@ async def main():
             print(f"audio length       {audio_s:.2f} s")
             if elapsed > 0:
                 print(f"realtime factor    {audio_s / elapsed:.2f}x "
-                      f"({'keeps up' if audio_s / elapsed >= 1 else 'TOO SLOW to stream live'})")
+                      f"({'keeps up' if audio_s / elapsed >= 1 else 'TOO SLOW to stream live'})"
+                      if LIVE_SECONDS == 0 else
+                      "(live capture: the audio is produced as it is sent, so this "
+                      "is about 1.0x by definition and says nothing about headroom. "
+                      "Use the flash clip for that.)")
 
         if rx.final and len(rx.chunks) == rx.final[1]:
             pcm = []
@@ -212,10 +258,15 @@ async def main():
                 payload, pred, step = rx.chunks[i]
                 pcm.extend(decode(payload, pred, step))
             pcm = pcm[:rx.final[2]]
-            with wave.open("/Users/snpr/.claude/jobs/afcf87b7/tmp/received.wav", "wb") as w:
+            # Next to this tool, not an absolute path. This was hardcoded to a
+            # scratch directory from the session that wrote it, so every later
+            # run quietly dropped its recording somewhere nobody would look.
+            out_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                    "received.wav")
+            with wave.open(out_path, "wb") as w:
                 w.setnchannels(1); w.setsampwidth(2); w.setframerate(16000)
                 w.writeframes(struct.pack(f"<{len(pcm)}h", *pcm))
-            print(f"wrote received.wav, {len(pcm)} samples")
+            print(f"wrote {out_path}, {len(pcm)} samples")
     ser.close()
     return 0
 
