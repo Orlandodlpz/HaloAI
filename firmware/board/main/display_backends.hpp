@@ -36,4 +36,9 @@ void probe_partial_old();
 // no PMU and always answers -1.
 int battery_percent();
 bool battery_charging();
+
+// Battery voltage in millivolts, 0 if there is no cell. The percentage barely
+// moves over a few minutes; this does, which is what makes a drain measurable
+// in a session rather than overnight.
+int battery_millivolts();
 }  // namespace halo::board

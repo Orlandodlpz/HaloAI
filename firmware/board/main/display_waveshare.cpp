@@ -124,6 +124,8 @@ constexpr uint16_t kPanelMilliVolts = 3300;
 constexpr uint8_t kRegStatus1 = 0x00;      // bit 3: a battery is connected
 constexpr uint8_t kRegStatus2 = 0x01;      // bits 7..5: the charge state
 constexpr uint8_t kRegBatPercent = 0xA4;
+constexpr uint8_t kRegAdc0 = 0x34;         // battery mV, high 5 bits
+constexpr uint8_t kRegAdc1 = 0x35;         // battery mV, low 8 bits
 
 bool pmu_read(uint8_t reg, uint8_t* value) {
     return g_pmu != nullptr &&
@@ -179,6 +181,16 @@ int pmu_battery_percent() {
     // The gauge reports 0xFF while it is still working out a new cell.
     if (pct > 100) return -1;
     return pct;
+}
+
+// Battery voltage in millivolts, 0 if there is no cell. Moves far faster than
+// the percentage does, which is what makes it useful for watching a drain.
+int pmu_battery_mv() {
+    uint8_t status1 = 0, hi = 0, lo = 0;
+    if (!pmu_read(kRegStatus1, &status1)) return 0;
+    if (((status1 >> 3) & 1) == 0) return 0;
+    if (!pmu_read(kRegAdc0, &hi) || !pmu_read(kRegAdc1, &lo)) return 0;
+    return ((hi & 0x1F) << 8) | lo;
 }
 
 bool pmu_charging() {
@@ -1034,6 +1046,7 @@ void probe_partial() { partial_probe(); }
 void probe_partial_x() { partial_probe_x(); }
 void probe_partial_old() { partial_probe_old(); }
 int battery_percent() { return pmu_battery_percent(); }
+int battery_millivolts() { return pmu_battery_mv(); }
 bool battery_charging() { return pmu_charging(); }
 void debug_pattern(int which) { g_display.fill_pattern(which); }
 
