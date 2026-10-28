@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../backend/draft_view.dart';
+import '../ble/badge_choice.dart';
 import '../ble/device_transport.dart';
 import '../halo_runtime.dart';
 import 'mic_hold.dart';
@@ -37,6 +38,10 @@ class _HomeTabState extends State<HomeTab> {
     final t = Theme.of(context).textTheme;
     return ListView(padding: const EdgeInsets.all(16), children: [
       _badgeCard(context),
+      if (_rt.badgeChoices != null) ...[
+        const SizedBox(height: 12),
+        _whichBadgeCard(context, _rt.badgeChoices!),
+      ],
       const SizedBox(height: 12),
       MicHoldButton(rt: _rt),
       const SizedBox(height: 4),
@@ -64,11 +69,40 @@ class _HomeTabState extends State<HomeTab> {
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(connected ? 'Badge connected' : 'Badge: ${_rt.link.state.name}', style: t.titleMedium),
               Text('${_rt.serviceStatus}', style: t.bodySmall),
+              Text(_rt.badgeId == null ? 'No badge remembered yet' : 'Your badge: ${_rt.badgeId}', style: t.bodySmall),
             ]),
           ),
           FilledButton.tonal(
             onPressed: () => unawaited(_rt.device == null ? _rt.connect() : _rt.disconnect()),
             child: Text(_rt.device == null ? 'Connect' : 'Disconnect'),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  /// Several badges in range and none remembered: the strongest signal is
+  /// listed first, since the badge next to the phone is usually it.
+  Widget _whichBadgeCard(BuildContext context, List<FoundBadge> badges) {
+    final t = Theme.of(context).textTheme;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Text('More than one HaloAI badge is nearby', style: t.titleMedium),
+          Text('Which one is yours? The one next to your phone usually has the strongest signal. '
+              'Only that badge will connect from now on.', style: t.bodySmall),
+          for (final b in badges)
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.badge_outlined),
+              title: Text(b.id),
+              subtitle: Text('Signal ${b.rssi} dBm${b == badges.first ? ' (strongest)' : ''}'),
+              trailing: FilledButton(onPressed: () => _rt.chooseBadge(b.id), child: const Text('Mine')),
+            ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(onPressed: () => _rt.chooseBadge(null), child: const Text('None of these')),
           ),
         ]),
       ),

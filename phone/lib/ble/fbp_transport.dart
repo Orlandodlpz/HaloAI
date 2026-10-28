@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
+import 'badge_choice.dart';
 import 'ble_messages.dart';
 import 'device_transport.dart';
 
@@ -16,11 +17,26 @@ import 'device_transport.dart';
 /// then subscribe to Events last: the device sends `hello` once Events
 /// notifications are on, so everything is ready to answer it.
 ///
+/// The scan only connects to this phone's own badge ([mine]); with none
+/// remembered it takes the only badge in range, or asks ([choose]) when there
+/// are several (`badge_choice.dart`). [onConnected] reports the badge it
+/// connected to so it can be remembered.
+///
 /// flutter_blue_plus is free for personal, nonprofit and educational use
 /// (License.nonprofit); for-profit use needs its commercial license.
 class FbpTransport implements DeviceTransport {
+  FbpTransport({this.mine, this.choose, this.onConnected});
+
   static const wantMtu = 517;
   static const minMtu = 179;
+
+  /// The remembered badge's id, read at every scan (it can be forgotten).
+  final String? Function()? mine;
+
+  /// Asks which of several badges is this phone's; null means none.
+  final Future<String?> Function(List<FoundBadge> badges)? choose;
+
+  final void Function(String id)? onConnected;
 
   final _status = StreamController<LinkStatus>.broadcast();
   final _audio = StreamController<Uint8List>.broadcast();
@@ -102,18 +118,55 @@ class FbpTransport implements DeviceTransport {
     if (!await FlutterBluePlus.isSupported) throw _Fatal('Bluetooth LE not supported on this phone');
     _emit(const LinkStatus(LinkState.scanning, detail: 'waiting for Bluetooth'));
     await FlutterBluePlus.adapterState.where((s) => s == BluetoothAdapterState.on).first;
-    _emit(const LinkStatus(LinkState.scanning));
-    final found = Completer<BluetoothDevice>();
+    final own = mine?.call();
+    _emit(LinkStatus(LinkState.scanning, detail: own == null ? null : 'for $own'));
+    final seen = <String, ScanResult>{};
+    DateTime? firstHeard;
+    BadgeDecision decide({bool scanOver = false}) => decideBadge(
+          own,
+          [for (final r in seen.values) FoundBadge(r.device.remoteId.str, r.rssi)],
+          windowOver: scanOver || (firstHeard != null && DateTime.now().difference(firstHeard!) >= badgeListenWindow),
+        );
+    final decided = Completer<BadgeDecision>();
+    void check() {
+      final d = decide();
+      if (d is! KeepScanning && !decided.isCompleted) decided.complete(d);
+    }
+
     final sub = FlutterBluePlus.onScanResults.listen((results) {
-      if (results.isNotEmpty && !found.isCompleted) found.complete(results.last.device);
+      for (final r in results) {
+        seen[r.device.remoteId.str] = r;
+      }
+      if (seen.isNotEmpty) firstHeard ??= DateTime.now();
+      check();
     });
+    final tick = Timer.periodic(const Duration(milliseconds: 250), (_) => check());
+    final BadgeDecision d;
     try {
       await FlutterBluePlus.startScan(withServices: [Guid(HaloUuids.service)], timeout: const Duration(seconds: 15));
-      return await found.future.timeout(const Duration(seconds: 16),
-          onTimeout: () => throw TimeoutException('no HaloAI device found'));
+      d = await decided.future.timeout(const Duration(seconds: 16), onTimeout: () {
+        final last = decide(scanOver: true);
+        if (last is KeepScanning) {
+          throw TimeoutException(own == null
+              ? 'no HaloAI device found'
+              : 'your badge $own not found (${seen.length} other HaloAI device(s) ignored)');
+        }
+        return last;
+      });
     } finally {
+      tick.cancel();
       await sub.cancel();
       await FlutterBluePlus.stopScan();
+    }
+    switch (d) {
+      case ConnectTo(:final id):
+        return seen[id]!.device;
+      case AskUser(:final badges):
+        final pick = choose == null ? null : await choose!(badges);
+        if (pick == null || seen[pick] == null) throw _Fatal('no badge chosen');
+        return seen[pick]!.device;
+      case KeepScanning():
+        throw StateError('unreachable');
     }
   }
 
@@ -157,6 +210,7 @@ class FbpTransport implements DeviceTransport {
     d.cancelWhenDisconnected(audioSub);
     d.cancelWhenDisconnected(eventSub);
     await audio.setNotifyValue(true);
+    onConnected?.call(d.remoteId.str);
     _emit(LinkStatus(LinkState.connected, mtu: _mtu, phy: phy, detail: d.remoteId.str));
     await events.setNotifyValue(true); // device answers with hello
   }
