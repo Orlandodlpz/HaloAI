@@ -91,7 +91,7 @@ bool g_baseline_done = false;
 // them and a full refresh on its own stops being able to cover it, so the clean
 // is spent every so often rather than only at boot. Eight is inside the vendor's
 // "every 5 to 10" guidance for this panel.
-int g_since_clean = 0;
+int g_since_clean = 0;  // logged only, the policy decides when to clean
 // A safety net, not the schedule. The cadence that matters comes from the
 // refresh policy above the display boundary, which asks for a Full on WALLPAPER,
 // on BOOT / RECOVERY and every tenth screen, and a Full is a cleaned draw here.
@@ -918,7 +918,11 @@ public:
         // A deep clean first when one is due, or when the caller asked for a
         // Full on purpose (WALLPAPER and BOOT / RECOVERY, where nobody is
         // waiting on a confirm and the time is free).
-        const bool want_clean = intent == Refresh::Full || g_since_clean >= kCleanEvery;
+        // Only when a Full was actually asked for. The backstop counter used to
+        // be able to fire on its own, which put a 7.7 s clean in front of a
+        // screen nobody chose it for; the refresh policy decides when the time
+        // is free, and it will not choose one while work is in flight.
+        const bool want_clean = intent == Refresh::Full;
         if (want_clean) {
             clear_panel(2);
             g_since_clean = 0;

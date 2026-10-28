@@ -193,6 +193,27 @@ Refresh RefreshPolicy::choose(State to, bool status_only) {
     // nobody is waiting on a confirm, so spend it clearing accumulated ghosting.
     if (to == State::Wallpaper || to == State::BootRecovery) return Refresh::Full;
     if (status_only) return Refresh::Partial;
+
+    // NEVER while audio is in flight.
+    //
+    // A full refresh is 2.5 s on the badge and nearly 8 s when it clears
+    // ghosting first, and the main loop does not run while the panel is being
+    // driven, so a full refresh chosen in one of these states stalls the audio
+    // stream behind it. On 2026-10-28 the every-tenth-screen full refresh
+    // landed on FINALIZE AUDIO: the final marker went out 7.6 s after the
+    // release instead of 0.65 s, which is almost the whole 8 s delivery
+    // deadline, and the request failed. Found by Carlos on the real phone.
+    //
+    // Only these three, not every state the device is busy in. REVIEW and the
+    // conflict states are busy too, but nothing is streaming: a slow refresh
+    // there only means the confirm guard starts later, which is exactly what it
+    // is supposed to do.
+    //
+    // The counter keeps running, so the ghost clearing is deferred to the next
+    // screen that can afford it, not skipped.
+    if (to == State::Recording || to == State::RecordAddition || to == State::FinalizeAudio)
+        return Refresh::Partial;
+
     if (full_every_ != 0 && partials_since_full_ >= full_every_) return Refresh::Full;
     return Refresh::Partial;
 }

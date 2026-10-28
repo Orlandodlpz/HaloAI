@@ -203,6 +203,32 @@ HALO_TEST(refresh_goes_full_periodically_to_clear_ghosting) {
     CHECK(p.choose(State::Review, false) == Refresh::Partial);
 }
 
+// A full refresh is 2.5 s on the badge, nearly 8 s when it clears ghosting
+// first, and the main loop does not run while the panel is being driven. Chosen
+// while audio is streaming it stalls the stream behind it: on 2026-10-28 one
+// landed on FINALIZE AUDIO and pushed the final marker from 0.65 s after the
+// release to 7.6 s, against an 8 s delivery deadline, and the request failed.
+HALO_TEST(refresh_never_goes_full_while_audio_is_in_flight) {
+    for (State s : {State::Recording, State::RecordAddition, State::FinalizeAudio}) {
+        RefreshPolicy p(3);
+        for (int i = 0; i < 10; ++i) {
+            CHECK(p.choose(s, false) == Refresh::Partial);
+            p.note_presented(Refresh::Partial);
+        }
+    }
+}
+
+// Deferred, not skipped: the count keeps running underneath, so the ghost
+// clearing happens on the next screen that can afford it.
+HALO_TEST(refresh_defers_the_full_until_audio_is_done) {
+    RefreshPolicy p(3);
+    for (int i = 0; i < 6; ++i) {
+        CHECK(p.choose(State::FinalizeAudio, false) == Refresh::Partial);
+        p.note_presented(Refresh::Partial);
+    }
+    CHECK(p.choose(State::Review, false) == Refresh::Full);
+}
+
 HALO_TEST(refresh_wallpaper_and_boot_are_always_full) {
     RefreshPolicy p;
     CHECK(p.choose(State::Wallpaper, false) == Refresh::Full);

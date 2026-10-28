@@ -35,10 +35,13 @@ STEP_TABLE = [
 # hold and the release over serial. This is the only way to exercise capture and
 # the link together: the flash clip proves the link alone.
 LIVE_SECONDS = 0.0
+SEND_REVIEW = False
 _args = []
 for _a in sys.argv[1:]:
     if _a.startswith("--live"):
         LIVE_SECONDS = float(_a.split("=", 1)[1]) if "=" in _a else 3.0
+    elif _a == "--review":
+        SEND_REVIEW = True
     else:
         _args.append(_a)
 sys.argv = [sys.argv[0]] + _args
@@ -210,9 +213,13 @@ async def main():
             # phone_ready: a hold alone stops in PHONE / BLUETOOTH CHECK waiting
             # for the phone to say it is there, and nothing is captured. The 'A'
             # shortcut skips the state machine; this path does not.
+            # Long enough for whatever the last run left behind to settle back
+            # to READY. A double press in REVIEW cancels, and CANCELLED takes its
+            # own outcome timeout to return, so a short wait here puts the hold
+            # into a state that ignores it and nothing records.
             ser.write(b"2")
             ser.flush()
-            await asyncio.sleep(1.2)
+            await asyncio.sleep(4.0)
             ser.write(b"h")
             ser.flush()
             await asyncio.sleep(0.3)
@@ -228,6 +235,44 @@ async def main():
         except asyncio.TimeoutError:
             print("TIMEOUT waiting for the segment")
         task.cancel()
+
+        # What the device made of it. The link report says the bytes arrived;
+        # this says whether the state machine agreed the segment was delivered,
+        # which is a different question and the one that was wrong on 2026-10-28.
+        #
+        # --review is the sharp version of that question. A REVIEW screen is only
+        # accepted from PROCESSING, so if the device is still sitting in
+        # FINALIZE AUDIO it answers "ignored in FINALIZE AUDIO" and the audio
+        # never completed. Accepted means the whole path worked.
+        if SEND_REVIEW:
+            await asyncio.sleep(1.0)
+            doc = json.dumps({
+                "sid": 1, "screen": "REVIEW", "status_line": "Ready to confirm",
+                "screen_lines": ["Create event", "", "Gym",
+                                 "Tomorrow, Tue 28 Oct, 3:00 - 4:00 PM", "",
+                                 "Press to confirm, double press to cancel."],
+            }).encode()
+            screen_uuid = BASE.replace("0000", "0004", 1)
+            for i in range(0, len(doc), 180):
+                last = 0x80 if i + 180 >= len(doc) else 0
+                await client.write_gatt_char(
+                    screen_uuid,
+                    bytes([7, last | (i // 180)]) + doc[i:i + 180], response=True)
+
+        # Poll rather than one read: a single read after a sleep returns almost
+        # nothing on this link and the interesting lines are the last ones.
+        tail, _end = "", time.time() + 3.0
+        while time.time() < _end:
+            n = ser.in_waiting
+            if n:
+                tail += ser.read(n).decode(errors="replace")
+            else:
+                await asyncio.sleep(0.05)
+        moved = [l.strip() for l in tail.splitlines() if "->" in l or "ignored" in l]
+        if moved:
+            print("\n--- what the device did ---")
+            for l in moved[-6:]:
+                print("  ", l.split("halo: ")[-1][:110])
 
         elapsed = (rx.last_at - rx.first_at) if rx.first_at and rx.last_at else 0
         print("\n--- link report ---")

@@ -56,7 +56,29 @@ int32_t g_block[kBlockFrames];
 // the rest of the file expects: one 16 bit mono sample per frame, left aligned
 // in an int32_t, so `raw >> 16` recovers it exactly as it does for the INMP441.
 
-constexpr int kMicGainDb = 12;          // the vendor's MIC_GAIN 4 x 3.0 dB
+// The vendor's demo uses 12 dB (its MIC_GAIN 4 x 3.0). That is too quiet for
+// us. Carlos measured six real holds through the whole chain on 2026-10-28:
+// about -45 dBFS average with peaks between -21 and -35, nothing near clipping.
+// Parakeet still managed 7.7% word error, better than the 12.7% it got from the
+// phone's own microphone, but there was roughly 20 dB going spare.
+//
+// 24 dB puts the peaks around -9 dBFS, which keeps real headroom for someone
+// speaking close to the badge while giving the quiet half of a sentence a lot
+// more to work with. If anything ever clips, this is the number to lower.
+// The vendor's demo uses 12 (its MIC_GAIN 4 x 3.0). That is quieter than this
+// microphone needs. Swept on the badge 2026-10-28 against the same spoken
+// phrase, the setting is linear at about 6 dB a step:
+//
+//     0 -> -60.8 dBFS   12 -> -48.9 dBFS   24 -> -36.9 dBFS   30 -> -30.9 dBFS
+//
+// Carlos measured six real holds at 12, with speech peaking between -21 and
+// -35 dBFS. At 24 that becomes roughly -9 to -23, which is a healthy signal
+// with real headroom left. 30 would put a loud voice close to the badge at
+// about -3 and risk clipping, so it is not worth the extra 6 dB.
+//
+// Runtime adjustable through set_gain(), bench key G, because the only way to
+// choose this is to set one and listen.
+int g_gain_db = 24;
 constexpr int kMclkMultiple = 384;      // the vendor's EXAMPLE_MCLK_MULTIPLE
 
 i2s_chan_handle_t g_tx = nullptr;       // created with rx and left enabled: the
@@ -164,12 +186,12 @@ bool start_on(i2s_std_slot_mask_t slot, uint32_t rate = kSampleRate) {
         stop();
         return false;
     }
-    esp_codec_dev_set_in_gain(g_codec, static_cast<float>(kMicGainDb));
+    esp_codec_dev_set_in_gain(g_codec, static_cast<float>(g_gain_db));
 
     ESP_LOGI(kTag, "ES8311 up: %lu Hz mono, MCLK IO%d, BCLK IO%d, WS IO%d, DIN IO%d, "
-                   "%d dB gain",
+                   "gain setting %d",
              static_cast<unsigned long>(g_rate), kMicMclk, kMicBclk, kMicWs, kMicData,
-             kMicGainDb);
+             g_gain_db);
     return true;
 }
 
@@ -254,6 +276,19 @@ bool hw_read(size_t want_frames, size_t* got_frames) {
 #endif
 
 bool start() { return start_on(I2S_STD_SLOT_LEFT); }
+
+void set_gain(int db) {
+#if defined(HALO_PANEL_WAVESHARE)
+    g_gain_db = db;
+    if (g_codec != nullptr) {
+        esp_codec_dev_set_in_gain(g_codec, static_cast<float>(db));
+        ESP_LOGI(kTag, "mic gain setting now %d", db);
+    }
+#else
+    (void)db;
+    ESP_LOGI(kTag, "the development board's microphone has no gain control");
+#endif
+}
 
 void stop() {
 #if defined(HALO_PANEL_WAVESHARE)
