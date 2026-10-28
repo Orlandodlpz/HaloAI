@@ -12,6 +12,7 @@ import 'ble/device_session.dart';
 import 'ble/device_transport.dart';
 import 'ble/fbp_transport.dart';
 import 'halo_service.dart';
+import 'mic_test_recorder.dart';
 import 'stt_worker.dart';
 import 'wallpaper/dither.dart';
 import 'wallpaper/wallpaper_sender.dart';
@@ -232,6 +233,7 @@ class HaloRuntime {
       ..add(session.transcripts.listen((t) {
         unawaited(lock.onTranscript());
         record(t.logLine, echo: false); // DeviceSession already prints it
+        unawaited(_saveDeviceAudio(t));
         entries.insert(0, Entry('device | req ${t.req} seg ${t.seg} rev ${t.rev}', t.result,
             releaseToTextMs: t.releaseToTextMs));
         status = 'Device: release to text ${t.releaseToTextMs} ms '
@@ -244,6 +246,29 @@ class HaloRuntime {
     device = session;
     changed();
     await session.start();
+  }
+
+  /// P1: the device's audio goes to files/recordings/ like the phone mic
+  /// recordings (same log.tsv columns), named `dev_<time>_r<req>s<seg>v<rev>`.
+  Future<void> _saveDeviceAudio(DeviceTranscript t) async {
+    final base = baseDir;
+    if (base == null) return;
+    String two(int v) => v.toString().padLeft(2, '0');
+    final n = DateTime.now();
+    final name = 'dev_${n.year}${two(n.month)}${two(n.day)}_${two(n.hour)}${two(n.minute)}${two(n.second)}'
+        '_r${t.req}s${t.seg}v${t.rev}';
+    try {
+      await writeWav('$base/recordings/$name.wav', t.pcm.buffer.asUint8List(t.pcm.offsetInBytes, t.pcm.lengthInBytes),
+          16000);
+      await File('$base/recordings/log.tsv').writeAsString(
+        '$name.wav\t${t.result.audioSec.toStringAsFixed(2)}\t${t.result.decodeMs}\t${t.releaseToTextMs}\t${t.result.text}\n',
+        mode: FileMode.append,
+        flush: true,
+      );
+      record('P1LOG saved $name.wav');
+    } catch (e) {
+      record('P1LOG could not save the device audio: $e');
+    }
   }
 
   Future<void> disconnect() async {

@@ -21,6 +21,7 @@ class DeviceTranscript {
     required this.segmentId,
     required this.result,
     required this.stats,
+    required this.pcm,
     this.releaseToCompleteMs,
     this.releaseToTextMs,
   });
@@ -28,6 +29,10 @@ class DeviceTranscript {
   final String requestId, segmentId;
   final SttResult result;
   final SegmentStats stats;
+
+  /// The decoded audio (16 kHz mono), kept so it can be saved and listened
+  /// to: a wrong transcript is then either the microphone or Parakeet.
+  final Int16List pcm;
 
   /// BLE part of the latency budget: release (`record_end`) to every chunk
   /// and the final marker stored. Null if `record_end` never arrived.
@@ -260,6 +265,7 @@ class DeviceSession {
       segmentId: ids.segmentId(a.req, a.seg),
       result: r,
       stats: a.stats,
+      pcm: a.pcm,
       releaseToCompleteMs: release == null ? null : completeMs - release,
       releaseToTextMs: release == null ? null : _nowMs() - release,
     );
