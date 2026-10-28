@@ -92,8 +92,15 @@ peripheral is inside the chip.
 probe (rows labelled from A, each starting and ending with its own letter, and a
 black block inside each of the four corners; 8 rows on the development board, 12
 on the badge), so a region that does not update can be named rather than
-described. `F` runs the refresh benchmark: full, fast, partial over a whole
-screen and partial over one line, timed and logged.
+described. `F` runs the refresh benchmark.
+
+`Y`, `X` and `Z` are the three partial refresh probes, badge only. Each draws
+labelled bands with a different register convention and lets the glass say which
+one this panel obeys: `Y` the window order, `X` whether the X window is in
+pixels or byte addresses, `Z` whether writing the previous image into 0x26 is
+what stops a partial from erasing. They are kept because they are the only way
+to ask this panel a question and get an answer rather than a guess; the vendor's
+own two ports of it contradict each other.
 In the bench build, `?` also lists the keys that inject gestures. `-DHALO_BENCH_INJECT=1` is a CMake
 cache variable and therefore **sticky**: once passed, later plain builds stay bench
 builds until `idf.py fullclean`. The boot log names the build it is running.
