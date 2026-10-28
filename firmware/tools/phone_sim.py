@@ -268,10 +268,17 @@ async def main():
                 tail += ser.read(n).decode(errors="replace")
             else:
                 await asyncio.sleep(0.05)
-        moved = [l.strip() for l in tail.splitlines() if "->" in l or "ignored" in l]
+        # Transitions, plus the two lines that say when the audio actually left:
+        # "recorded ..." is the final encode and "final marker sent" is the last
+        # thing the phone is waiting for. Release to marker is the per command
+        # cost of drawing a screen before sending, which is what I4 measures.
+        moved = [l.strip() for l in tail.splitlines()
+                 if "->" in l or "ignored" in l
+                 or "final marker sent" in l or "recorded " in l
+                 or "panel: present" in l]
         if moved:
             print("\n--- what the device did ---")
-            for l in moved[-6:]:
+            for l in moved[-9:]:
                 print("  ", l.split("halo: ")[-1][:110])
 
         elapsed = (rx.last_at - rx.first_at) if rx.first_at and rx.last_at else 0

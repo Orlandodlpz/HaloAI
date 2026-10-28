@@ -263,14 +263,23 @@ Refresh RefreshPolicy::choose(State to, bool status_only) {
     // release instead of 0.65 s, which is almost the whole 8 s delivery
     // deadline, and the request failed. Found by Carlos on the real phone.
     //
-    // Only these three, not every state the device is busy in. REVIEW and the
-    // conflict states are busy too, but nothing is streaming: a slow refresh
-    // there only means the confirm guard starts later, which is exactly what it
-    // is supposed to do.
+    // PROCESSING and PROCESSING SLOW are here for the same reason even though
+    // nothing is streaming: the user is waiting, the backend's answer is in
+    // flight, and the main loop does not drain the inbox while the panel is
+    // being driven, so the result screen arrives and sits in the queue. Carlos
+    // measured it on the badge 2026-10-28: 5 of 7 commands reached the glass in
+    // 2.9 to 3.2 s and the other 2 took 8.4 s, every time because the full
+    // refresh landed on PROCESSING.
+    //
+    // Not every state the device is busy in. REVIEW and the conflict states are
+    // busy too, but nobody is waiting on a round trip: a slow refresh there only
+    // means the confirm guard starts later, which is exactly what it is for.
     //
     // The counter keeps running, so the ghost clearing is deferred to the next
     // screen that can afford it, not skipped.
-    if (to == State::Recording || to == State::RecordAddition || to == State::FinalizeAudio)
+    if (to == State::Recording || to == State::RecordAddition ||
+        to == State::FinalizeAudio || to == State::Processing ||
+        to == State::ProcessingSlow)
         return Refresh::Partial;
 
     if (full_every_ != 0 && partials_since_full_ >= full_every_) return Refresh::Full;

@@ -758,6 +758,15 @@ void emit_events(const Transition& t, const Event& e) {
             case Action::StopCapture:
                 mic::capture_stop();
                 g_audio.finish();
+                // Push the remaining chunks and the final marker out NOW, before
+                // this transition's screen is drawn. The panel blocks the main
+                // loop for 650 ms and the streamer only runs on the main loop,
+                // so the marker used to wait behind the FINALIZE AUDIO draw and
+                // every command carried that 650 ms. The phone is timing the
+                // delivery from the release; the screen is not what it is
+                // waiting for. Measured by Carlos on the badge 2026-10-28:
+                // release at 177538, marker out at 178831.
+                g_audio.poll();
                 break;
             case Action::SendFinalMarker:
                 // record_end is sent by the streamer, when the last chunk is

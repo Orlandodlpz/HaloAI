@@ -368,8 +368,11 @@ HALO_TEST(refresh_goes_full_periodically_to_clear_ghosting) {
 // while audio is streaming it stalls the stream behind it: on 2026-10-28 one
 // landed on FINALIZE AUDIO and pushed the final marker from 0.65 s after the
 // release to 7.6 s, against an 8 s delivery deadline, and the request failed.
+// On PROCESSING it is the same cost in a different place: the backend's answer
+// arrives and waits in the inbox, and the command takes 8.4 s instead of 3.
 HALO_TEST(refresh_never_goes_full_while_audio_is_in_flight) {
-    for (State s : {State::Recording, State::RecordAddition, State::FinalizeAudio}) {
+    for (State s : {State::Recording, State::RecordAddition, State::FinalizeAudio,
+                    State::Processing, State::ProcessingSlow}) {
         RefreshPolicy p(3);
         for (int i = 0; i < 10; ++i) {
             CHECK(p.choose(s, false) == Refresh::Partial);
