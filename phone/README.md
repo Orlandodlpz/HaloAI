@@ -1,17 +1,33 @@
 # HaloAI phone app
 
-Flutter, Android first. Turns device audio into text on the phone with Parakeet v3 (sherpa-onnx) and talks to the backend. See `docs/BRIEFING.md` section 3.2 for phases.
+Flutter, Android. The badge's link to the cloud: it receives the badge's audio over Bluetooth LE, turns it into text **on the phone** with NVIDIA Parakeet TDT 0.6B v3 (int8, sherpa-onnx), sends only the text to the backend, and draws the backend's answer on the badge. Audio never leaves the phone. Tested on a Samsung Galaxy Z Flip7 with the Waveshare badge; phases and every measurement are in `docs/BRIEFING.md` section 3.2 (P0 to P4 and P1 DONE; P5 Spanish and P6 iOS dropped).
 
-Current state: test bench with speech to text, the P1 BLE link to the device, the P2 backend client (text only to the backend, never audio), and P3: it keeps working with the phone locked.
+Parakeet runs in a long-lived background isolate (`lib/stt_worker.dart`): the model loads once at app start (about 2 s) and stays in memory, so each command takes 0.1 to 0.6 s. A foreground service keeps the badge link and the model alive with the phone locked (P3).
 
-- **Run clips:** transcribes the 5 test clips in `assets/clips/` twice and prints `P0RESULT` lines to logcat.
-- **Hold to talk (test mic), TEST ONLY:** records from the phone's own mic while held, transcribes on release. Talk after the vibration (the mic needs about 0.2 s to start). Presses under 0.5 s are discarded, like a device hold. Each recording is saved for reuse as a test clip. In the real product audio comes from the device over BLE (P1); `lib/mic_test_recorder.dart` is not part of that path.
+### Quick start
 
-- **Loopback (P1):** runs the 5 clips through the whole BLE audio path without a radio (IMA ADPCM encode, 176 byte chunks with every 9th lost on purpose, cumulative acks and `resend_from`, decode) and compares the transcript with the original WAV's. Prints `LOOPRESULT` lines.
-- **Connect (P1):** scans for the HaloAI service, connects, asks for MTU 517 (fails loudly below 179), requests the 2M PHY, then receives audio and events. Each finished segment is transcribed and printed as a `BLERESULT` line with release to complete (BLE) and release to text times. **Test screen** writes a sample REVIEW screen (the device accepts it only while PROCESSING). Needs Victor's firmware, on the Waveshare ESP32-S3 badge or the CrowPanel development board.
-- **Backend panel (P2):** type a command and tap **Send** (new request) or **Add** (addition), or use the mic hold (a hold while a proposal is on screen adds to it, like on the device). The panel shows the screen exactly as the device receives it, with **Approve**, **Continue**, **Cancel** and one button per candidate. When connected, device presses take the same paths. Prints `APIRESULT` lines with phone and backend timings.
+1. Install Flutter and the Android tools: [Setup (macOS)](#setup-macos).
+2. Download Parakeet and push it to the phone (it is not in git or the APK): [Model](#model-not-in-git-not-in-the-apk).
+3. Add a backend key (never in git) and build:
 
-Parakeet runs in a long-lived background isolate (`lib/stt_worker.dart`): the model loads once at app start and stays in memory. P1 feeds it decoded BLE audio the same way.
+   ```sh
+   cp config/backend.example.json config/backend.json   # fill in a key from Orlando (scope mock, sample data)
+   flutter build apk --release --dart-define-from-file=config/backend.json
+   adb install -r build/app/outputs/flutter-apk/app-release.apk
+   ```
+
+4. Open the app and tap **Connect** with the badge on. The first badge it connects to is remembered as yours; if several are nearby it asks which. Then hold the badge's button (the knob press), speak, read the screen, press to approve or double press to cancel.
+
+No badge? Type a command on **Home** and tap **Send**, or use the phone mic hold; the screen the badge would show appears on Home with its buttons.
+
+### What's in the app
+
+- **Home:** the badge link (Connect, Disconnect, which badge is yours), the current screen exactly as the badge receives it with **Approve**, **Continue**, **Cancel** and one button per candidate, the full text of long drafts the badge's 48 x 12 screen cuts, typed commands (**Send** for a new request, **Add** for an addition), and the phone mic hold (a fallback; in the product the audio comes from the badge). Badge presses and these buttons take the same paths.
+- **Memory:** view, add, edit and delete what the assistant remembers. Recent actions can only be deleted.
+- **Settings:** your badge (Forget), badge orientation, a wallpaper photo (Fill or Fit, dithered to the 1 bit screen, sent to the badge), and the Google account link.
+- **Debug:** the test bench. **Run clips** transcribes the 5 test clips in `assets/clips/` (`P0RESULT` lines); **Loopback** runs them through the whole Bluetooth audio path without a radio, with every 9th chunk lost on purpose (`LOOPRESULT`); **Test screen** writes a sample REVIEW screen to the badge; logs and recent transcripts.
+
+Every log line also goes to `files/logs/halo_YYYYMMDD.log` on the phone, and every recording (badge or phone mic) to `files/recordings/` ([Pull mic test recordings](#pull-mic-test-recordings)). The sections below go phase by phase.
 
 ## BLE (P1)
 
@@ -115,7 +131,7 @@ curl -LO https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sher
 tar xjf sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8.tar.bz2
 ```
 
-Install the app, open it and tap Run once (that makes the app create its model folder; it will say the model is missing). Then push the model and restart the app:
+Install the app and open it once (that makes the app create its model folder; Home will say the model is missing). Then push the model and restart the app:
 
 ```sh
 D=/sdcard/Android/data/com.haloai.haloai_phone/files/models/parakeet-v3
