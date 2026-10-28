@@ -406,6 +406,16 @@ public:
     // record_end; here it counts the clip being replayed from flash.
     uint16_t chunks_sent() const { return static_cast<uint16_t>(next_ < 0 ? 0 : next_); }
 
+    // Set on the radio task when the phone acknowledges the final marker, taken
+    // on the main loop. The ack arrives on the NimBLE host task, which is not
+    // allowed to touch the state machine, so it cannot feed AudioComplete
+    // itself: it leaves this behind and the main loop does it.
+    bool take_completed() {
+        if (!completed_pending_) return false;
+        completed_pending_ = false;
+        return true;
+    }
+
     void on_ack(int32_t upto, bool has_resend, int32_t resend_from, bool final_ack) {
         if (final_ack) {
             const int64_t ms = (esp_timer_get_time() - started_us_) / 1000;
@@ -415,6 +425,14 @@ public:
                      ms, static_cast<unsigned>(bytes_), kbps, resends_, final_resends_,
                      (samples_ / 16000.0) * 1000.0 / (ms ? ms : 1));
             done_ = true;
+            // THE SEGMENT IS COMPLETE AND THE STATE MACHINE HAS TO BE TOLD.
+            // Until 2026-10-28 nothing did: this logged the ack and stopped, so
+            // FINALIZE AUDIO sat there until its delivery deadline and every
+            // request on the badge ended in FAILURE. It was invisible on the
+            // development board because the bench key `a` was being pressed by
+            // hand, which is the same event by another route. Found by Carlos
+            // running the real phone against the badge.
+            completed_pending_ = true;
             return;
         }
         if (upto > acked_) acked_ = upto;
@@ -504,6 +522,8 @@ private:
     size_t samples_ = 0;
     int total_chunks_ = 0, next_ = 0, acked_ = -1, resends_ = 0;
     bool final_sent_ = false, done_ = true, record_end_sent_ = false;
+    // Written on the radio task, read and cleared on the main loop.
+    std::atomic<bool> completed_pending_{false};
     int final_resends_ = 0;
     int64_t started_us_ = 0, final_first_us_ = 0, final_last_us_ = 0;
     size_t bytes_ = 0;
@@ -994,6 +1014,16 @@ void handle_serial() {
         case 'f': feed(Event::at(EventKind::ExecutionRejected, now_ms())); break;
         case 'u': feed(Event::at(EventKind::ExecutionUnknown, now_ms())); break;
         case 'x': feed(Event::at(EventKind::TransportFailure, now_ms())); break;
+        case 'G': {
+            // Sweep the codec's input gain. The vendor uses 12 and the mapping
+            // to loudness is not what the name suggests, so the only way to
+            // choose is to set one and listen.
+            static const int kSteps[] = {0, 6, 12, 18, 24, 30};
+            static int which = 0;
+            which = (which + 1) % 6;
+            mic::set_gain(kSteps[which]);
+            break;
+        }
         case 'M':  // is the external microphone alive and hearing?
             mic::probe(5);
             break;
@@ -1319,6 +1349,10 @@ extern "C" void app_main() {
         drain_inbox();
         g_audio.catch_up();   // new samples become whole chunks here, on this task
         g_audio.poll();
+        // The phone has acknowledged the final marker, so the segment really is
+        // delivered and FINALIZE AUDIO is over. The radio task cannot say so
+        // itself without touching the state machine, so it is said here.
+        if (g_audio.take_completed()) feed(Event::at(EventKind::AudioComplete, t));
         // Through feed(), not g_machine.tick(): the transition carries the
         // actions, and feed() is the only thing that applies them. Calling tick()
         // and dropping what it returned moved the state and drew nothing, told

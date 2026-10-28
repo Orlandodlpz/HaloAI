@@ -55,6 +55,11 @@ Reading read(size_t frames);
 // leaving a wall of figures.
 void probe(uint32_t seconds);
 
+// Set the codec's input gain, badge only. Exposed because the value the vendor
+// uses is not obviously the best one and the mapping from this number to actual
+// loudness is not linear: measured on the badge, 24 came out QUIETER than 12.
+void set_gain(int db);
+
 // Proves the I2S framing is really running, using a jumper from IO21 to IO19.
 //
 // Looping the bit clock back into the data pin is not enough on its own: every
