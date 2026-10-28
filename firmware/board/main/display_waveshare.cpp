@@ -44,6 +44,7 @@
 #include "driver/spi_master.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
+#include "esp_system.h"
 #include "esp_timer.h"
 #include "fonts/font_body.hpp"
 #include "fonts/font_status.hpp"
@@ -87,6 +88,10 @@ bool g_ready = false;
 // to be a difference from, so the first screen after boot or after sleep is
 // always a full one.
 bool g_baseline_done = false;
+// The rail is off and the controller has lost its RAM. Every path that touches
+// the panel has to bring it back first, which is why this is checked in one
+// place rather than at each call site.
+bool g_panel_asleep = false;
 // Full screen updates since the last deep clean. Residue builds up over a run of
 // them and a full refresh on its own stops being able to cover it, so the clean
 // is spent every so often rather than only at boot. Eight is inside the vendor's
@@ -124,6 +129,8 @@ constexpr uint16_t kPanelMilliVolts = 3300;
 constexpr uint8_t kRegStatus1 = 0x00;      // bit 3: a battery is connected
 constexpr uint8_t kRegStatus2 = 0x01;      // bits 7..5: the charge state
 constexpr uint8_t kRegBatPercent = 0xA4;
+constexpr uint8_t kRegAdc0 = 0x34;         // battery mV, high 5 bits
+constexpr uint8_t kRegAdc1 = 0x35;         // battery mV, low 8 bits
 
 bool pmu_read(uint8_t reg, uint8_t* value) {
     return g_pmu != nullptr &&
@@ -179,6 +186,16 @@ int pmu_battery_percent() {
     // The gauge reports 0xFF while it is still working out a new cell.
     if (pct > 100) return -1;
     return pct;
+}
+
+// Battery voltage in millivolts, 0 if there is no cell. Moves far faster than
+// the percentage does, which is what makes it useful for watching a drain.
+int pmu_battery_mv() {
+    uint8_t status1 = 0, hi = 0, lo = 0;
+    if (!pmu_read(kRegStatus1, &status1)) return 0;
+    if (((status1 >> 3) & 1) == 0) return 0;
+    if (!pmu_read(kRegAdc0, &hi) || !pmu_read(kRegAdc1, &lo)) return 0;
+    return ((hi & 0x1F) << 8) | lo;
 }
 
 bool pmu_charging() {
@@ -459,6 +476,23 @@ void fill_ram(uint8_t reg, uint8_t value) {
         dat_block(block, take);
         left -= take;
     }
+}
+
+// Bring the rail back and re-initialise the controller. Called by everything
+// that draws, so no caller has to remember. Cheap when the panel is already
+// awake, which is the usual case.
+//
+// The controller's RAM went with the rail, so there is no baseline to be a
+// difference from: the next present has to be a full refresh and
+// g_baseline_done already says so.
+void wake_panel() {
+    if (!g_panel_asleep) return;
+    pmu_panel_rail(true);
+    vTaskDelay(pdMS_TO_TICKS(20));   // let the rail come up before the reset
+    g_panel_asleep = false;
+    g_baseline_done = false;
+    panel_init();
+    ESP_LOGI(kTag, "panel awake, rail back on");
 }
 
 // Drive every pixel hard between the two extremes a few times, to flush the
@@ -814,6 +848,7 @@ class WaveshareDisplay : public Display {
 public:
     void deep_clean(int cycles) {
         if (!g_ready) return;
+        wake_panel();
         clear_panel(cycles);
     }
 
@@ -871,11 +906,27 @@ public:
         ESP_ERROR_CHECK(spi_bus_add_device(SPI3_HOST, &dev, &g_spi));
 
         g_ready = true;
+
         // E-paper keeps whatever was on it, and a new board arrives with the
-        // vendor's demo on the glass, so clear once at boot.
-        const int64_t t0 = esp_timer_get_time();
-        clear_panel(2);
-        ESP_LOGI(kTag, "panel cleared in %lld ms", (esp_timer_get_time() - t0) / 1000);
+        // vendor's demo on the glass, so a cold boot clears once. A restart is
+        // different: the glass is holding a screen this firmware drew, and
+        // clearing it costs 5 s of staring at a blank panel for nothing.
+        //
+        // Only on a genuine power up, then. A software reset, a panic or a
+        // wake all leave the panel showing something we put there, and the
+        // first full refresh covers it.
+        const esp_reset_reason_t why = esp_reset_reason();
+        const bool cold = (why == ESP_RST_POWERON || why == ESP_RST_BROWNOUT ||
+                           why == ESP_RST_UNKNOWN);
+        if (cold) {
+            const int64_t t0 = esp_timer_get_time();
+            clear_panel(2);
+            ESP_LOGI(kTag, "panel cleared in %lld ms", (esp_timer_get_time() - t0) / 1000);
+        } else {
+            g_baseline_done = false;   // the controller's RAM did not survive
+            ESP_LOGI(kTag, "restart (reason %d): keeping what is on the glass, "
+                           "the first screen will cover it", static_cast<int>(why));
+        }
         ESP_LOGI(kTag, "Waveshare 3.97 ready: %dx%d, %u byte framebuffer",
                  kWidth, kHeight, static_cast<unsigned>(kFbBytes));
         return true;
@@ -927,6 +978,7 @@ public:
 
     void present(Refresh intent, PresentedFn on_presented, void* ctx) override {
         if (!g_ready) return;
+        wake_panel();
         const int64_t t0 = esp_timer_get_time();
 
         // A partial is a difference from a baseline the controller holds. After
@@ -987,6 +1039,7 @@ public:
 
     void fill_pattern(int which) {
         if (!g_ready) return;
+        wake_panel();
         memset(g_fb, 0xFF, kFbBytes);
         switch (which) {
             case 0: memset(g_fb, 0x00, kFbBytes); break;
@@ -1011,15 +1064,20 @@ public:
     }
 
     void sleep() override {
-        if (!g_ready) return;
+        if (!g_ready || g_panel_asleep) return;
         deep_sleep();
         // On this board sleeping the panel also means dropping its rail, and
         // ALDO3 going away destroys the partial refresh baseline along with the
         // controller's RAM. The next wake needs a fresh init and a full refresh
-        // before any partial will land.
+        // before any partial will land; wake_panel() below does that.
+        //
+        // The image stays on the glass the whole time. That is the point: an
+        // e-paper panel needs no power at all to hold what it is showing, and
+        // holding the rail up for it was pure waste.
         pmu_panel_rail(false);
         g_baseline_done = false;
-        ESP_LOGI(kTag, "panel asleep and its rail is off, needs a full refresh to wake");
+        g_panel_asleep = true;
+        ESP_LOGI(kTag, "panel asleep, rail off. The picture stays on the glass.");
     }
 };
 
@@ -1034,6 +1092,7 @@ void probe_partial() { partial_probe(); }
 void probe_partial_x() { partial_probe_x(); }
 void probe_partial_old() { partial_probe_old(); }
 int battery_percent() { return pmu_battery_percent(); }
+int battery_millivolts() { return pmu_battery_mv(); }
 bool battery_charging() { return pmu_charging(); }
 void debug_pattern(int which) { g_display.fill_pattern(which); }
 

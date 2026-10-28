@@ -218,6 +218,12 @@ void draw_screen(State to, bool status_only, bool same_screen = false) {
         log_transition(pt, Event::at(EventKind::ScreenPresented, at));
     }, nullptr);
     if (!same_screen) g_refresh.note_presented(intent);
+
+    // The wallpaper is the one screen that sits there for hours, and e-paper
+    // needs no power at all to keep showing it. Dropping the panel's rail here
+    // is the whole reason for choosing e-ink. Anything that draws next brings
+    // it back by itself.
+    if (to == State::Wallpaper) board::display().sleep();
 }
 
 // Turns one transition into the events the contract says the phone gets. Nothing
@@ -1116,6 +1122,14 @@ void handle_serial() {
         case 'f': feed(Event::at(EventKind::ExecutionRejected, now_ms())); break;
         case 'u': feed(Event::at(EventKind::ExecutionUnknown, now_ms())); break;
         case 'x': feed(Event::at(EventKind::TransportFailure, now_ms())); break;
+        case 'V': {
+            const int mv = board::battery_millivolts();
+            const int pct = board::battery_percent();
+            ESP_LOGI(kTag, "PMU: %d mV, %d%%, %s, heap %u", mv, pct,
+                     board::battery_charging() ? "charging" : "on the cell",
+                     static_cast<unsigned>(esp_get_free_heap_size()));
+            break;
+        }
         case 'G': {
             // Sweep the codec's input gain. The vendor uses 12 and the mapping
             // to loudness is not what the name suggests, so the only way to
@@ -1311,7 +1325,7 @@ void handle_serial() {
             ESP_LOGI(kTag, "p/P phone ready|absent, a audio acked, r/c/s/o results, "
                            "k/f/u execution, x transport fail, b/B battery, "
                            "A stream the clip, q/w/e/d/z/v patterns, C clean, T text probe, "
-                           "F refresh benchmark, Y/X/Z partial probes");
+                           "F refresh benchmark, Y/X/Z partial probes, V battery");
             break;
         default: break;
     }

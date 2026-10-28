@@ -144,7 +144,11 @@ bool start_on(i2s_std_slot_mask_t slot, uint32_t rate = kSampleRate) {
     es8311_codec_cfg_t es = {};
     es.ctrl_if = g_ctrl_if;
     es.gpio_if = g_gpio_if;
-    es.codec_mode = ESP_CODEC_DEV_WORK_MODE_BOTH;
+    // ADC only. The vendor's demo asks for BOTH because it plays audio back;
+    // we never do, and BOTH powers the DAC and the speaker amplifier for
+    // nothing. The badge has no speaker at all: the team removed speaker output,
+    // so the amplifier and its enable pin exist only to draw current.
+    es.codec_mode = ESP_CODEC_DEV_WORK_MODE_ADC;
     es.pa_pin = kSpkEnable;
     es.pa_reverted = false;
     es.master_mode = false;      // the ESP32 is the I2S master, the codec follows
@@ -589,6 +593,15 @@ void capture_stop() {
     g_capturing = false;
     // The task clears its own handle as it exits; give it the one read timeout.
     for (int i = 0; i < 20 && g_capture_task != nullptr; ++i) vTaskDelay(pdMS_TO_TICKS(10));
+
+    // AND RELEASE THE HARDWARE. Stopping the task only stopped reading: the I2S
+    // channel, the 6.1 MHz master clock and the codec's ADC all carried on
+    // running, for ever, from the first recording until the badge was
+    // unplugged. Nothing noticed because nothing was listening to them.
+    //
+    // It costs about 40 ms to bring the codec back up on the next hold, which
+    // falls inside the gap between pressing the button and starting to speak.
+    stop();
 }
 
 void line_check() {

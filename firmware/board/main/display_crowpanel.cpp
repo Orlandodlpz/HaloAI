@@ -576,6 +576,7 @@ void probe_partial_old() { ESP_LOGI(kTag, "partial probe is badge only"); }
 // percentage to be had. The device keeps its last reading, which on the bench
 // is whatever the console keys set.
 int battery_percent() { return -1; }
+int battery_millivolts() { return 0; }
 bool battery_charging() { return false; }
 
 }  // namespace halo::board
