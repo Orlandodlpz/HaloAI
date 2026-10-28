@@ -1107,6 +1107,18 @@ void handle_serial() {
                      static_cast<char>('A' + n - 1), w);
             break;
         }
+        case 'Y':
+            ESP_LOGI(kTag, "partial refresh probe, about 20 s ...");
+            board::probe_partial();
+            break;
+        case 'X':
+            ESP_LOGI(kTag, "partial refresh X probe, about 20 s ...");
+            board::probe_partial_x();
+            break;
+        case 'Z':
+            ESP_LOGI(kTag, "partial refresh 0x26 probe, about 25 s ...");
+            board::probe_partial_old();
+            break;
         case 'F': {
             // Refresh benchmark. The product page and Waveshare's own tutorial
             // disagree about this panel by nearly a factor of two (3.5 s / 2.8 s
@@ -1167,7 +1179,7 @@ void handle_serial() {
             ESP_LOGI(kTag, "p/P phone ready|absent, a audio acked, r/c/s/o results, "
                            "k/f/u execution, x transport fail, b/B battery, "
                            "A stream the clip, q/w/e/d/z/v patterns, C clean, T text probe, "
-                           "F refresh benchmark");
+                           "F refresh benchmark, Y/X/Z partial probes");
             break;
         default: break;
     }

@@ -6,6 +6,10 @@ build/
 # reconfiguring between them.
 board/build.crowpanel/
 board/build.waveshare/
+# Any per-board or bench build directory, wherever idf.py was run from. The
+# bare pattern catches a stray one created by running idf.py from board/main/
+# instead of board/, which is an easy slip and leaves a full build tree behind.
+**/build.*/
 .pio/
 managed_components/
 sdkconfig.old

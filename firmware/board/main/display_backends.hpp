@@ -18,4 +18,15 @@ void deep_clean(int cycles);
 //   0 all black   1 all white   2 left half   3 right half   4 top half
 //   5 a black square at the origin
 void debug_pattern(int which);
+
+// Draws five partial refreshes, each with a different register convention, in
+// five labelled bands. One look says which convention this panel obeys, which
+// is not answerable from the vendor's code: its two ports contradict each other.
+void probe_partial();
+
+// The same question for the X axis, asked with narrow regions.
+void probe_partial_x();
+
+// Whether pushing the previous image into 0x26 is what breaks a real partial.
+void probe_partial_old();
 }  // namespace halo::board

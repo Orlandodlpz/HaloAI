@@ -551,4 +551,14 @@ const char* panel_name() { return "CrowPanel 5.79 (development board)"; }
 void deep_clean(int cycles) { g_display.deep_clean(cycles); }
 void debug_pattern(int which) { g_display.fill_pattern(which); }
 
+// The partial refresh probes exist to interrogate the BADGE's controller, whose
+// sequence Waveshare's own two ports disagree about. This panel is a different
+// controller with a different and already settled sequence, so they are stubs
+// here rather than being left undefined: both boards build from one flag, and a
+// function declared in display_backends.hpp but implemented in only one backend
+// breaks that with a link error rather than a compile one.
+void probe_partial() { ESP_LOGI(kTag, "partial probe is badge only"); }
+void probe_partial_x() { ESP_LOGI(kTag, "partial probe is badge only"); }
+void probe_partial_old() { ESP_LOGI(kTag, "partial probe is badge only"); }
+
 }  // namespace halo::board

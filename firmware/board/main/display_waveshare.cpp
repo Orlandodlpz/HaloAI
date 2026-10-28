@@ -77,9 +77,7 @@ uint8_t* g_fb = nullptr;
 // This is the same trap the development board's driver documents at length. The
 // two panels differ in almost everything else; they do not differ in this.
 uint8_t* g_fb_prev = nullptr;
-// One row, in internal memory, so the previous image can be streamed out of
-// g_fb_prev (which may live in PSRAM) without handing a PSRAM pointer to SPI DMA.
-uint8_t g_row[kStride];
+
 
 spi_device_handle_t g_spi = nullptr;
 i2c_master_bus_handle_t g_i2c = nullptr;
@@ -310,29 +308,34 @@ void update(uint8_t mode) {
     wait_busy();
 }
 
-// REGION PARTIAL REFRESH DOES NOT WORK ON THIS PANEL, and 0 disables it.
+// Region partial refresh works on this panel, at about 620 ms against 2573 for
+// a full one, so there is no size limit worth imposing: the whole panel can be
+// a partial.
 //
-// Established on the badge 2026-10-27, by eye, because every one of these
-// reported a perfectly ordinary 620 to 670 ms refresh:
+// It took most of an evening to establish, because it was broken by our own
+// 0x26 write (see push_region) and every wrong result still reported a healthy
+// 620 ms refresh. What the panel actually settled, by drawing labelled bands
+// and looking at them:
 //
-//   - A large region leaves the previous screen readable underneath the new
-//     one. RECORDING, FINALIZE AUDIO and REVIEW were all legible at once.
-//   - A small region changes NOTHING visible at all. A status bar update that
-//     should have replaced "Ready to confirm" left it exactly where it was.
+//   0x45 must be sent HIGH value first, the Y-decrement convention, which is
+//   what the full init uses and what Waveshare's ESP-IDF port uses. Their
+//   Arduino port sends it low first and does not draw at all.
 //
-// A refresh that reports a time and moves no pixels is the same signature the
-// development board's driver documents: an update with no waveform LUT loaded
-// runs to completion and does nothing. The vendor's partial sequence resets the
-// controller and never reloads the LUT out of OTP afterwards, which is the
-// first thing to try if this is picked up again (the full path gets its LUT
-// from the temperature read inside panel_init()).
+//   0x44 and 0x4E are in PIXELS, not byte addresses. That much is settled, but
+//   a window narrower than the panel still comes out shifted, so we do not use
+//   one: present() widens every region to the full row and clips only in Y.
+//   The X window remains the one part of this sequence that is not understood,
+//   and it is avoided rather than guessed at.
 //
-// Until then every screen is a full screen update, which has been correct and
-// clean all along. It costs 2574 ms against the 1.5 s slot in the latency
-// budget, and that is a deliberate trade: a screen with two older screens
-// showing through it is worse than a slow one. The fast waveform is a full
-// screen update too, at 2167 ms, and is the obvious next thing to try.
-constexpr int kPartialMaxArea = 0;
+//   0x11 is set explicitly to Y-decrement after the reset. The panel also works
+//   without it, on the power on default, but the vendor's own partial programs
+//   a decrement style window into a chip it leaves incrementing, and relying on
+//   that is not worth the saving of one command.
+//
+// Ghosting still accumulates over a run of partials. The refresh policy above
+// the display boundary spends a Full every tenth screen, and a Full here is a
+// cleaned draw, which is what keeps the glass honest.
+constexpr int kPartialMaxArea = kWidth * kHeight;
 
 constexpr uint8_t kUpdateFull = 0xF7;
 constexpr uint8_t kUpdateFast = 0xD7;
@@ -393,21 +396,23 @@ void push_region(int byte_x0, int byte_x1, int y0, int y1) {
 
     const size_t run = static_cast<size_t>(byte_x1 - byte_x0);
 
-    // The new image.
+    // ONLY 0x24. Do not touch 0x26 here.
+    //
+    // This cost an entire evening. The development board's controller needs the
+    // previous image pushed into its old-image RAM on every present, and that
+    // rule was carried across to this panel on the assumption that an e-paper
+    // controller is an e-paper controller. It is not. Writing 0x26 during a
+    // partial on this panel makes the refresh render the OLD content, so the
+    // screen being replaced stays readable underneath the new one, and a small
+    // region appears to do nothing at all.
+    //
+    // Proved on the glass 2026-10-27 with two identical partial bands over a
+    // panel full of 'o': the band that wrote 0x26 kept the 'o' showing through,
+    // the band that did not was clean. The vendor never writes it. Neither do
+    // we. The controller maintains its own previous image from the baseline
+    // that EPD_Display_Base laid down, which is what push_whole_screen() does.
     cmd(0x24);
     for (int y = y0; y < y1; ++y) dat_block(g_fb + y * kStride + byte_x0, run);
-
-    // What is actually on the glass right now, into the previous image RAM. The
-    // address counter has to be put back first: the write above left it wherever
-    // it finished. Without this the waveform is computed against a stale image
-    // and the previous screen's ink survives the refresh.
-    cmd(0x4E); dat(x_start & 0xFF); dat((x_start >> 8) & 0xFF);
-    cmd(0x4F); dat(y0 & 0xFF); dat((y0 >> 8) & 0xFF);
-    cmd(0x26);
-    for (int y = y0; y < y1; ++y) {
-        memcpy(g_row, g_fb_prev + y * kStride + byte_x0, run);
-        dat_block(g_row, run);
-    }
 
     update(kUpdatePartial);
     memcpy(g_fb_prev, g_fb, kFbBytes);
@@ -565,6 +570,238 @@ void draw_bitmap(const BitmapCmd& b) {
             if (bitmap_ink(b, stride, col, row)) set_pixel(ox + col, oy + row, true);
 }
 
+
+// ---------------------------------------------------------------- partial probe
+//
+// Which partial refresh convention does this panel actually obey?
+//
+// Waveshare's two ports of this same panel disagree with each other, and the
+// disagreement is exactly the thing that was getting regions misplaced:
+//
+//   ESP-IDF  0x45 <- (Yend, Ystart)   high first, the Y-DECREMENT convention
+//   Arduino  0x45 <- (Ystart, Yend)   low first,  the Y-INCREMENT convention
+//
+// Neither sets 0x11 after the reset inside the partial, so the chip is left at
+// its power on default, which is Y-INCREMENT. That makes the Arduino port
+// self consistent and the ESP-IDF port internally contradictory: it programs a
+// decrement style window into a chip that is incrementing. We copied the
+// ESP-IDF one.
+//
+// Rather than argue from datasheets about which is right, draw all of them and
+// look. Each variant gets its own band of the panel, each band is filled with
+// its own letter and has a solid black bar across the TOP eight rows, so one
+// photograph answers three questions at once: did it draw at all, did it land
+// at the right height, and is it upside down inside its own band.
+struct PartialVariant {
+    char tag;
+    int entry_mode;   // -1 leave at the power on default, else the value for 0x11
+    bool high_first;  // 0x45 order
+    bool counter_high;
+    int write_old;    // 0 none, 1 known white, 2 from g_fb_prev
+    bool x_in_bytes;  // 0x44 and 0x4E in byte addresses rather than pixels
+    const char* what;
+};
+
+void push_region_as(const PartialVariant& v, int byte_x0, int byte_x1, int y0, int y1) {
+    // The vendor multiplies its byte column by 8 and calls that the X address.
+    // The development board's controller takes 0x44 in BYTES (its driver sends
+    // 0x00 to 0x31 for 400 pixels), and a full width region cannot tell the two
+    // apart, because a pixel valued end address is far out of range and simply
+    // clamps to the whole row. A narrow region can.
+    const int x_start = v.x_in_bytes ? byte_x0 : byte_x0 * 8;
+    const int x_end = v.x_in_bytes ? (byte_x1 - 1) : (byte_x1 - 1) * 8;
+    const int hi = y1 - 1, lo = y0;
+
+    hw_reset();
+    cmd(0x18); dat(0x80);
+    cmd(0x3C); dat(0x80);
+    if (v.entry_mode >= 0) { cmd(0x11); dat(static_cast<uint8_t>(v.entry_mode)); }
+
+    cmd(0x44); dat(x_start & 0xFF); dat((x_start >> 8) & 0xFF);
+               dat(x_end & 0xFF); dat((x_end >> 8) & 0xFF);
+    cmd(0x45);
+    if (v.high_first) { dat(hi & 0xFF); dat((hi >> 8) & 0xFF); dat(lo & 0xFF); dat((lo >> 8) & 0xFF); }
+    else              { dat(lo & 0xFF); dat((lo >> 8) & 0xFF); dat(hi & 0xFF); dat((hi >> 8) & 0xFF); }
+
+    const int cy = v.counter_high ? hi : lo;
+    cmd(0x4E); dat(x_start & 0xFF); dat((x_start >> 8) & 0xFF);
+    cmd(0x4F); dat(cy & 0xFF); dat((cy >> 8) & 0xFF);
+
+    const size_t run = static_cast<size_t>(byte_x1 - byte_x0);
+    cmd(0x24);
+    for (int y = y0; y < y1; ++y) dat_block(g_fb + y * kStride + byte_x0, run);
+
+    if (v.write_old != 0) {
+        cmd(0x4E); dat(x_start & 0xFF); dat((x_start >> 8) & 0xFF);
+        cmd(0x4F); dat(cy & 0xFF); dat((cy >> 8) & 0xFF);
+        cmd(0x26);
+        static uint8_t row[kStride];
+        for (int y = y0; y < y1; ++y) {
+            if (v.write_old == 1) memset(row, 0xFF, sizeof(row));
+            else memcpy(row, g_fb_prev + y * kStride + byte_x0, run);
+            dat_block(row, run);
+        }
+    }
+
+    update(kUpdatePartial);
+}
+
+void partial_probe() {
+    if (!g_ready) return;
+
+    // A known, clean, entirely white baseline. Anything black afterwards was put
+    // there by a partial refresh and nothing else.
+    clear_panel(2);
+    memset(g_fb, 0xFF, kFbBytes);
+    panel_init();
+    push_whole_screen(true, kUpdateFull);
+    ESP_LOGI(kTag, "partial probe: white baseline laid down, now five variants");
+
+    static const PartialVariant kVariants[] = {
+        {'A', -1,   true,  false, 0, false, "vendor ESP-IDF exactly as shipped"},
+        {'B', -1,   false, false, 0, false, "vendor Arduino exactly as shipped"},
+        {'C', 0x01, true,  false, 0, false, "forced Y-decrement, high-first window"},
+        {'D', 0x03, false, false, 0, false, "forced Y-increment, low-first window"},
+        {'E', 0x01, true,  false, 1, false, "as C, plus the old image pushed to 0x26"},
+    };
+
+    int y = 20;
+    for (const PartialVariant& v : kVariants) {
+        const int y0 = y, y1 = y + 70;
+        memset(g_fb, 0xFF, kFbBytes);
+        fill_rect(0, y0, kWidth, 8, true);          // bar across the TOP of the band
+        char line[49];
+        for (int i = 0; i < 48; ++i) line[i] = v.tag;
+        line[48] = '\0';
+        TextCmd t;
+        t.box = Box{16, static_cast<int16_t>(y0 + 20), static_cast<int16_t>(kWidth - 32), 32};
+        t.text = line;
+        draw_text(t);
+
+        const int64_t t0 = esp_timer_get_time();
+        push_region_as(v, 0, kStride, y0, y1);
+        ESP_LOGI(kTag, "  %c: rows %d..%d, %lld ms, %s", v.tag, y0, y1,
+                 (esp_timer_get_time() - t0) / 1000, v.what);
+        y += 90;
+    }
+
+    memset(g_fb, 0xFF, kFbBytes);
+    memset(g_fb_prev, 0xFF, kFbBytes);
+    ESP_LOGI(kTag, "partial probe done. Each band should show its own letter across "
+                   "the full width with a black bar along the TOP of the band. "
+                   "A missing band did not draw; a band whose bar is at the BOTTOM "
+                   "is upside down; a band at the wrong height is misplaced.");
+}
+
+
+// The X half of the same question, which the first probe could not ask because
+// every one of its regions was the full width of the panel.
+//
+// Each band here is narrow: byte columns 25 to 75, which is pixels 200 to 600,
+// the middle half of the screen. A band whose letters sit in the middle is
+// correctly addressed. A band that is shifted, clipped to one side, or missing
+// is not.
+void partial_probe_x() {
+    if (!g_ready) return;
+
+    clear_panel(2);
+    memset(g_fb, 0xFF, kFbBytes);
+    panel_init();
+    push_whole_screen(true, kUpdateFull);
+    ESP_LOGI(kTag, "partial X probe: white baseline, now three narrow regions");
+
+    static const PartialVariant kVariants[] = {
+        {'F', 0x01, true, false, 0, false, "X as PIXELS, what the driver does now"},
+        {'G', 0x01, true, false, 0, true,  "X as BYTE addresses"},
+        {'H', -1,   true, false, 0, true,  "X as bytes, 0x11 left at the default"},
+    };
+
+    constexpr int kX0 = 25, kX1 = 75;   // pixels 200 to 600
+    int y = 60;
+    for (const PartialVariant& v : kVariants) {
+        const int y0 = y, y1 = y + 70;
+        memset(g_fb, 0xFF, kFbBytes);
+        fill_rect(kX0 * 8, y0, (kX1 - kX0) * 8, 8, true);
+        char line[26];
+        for (int i = 0; i < 25; ++i) line[i] = v.tag;
+        line[25] = '\0';
+        TextCmd t;
+        t.box = Box{static_cast<int16_t>(kX0 * 8), static_cast<int16_t>(y0 + 20),
+                    static_cast<int16_t>((kX1 - kX0) * 8), 32};
+        t.text = line;
+        draw_text(t);
+
+        push_region_as(v, kX0, kX1, y0, y1);
+        ESP_LOGI(kTag, "  %c: rows %d..%d, x pixels %d..%d, %s", v.tag, y0, y1,
+                 kX0 * 8, kX1 * 8, v.what);
+        y += 130;
+    }
+
+    memset(g_fb, 0xFF, kFbBytes);
+    memset(g_fb_prev, 0xFF, kFbBytes);
+    ESP_LOGI(kTag, "X probe done. A correct band is a block of its own letter in "
+                   "the MIDDLE HALF of the panel, bar along its top, nothing in "
+                   "the left or right quarter.");
+}
+
+
+// The last difference between the probe that works and the driver that does
+// not: the driver pushes the previous image into 0x26 on every partial, and the
+// probe never did.
+//
+// This asks the question against a realistic starting point rather than a blank
+// panel. The whole screen is first filled with OLD, by a full refresh, so the
+// glass genuinely holds a previous screen. Then two bands are replaced by a
+// partial: one the way the driver does it, one the way the working probe does.
+void partial_probe_old() {
+    if (!g_ready) return;
+
+    clear_panel(2);
+    memset(g_fb, 0xFF, kFbBytes);
+    char oldline[49];
+    for (int i = 0; i < 48; ++i) oldline[i] = 'o';
+    oldline[48] = '\0';
+    for (int row = 0; row < 12; ++row) {
+        TextCmd t;
+        t.box = Box{16, static_cast<int16_t>(row * 40 + 4), kWidth - 32, 32};
+        t.text = oldline;
+        draw_text(t);
+    }
+    panel_init();
+    push_whole_screen(true, kUpdateFull);   // glass and g_fb_prev both hold OLD
+    ESP_LOGI(kTag, "0x26 probe: panel filled with 'o', now two partial bands");
+
+    static const PartialVariant kVariants[] = {
+        {'K', 0x01, true, false, 2, false, "exactly what the driver does: 0x26 <- previous image"},
+        {'L', 0x01, true, false, 0, false, "what the working probe does: 0x24 only, no 0x26"},
+    };
+
+    int y = 120;
+    for (const PartialVariant& v : kVariants) {
+        const int y0 = y, y1 = y + 80;
+        // Only the band changes; everything else stays as OLD, which is what a
+        // real screen change looks like to dirty_region.
+        for (int yy = y0; yy < y1; ++yy)
+            memset(g_fb + yy * kStride, 0xFF, kStride);
+        char line[49];
+        for (int i = 0; i < 48; ++i) line[i] = v.tag;
+        line[48] = '\0';
+        TextCmd t;
+        t.box = Box{16, static_cast<int16_t>(y0 + 24), kWidth - 32, 32};
+        t.text = line;
+        draw_text(t);
+
+        push_region_as(v, 0, kStride, y0, y1);
+        ESP_LOGI(kTag, "  %c: rows %d..%d, %s", v.tag, y0, y1, v.what);
+        memcpy(g_fb_prev + y0 * kStride, g_fb + y0 * kStride,
+               static_cast<size_t>(y1 - y0) * kStride);
+        y += 180;
+    }
+
+    ESP_LOGI(kTag, "0x26 probe done. A correct band shows ONLY its own letter, with "
+                   "no 'o' left underneath. The rest of the panel stays 'o'.");
+}
+
 // ---------------------------------------------------------------- backend
 
 class WaveshareDisplay : public Display {
@@ -711,11 +948,34 @@ public:
             // when the change really is small, and anything bigger is promoted to
             // a full screen update, which drives every pixel and cannot leave an
             // older screen showing through.
+            // ALWAYS THE WHOLE SCREEN.
+            //
+            // Not a region at all, in the end: a partial over the entire panel.
+            //
+            // The refresh time here is set by the waveform, not by how many
+            // bytes are sent. Measured on the badge: a 768 x 16 strip took
+            // 620 ms and a 768 x 366 block 643 ms, so clipping the region buys
+            // about 20 ms and costs every geometry bug this panel has. And it
+            // has them. A window narrower than the panel comes out shifted
+            // sideways (a REVIEW screen lost about 21 characters off the left
+            // of every line while the tail sat in the right place), and a
+            // window shorter than the panel leaves the rows outside it holding
+            // whatever was there before (the old status bar stayed legible
+            // above a region that started at row 4). Both were photographed on
+            // the glass 2026-10-27.
+            //
+            // So the dirty region is used for ONE decision only, taken above:
+            // whether anything changed at all. If something did, the whole
+            // screen is redrawn with the partial waveform, which is still four
+            // times faster than a full refresh and leaves nothing behind.
+            bx0 = 0;
+            bx1 = kStride;
+            y0 = 0;
+            y1 = kHeight;
+
             const int area = (bx1 - bx0) * 8 * (y1 - y0);
             if (area > kPartialMaxArea) {
-                ESP_LOGI(kTag, "%d x %d changed: drawing the whole screen, because a "
-                               "region partial does not move pixels on this panel",
-                         (bx1 - bx0) * 8, y1 - y0);
+                ESP_LOGI(kTag, "too much changed for a partial: full refresh");
                 can_partial = false;
             }
         }
@@ -802,6 +1062,9 @@ WaveshareDisplay g_display;
 Display& display() { return g_display; }
 const char* panel_name() { return "Waveshare 3.97 (the badge)"; }
 void deep_clean(int cycles) { g_display.deep_clean(cycles); }
+void probe_partial() { partial_probe(); }
+void probe_partial_x() { partial_probe_x(); }
+void probe_partial_old() { partial_probe_old(); }
 void debug_pattern(int which) { g_display.fill_pattern(which); }
 
 }  // namespace halo::board
